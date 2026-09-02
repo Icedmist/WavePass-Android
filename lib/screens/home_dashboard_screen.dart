@@ -5,6 +5,8 @@ import 'sell_pass_screen.dart';
 import 'active_devices_screen.dart';
 import 'printer_settings_screen.dart';
 import 'router_diagnostics_screen.dart';
+import 'admin_management_screen.dart';
+import 'how_to_use_screen.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -69,6 +71,24 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline, color: AppColors.primary, size: 20),
+            tooltip: "How to Use",
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HowToUseScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 22),
+            tooltip: "Admin Control",
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdminManagementScreen()),
+              );
+            },
+          ),
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

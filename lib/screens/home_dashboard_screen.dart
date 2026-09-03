@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
+import '../core/services/notification_service.dart';
+import 'notification_center_sheet.dart';
 import 'router_setup_screen.dart';
 import 'sell_pass_screen.dart';
 import 'active_devices_screen.dart';
@@ -63,6 +65,13 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ],
         ),
         actions: [
+          ValueListenableBuilder<List<AppNotification>>(
+            valueListenable: AppNotifier.instance.feed,
+            builder: (c, items, _) => Stack(children: [
+              IconButton(icon: const Icon(Icons.notifications_none, color: AppColors.primary), tooltip: 'Notifications', onPressed: () => NotificationCenterSheet.show(context)),
+              if (AppNotifier.instance.unread > 0) Positioned(right: 8, top: 8, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.accentRed, shape: BoxShape.circle))),
+            ]),
+          ),
           IconButton(
             icon: const Icon(Icons.help_outline, color: AppColors.primary, size: 20),
             tooltip: "How to Use",

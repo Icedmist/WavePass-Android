@@ -15,6 +15,17 @@ import '../../screens/terms_screen.dart';
 import '../../screens/privacy_screen.dart';
 import '../../screens/barcode_scanner_screen.dart';
 import '../../screens/wallet_screen.dart';
+import 'scaffold_with_nav.dart';
+
+CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
+      key: s.pageKey,
+      child: child,
+      transitionsBuilder: (c, a, sa, ch) {
+        final curved = CurvedAnimation(parent: a, curve: const Cubic(0.16, 1, 0.3, 1));
+        return SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(curved), child: FadeTransition(opacity: a, child: ch));
+      },
+      transitionDuration: const Duration(milliseconds: 260),
+    );
 
 /// Centralised navigation for WavePass. Every destination is a named route so
 /// screens, deep links and future bottom-tab shells all reference one source of
@@ -44,18 +55,23 @@ class AppRouter {
       GoRoute(path: splash, builder: (_, __) => const SplashScreen()),
       GoRoute(path: onboarding, builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: login, builder: (_, __) => const LoginScreen()),
-      GoRoute(path: dashboard, builder: (_, __) => const HomeDashboardScreen()),
-      GoRoute(path: routerSetup, builder: (_, __) => const RouterSetupScreen()),
-      GoRoute(path: sellPass, builder: (_, __) => const SellPassScreen()),
-      GoRoute(path: activeDevices, builder: (_, __) => const ActiveDevicesScreen()),
-      GoRoute(path: routerDiagnostics, builder: (_, __) => const RouterDiagnosticsScreen()),
-      GoRoute(path: printerSettings, builder: (_, __) => const PrinterSettingsScreen()),
-      GoRoute(path: admin, builder: (_, __) => const AdminManagementScreen()),
-      GoRoute(path: howToUse, builder: (_, __) => const HowToUseScreen()),
-      GoRoute(path: terms, builder: (_, __) => const TermsScreen()),
-      GoRoute(path: privacy, builder: (_, __) => const PrivacyScreen()),
-      GoRoute(path: barcodeScanner, builder: (_, __) => const BarcodeScannerScreen()),
-      GoRoute(path: wallet, builder: (_, __) => const WalletScreen()),
+      StatefulShellRoute.indexedStack(
+        builder: (c, s, shell) => ScaffoldWithNav(navigationShell: shell),
+        branches: [
+          StatefulShellBranch(routes: [GoRoute(path: dashboard, pageBuilder: (c, s) => _slideFade(const HomeDashboardScreen(), s))]),
+          StatefulShellBranch(routes: [GoRoute(path: activeDevices, pageBuilder: (c, s) => _slideFade(const ActiveDevicesScreen(), s))]),
+          StatefulShellBranch(routes: [GoRoute(path: wallet, pageBuilder: (c, s) => _slideFade(const WalletScreen(), s))]),
+          StatefulShellBranch(routes: [GoRoute(path: admin, pageBuilder: (c, s) => _slideFade(const AdminManagementScreen(), s))]),
+        ],
+      ),
+      GoRoute(path: routerSetup, pageBuilder: (c, s) => _slideFade(const RouterSetupScreen(), s)),
+      GoRoute(path: sellPass, pageBuilder: (c, s) => _slideFade(const SellPassScreen(), s)),
+      GoRoute(path: routerDiagnostics, pageBuilder: (c, s) => _slideFade(const RouterDiagnosticsScreen(), s)),
+      GoRoute(path: printerSettings, pageBuilder: (c, s) => _slideFade(const PrinterSettingsScreen(), s)),
+      GoRoute(path: howToUse, pageBuilder: (c, s) => _slideFade(const HowToUseScreen(), s)),
+      GoRoute(path: terms, pageBuilder: (c, s) => _slideFade(const TermsScreen(), s)),
+      GoRoute(path: privacy, pageBuilder: (c, s) => _slideFade(const PrivacyScreen(), s)),
+      GoRoute(path: barcodeScanner, pageBuilder: (c, s) => _slideFade(const BarcodeScannerScreen(), s)),
     ],
   );
 }

@@ -22,9 +22,17 @@ CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTr
       child: child,
       transitionsBuilder: (c, a, sa, ch) {
         final curved = CurvedAnimation(parent: a, curve: const Cubic(0.16, 1, 0.3, 1));
-        return SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(curved), child: FadeTransition(opacity: a, child: ch));
+        final scale = Tween<double>(begin: 0.98, end: 1.0).animate(curved);
+        return FadeTransition(
+          opacity: a,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0.08, 0.02), end: Offset.zero).animate(curved),
+            child: ScaleTransition(scale: scale, child: ch),
+          ),
+        );
       },
-      transitionDuration: const Duration(milliseconds: 260),
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
     );
 
 /// Centralised navigation for WavePass. Every destination is a named route so

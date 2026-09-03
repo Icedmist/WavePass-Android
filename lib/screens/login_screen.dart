@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
-import 'home_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,16 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await SupabaseService.instance.signIn(email, password);
       if (response.user != null) {
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
-        );
+        context.go(AppRouter.dashboard);
       }
     } catch (e) {
       // In offline / simulator mode, allow demo login
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
-      );
+      context.go(AppRouter.dashboard);
     } finally {
       if (mounted) {
         setState(() {

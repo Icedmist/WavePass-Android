@@ -60,12 +60,12 @@ class AppRouter {
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: dashboard, pageBuilder: (c, s) => _slideFade(const HomeDashboardScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: activeDevices, pageBuilder: (c, s) => _slideFade(const ActiveDevicesScreen(), s))]),
+          StatefulShellBranch(routes: [GoRoute(path: sellPass, pageBuilder: (c, s) => _slideFade(const SellPassScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: wallet, pageBuilder: (c, s) => _slideFade(const WalletScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: admin, pageBuilder: (c, s) => _slideFade(const AdminManagementScreen(), s))]),
         ],
       ),
       GoRoute(path: routerSetup, pageBuilder: (c, s) => _slideFade(const RouterSetupScreen(), s)),
-      GoRoute(path: sellPass, pageBuilder: (c, s) => _slideFade(const SellPassScreen(), s)),
       GoRoute(path: routerDiagnostics, pageBuilder: (c, s) => _slideFade(const RouterDiagnosticsScreen(), s)),
       GoRoute(path: printerSettings, pageBuilder: (c, s) => _slideFade(const PrinterSettingsScreen(), s)),
       GoRoute(path: howToUse, pageBuilder: (c, s) => _slideFade(const HowToUseScreen(), s)),

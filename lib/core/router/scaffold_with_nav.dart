@@ -12,27 +12,33 @@ class ScaffoldWithNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: _go,
-        backgroundColor: AppColors.white,
-        indicatorColor: AppColors.containerBg,
-        height: 72,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.devices_outlined), selectedIcon: Icon(Icons.devices), label: 'Devices'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
-          NavigationDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: 'Admin'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          border: Border(top: BorderSide(color: AppColors.cardBorder)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, -4))],
+        ),
+        child: NavigationBar(
+          selectedIndex: navigationShell.currentIndex,
+          onDestinationSelected: _go,
+          backgroundColor: AppColors.white,
+          indicatorColor: AppColors.primary.withValues(alpha: 0.10),
+          elevation: 0,
+          height: 72,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: [
+            const NavigationDestination(icon: Icon(Icons.dashboard_outlined, color: AppColors.textLight), selectedIcon: Icon(Icons.dashboard, color: AppColors.primary), label: 'Home'),
+            const NavigationDestination(icon: Icon(Icons.devices_outlined, color: AppColors.textLight), selectedIcon: Icon(Icons.devices, color: AppColors.primary), label: 'Devices'),
+            NavigationDestination(
+              icon: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.accentRed, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_long, color: Colors.white, size: 22)),
+              selectedIcon: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.accentRed, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_long, color: Colors.white, size: 22)),
+              label: 'Sell',
+            ),
+            const NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined, color: AppColors.textLight), selectedIcon: Icon(Icons.account_balance_wallet, color: AppColors.primary), label: 'Wallet'),
+            const NavigationDestination(icon: Icon(Icons.admin_panel_settings_outlined, color: AppColors.textLight), selectedIcon: Icon(Icons.admin_panel_settings, color: AppColors.primary), label: 'Admin'),
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/sell-pass'),
-        backgroundColor: AppColors.accentRed,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.receipt_long),
-        label: const Text('Sell', style: TextStyle(fontWeight: FontWeight.w800)),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

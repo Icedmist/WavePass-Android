@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
-import 'login_screen.dart';
-import 'home_dashboard_screen.dart';
-import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -39,9 +38,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     try {
       final user = SupabaseService.instance.currentUser;
       if (user != null) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeDashboardScreen()),
-        );
+        if (!mounted) return;
+        context.go(AppRouter.dashboard);
         return;
       }
     } catch (_) {
@@ -55,13 +53,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (!mounted) return;
     if (!hasSeenOnboarding) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
+      context.go(AppRouter.onboarding);
     } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      context.go(AppRouter.login);
     }
   }
 

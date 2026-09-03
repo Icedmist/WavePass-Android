@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
@@ -75,20 +76,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           IconButton(
             icon: const Icon(Icons.help_outline, color: AppColors.primary, size: 20),
             tooltip: "How to Use",
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const HowToUseScreen()),
-              );
-            },
+            onPressed: () => context.push(AppRouter.howToUse),
           ),
           IconButton(
             icon: const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 22),
             tooltip: "Admin Control",
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdminManagementScreen()),
-              );
-            },
+            onPressed: () => context.go(AppRouter.admin),
           ),
           Container(
             margin: const EdgeInsets.only(right: 16),
@@ -310,11 +303,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
             // ─── PRIMARY 1-TAP CASH PASS ACTION ───
             InkWell(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SellPassScreen()),
-                );
-              },
+              onTap: () => context.go(AppRouter.sellPass),
               borderRadius: BorderRadius.circular(24),
               child: Container(
                 padding: const EdgeInsets.all(22),
@@ -405,11 +394,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   title: "Set Up a Router",
                   subtitle: "Wi-Fi auto-find & barcode scan",
                   icon: Icons.router,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const RouterSetupScreen()),
-                    );
-                  },
+                  onTap: () => context.push(AppRouter.routerSetup),
                 ),
 
                 // ACTION 2: ACTIVE DEVICES
@@ -417,11 +402,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   title: "Active Devices",
                   subtitle: "$_activeUsers people connected",
                   icon: Icons.devices,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ActiveDevicesScreen()),
-                    );
-                  },
+                  onTap: () => context.go(AppRouter.activeDevices),
                 ),
 
                 // ACTION 3: ROUTER HEALTH
@@ -429,11 +410,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   title: "Router Health",
                   subtitle: "Live CPU & memory load",
                   icon: Icons.speed,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const RouterDiagnosticsScreen()),
-                    );
-                  },
+                  onTap: () => context.push(AppRouter.routerDiagnostics),
                 ),
 
                 // ACTION 4: BLUETOOTH PRINTER
@@ -441,11 +418,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   title: "Pocket Printer",
                   subtitle: "Bluetooth thermal receipt",
                   icon: Icons.print,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const PrinterSettingsScreen()),
-                    );
-                  },
+                  onTap: () => context.push(AppRouter.printerSettings),
                 ),
 
                 // ACTION 5: VENUE WALLET & CASHOUTS
@@ -453,9 +426,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   title: "Venue Wallet",
                   subtitle: "Virtual account & cashouts",
                   icon: Icons.account_balance_wallet,
-                  onTap: () {
-                    context.goNamedRoute(AppRouter.wallet);
-                  },
+                  onTap: () => context.go(AppRouter.wallet),
                 ),
               ],
             ),

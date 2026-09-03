@@ -19,7 +19,7 @@ class ScaffoldWithNav extends StatelessWidget {
             color: AppColors.white,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(color: AppColors.cardBorder),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, 8))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 32, spreadRadius: 2, offset: const Offset(0, 12)), BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28),

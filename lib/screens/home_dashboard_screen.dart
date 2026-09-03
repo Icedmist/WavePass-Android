@@ -324,44 +324,23 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Icon(
-                        Icons.receipt_long,
-                        color: Colors.white,
-                        size: 26,
-                      ),
+                      child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 26),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
+                    const SizedBox(width: 12),
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            "Sell a Cash Pass",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            "Generate 8-letter code & print receipt in 1 tap",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white70,
-                            ),
-                          ),
+                        children: [
+                          Text("Sell a Cash Pass", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+                          SizedBox(height: 2),
+                          Text("8-letter code & print receipt in 1 tap", maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
                         ],
                       ),
                     ),
-                    const Icon(
-                      Icons.arrow_forward_ios,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                    SizedBox(width: 20, child: Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14)),
                   ],
                 ),
               ),

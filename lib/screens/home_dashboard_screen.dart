@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
+import '../core/router/app_router.dart';
 import 'router_setup_screen.dart';
 import 'sell_pass_screen.dart';
 import 'active_devices_screen.dart';
@@ -444,6 +445,16 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const PrinterSettingsScreen()),
                     );
+                  },
+                ),
+
+                // ACTION 5: VENUE WALLET & CASHOUTS
+                _buildActionCard(
+                  title: "Venue Wallet",
+                  subtitle: "Virtual account & cashouts",
+                  icon: Icons.account_balance_wallet,
+                  onTap: () {
+                    context.goNamedRoute(AppRouter.wallet);
                   },
                 ),
               ],

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
+import '../core/widgets/plan_configurator.dart';
 
 class SellPassScreen extends StatefulWidget {
   const SellPassScreen({super.key});
@@ -85,17 +86,13 @@ class _SellPassScreenState extends State<SellPassScreen> {
         backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.primary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          "Sell a Cash Pass",
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.primary,
-          ),
-        ),
+        title: const Text("Sell a Cash Pass", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)),
+        actions: [
+          IconButton(icon: const Icon(Icons.tune_rounded, color: AppColors.primary), tooltip: 'Customize plan', onPressed: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet())),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

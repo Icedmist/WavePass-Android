@@ -1,40 +1,42 @@
 # WavePass Mobile — Venue Wi-Fi Manager (Flutter)
 
-Flutter **3.41** app for venue owners/operators. Sell cash passes, manage MikroTik gateways, monitor live sessions, and **cash out to your own bank** — all backed by **Supabase** + a single **Nexa Paystack** key.
+Flutter **3.41** app for venue owners/operators. Sell cash passes, manage MikroTik gateways, monitor live sessions, and **cash out to your own bank** — single **Nexa Paystack** key + 15-table cloud schema.
 
 ![WavePass Logo](assets/images/logo.png)
 
-## 🗺️ Navigation
+## 🗺️ Navigation — Floating Pill Shell
 
-Central **GoRouter** (`lib/core/router/app_router.dart`, 15 named routes):
+`StatefulShellRoute.indexedStack` + `ScaffoldWithNav` (floating pill `margin 16 rounded 28 shadow 32/8`) — 5 tabs `Home / Devices / Sell(red pill) / Wallet / Admin` — active tab black `primary` pill with white icon, `scale 1.0 + indicator transparent`, 68dp height. `CustomTransitionPage` slide `0.08,0.02` + scale `0.98→1` 320ms expo. Entry via `Splash → context.go()` (no `MaterialPageRoute`).
 
-| Route | Path | Screen |
-|---|---|---|
-| Splash | `/` | `SplashScreen` — animated logo → Supabase auth gate |
-| Onboarding | `/onboarding` | 3-slide carousel |
-| Login | `/login` | Supabase email/password |
-| Dashboard | `/dashboard` | Revenue, online count, quick actions |
-| Set Up Router | `/setup-router` | Wi-Fi auto-find + barcode scan |
-| Sell Pass | `/sell-pass` | Plans → voucher code → Bluetooth print |
-| Active Devices | `/active-devices` | Live sessions, disconnect |
-| Router Health | `/router-health` | CPU/mem, restart |
-| Printer | `/printer-settings` | Bluetooth POS pairing |
-| Admin | `/admin` | Plans, reconcile/cleanup triggers |
-| Wallet | `/wallet` | **DVA, balance, auto-cashout** |
-| How-To / Terms / Privacy | … | Static guides |
+| Route | Path |
+|---|---|
+| Splash `/` → `has_seen_onboarding` → Onboarding/Login/Dashboard |
+| Onboarding `/onboarding` **7 swipeable cards** (Daily Income, Plug In, Connect, Auto-Find, Scan, Sell & Customize `tune`, Cash Out) merging HowToUse |
+| Login `/login` + Signup `/signup` → onboarding → dashboard |
+| Dashboard `/dashboard` |
+| Devices `/active-devices`, Sell `/sell-pass`, Wallet `/wallet`, Admin `/admin`, Account `/account`, Notifications `/notifications` |
 
-Use `context.goNamedRoute(AppRouter.wallet)` — no ad-hoc `MaterialPageRoute` sprawl.
+How-to-Use is also **5-card PageView** (was static list).
 
-## 💳 Wallet — DVA + Auto-Cashout (Owner Password)
+## 💳 Wallet — DVA + Auto-Cashout
 
-Single Nexa Paystack DVA per venue (platform settlement). Flow:
+`lib/screens/wallet_screen.dart` — `FittedBox` `accountNumber` + `Wrap` `Add Bank/Cash Out` (no overflow), `AlwaysScrollable` + bottom 80 padding, `late final` → `double get` fix. Flow: `GET /virtual-accounts/venue/:id → ensure`, `GET /cashouts/balance`, `POST /cashouts/bank-accounts`, **amount+owner password** → `POST /cashouts{venueId, amountMinor, password}` auto-transfer. Cashouts list handles both `List` and `{data:[…]}`.
 
-1. **DVA** — `WalletScreen` auto-calls `GET /virtual-accounts/venue/:venueId` → `ensure` if missing; shows `accountNumber`/`accountName` (`WavePassApi`).
-2. **Balance** — `GET /cashouts/balance/:venueId` → `availableNGN`.
-3. **Bank** — Register payout NUBAN: `POST /cashouts/bank-accounts` (Paystack `transferrecipient`).
-4. **Auto-cashout** — Dialog asks **amount + owner password** → `POST /cashouts {venueId, amountMinor, password}`; server checks `availableMinor`, executes Paystack `transfer` instantly — no admin approval queue. Legacy pending items still confirmable via `POST /cashouts/confirm`.
+## 👤 Account Center — `lib/screens/account_center_screen.dart` `/account`
 
-Default venue resolved via `GET /venues/default` when `venueId == 'default'`.
+Profile pill (logo + email + ONLINE), Venue (Wallet/Notifications/HowToUse), Legal (Terms/Privacy, Supabase refs scrubbed), Session (Sign Out → `supabase.signOut → go(login)`).
+
+## 🎟️ Sell — Custom Voucher Usage
+
+`lib/screens/sell_pass_screen.dart` shows `duration / data / speed / devices` chips (`_miniChip`). `lib/core/widgets/plan_configurator.dart` bottom sheet: **Days + Hours text fields synced to 0.5-72h slider, Gigs text (empty=Unlimited) synced to 0-50GB slider, Price/Day, Speed, Devices 1-5** — creates or **edits existing** (`existing? update eq id : insert`) via Supabase `Plan` (`venueId, priceMinor, durationSeconds, dataLimitBytes, rateLimit, simultaneousDevices`).
+
+## 🔔 Notifications — `lib/screens/notifications_screen.dart` `/notifications`
+
+Bell in `Home` `AppBar` (`notifications_none_rounded` + red dot) → `context.push('/notifications')` full page (also sheet). `AppNotifier` variant toasts `success/error/warning/info` with icon+color, feed `ValueNotifier` + `markAllRead/clear`.
+
+## 📡 Captive Portal
+
+Any `http://` from unpaid MAC → MikroTik → `GET /api/v1/portal/captive?mac=&ip=&link-orig=` → 302 to web `.../portal?mac=` (walled garden open for `*.vercel.app, paystack, supabase`). Paid → `302 .../success?paid=1` with `remainingMs/dataUsed/dataLimit/IP`. `GET /portal/landing?mac=&ip=` returns JSON for landing.
 
 ## 🗃️ Supabase — All App Data
 

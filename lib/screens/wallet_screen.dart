@@ -64,11 +64,14 @@ class _WalletScreenState extends State<WalletScreen> {
           ? va
           : await _api.ensureVirtualAccount(venueId);
       final bal = await _api.venueBalance(venueId);
-      final cashouts = await _api.listCashouts(venueId);
+      final cashoutsRaw = await _api.listCashouts(venueId);
+      final cashoutsList = cashoutsRaw is List
+          ? (cashoutsRaw as List<dynamic>)
+          : (cashoutsRaw['data'] as List<dynamic>? ?? cashoutsRaw['cashouts'] as List<dynamic>? ?? []);
       setState(() {
         _virtualAccount = vaData;
         _balance = bal;
-        _cashouts = (cashouts['data'] ?? []) as List<dynamic>;
+        _cashouts = List<dynamic>.from(cashoutsList);
         _error = null;
       });
     } catch (e) {
@@ -79,9 +82,8 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   int get _availableMinor => (_balance?['availableMinor'] as num?)?.toInt() ?? 0;
-  late final _availableNgn = _availableMinor / 100;
-  String get _acctNumber =>
-      _virtualAccount?['accountNumber']?.toString() ?? '—';
+  double get _availableNgn => _availableMinor / 100;
+  String get _acctNumber => _virtualAccount?['accountNumber']?.toString() ?? '—';
   String get _acctName => _virtualAccount?['accountName']?.toString() ?? '—';
 
   Future<void> _requestCashout() async {
@@ -303,136 +305,65 @@ class _WalletScreenState extends State<WalletScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,
-        title: const Text(
-          'Venue Wallet',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.primary,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.primary),
-          onPressed: () => context.goNamedRoute(AppRouter.dashboard),
-        ),
+        scrolledUnderElevation: 0,
+        title: const Text('Venue Wallet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)),
+        automaticallyImplyLeading: false,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  if (_error != null)
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppColors.redTint,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: AppColors.accentRed),
-                      ),
-                    ),
-
-                  // DEDICATED VIRTUAL ACCOUNT
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(26),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'VENUE VIRTUAL ACCOUNT',
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 0.8,
-                            color: Colors.white54,
-                          ),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom + 80),
+                  children: [
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(color: AppColors.redTint, borderRadius: BorderRadius.circular(14)),
+                          child: Text(_error!, style: const TextStyle(color: AppColors.accentRed)),
                         ),
+                      ),
+                    // DEDICATED VIRTUAL ACCOUNT
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(26)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('VENUE VIRTUAL ACCOUNT', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: Colors.white54)),
                         const SizedBox(height: 12),
-                        Text(
-                          _acctNumber,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            letterSpacing: 1.5,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(_acctNumber, style: const TextStyle(fontSize: 26, letterSpacing: 1.5, fontFamily: 'monospace', fontWeight: FontWeight.w900, color: Colors.white)),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          _acctName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
+                        Text(_acctName, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ]),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // BALANCE
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: AppColors.containerBg,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'AVAILABLE BALANCE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textLight,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
+                    const SizedBox(height: 16),
+                    // BALANCE
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.cardBorder)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('AVAILABLE BALANCE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
                         const SizedBox(height: 8),
-                        Text(
-                          '₦${_availableNgn.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
-                          ),
-                        ),
+                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text('₦${_availableNgn.toStringAsFixed(2)}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.primary))),
                         const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: _submitting ? null : _registerBank,
-                                icon: const Icon(Icons.account_balance, size: 18),
-                                label: const Text('Add Bank'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.accentGreen,
-                                ),
-                                onPressed: _submitting ? null : _requestCashout,
-                                icon: const Icon(Icons.currency_exchange, size: 18),
-                                label: const Text('Request Cashout'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                        Wrap(spacing: 12, runSpacing: 12, children: [
+                          SizedBox(
+                            width: (MediaQuery.of(context).size.width - 52) / 2,
+                            child: FilledButton.icon(onPressed: _submitting ? null : _registerBank, icon: const Icon(Icons.account_balance, size: 18), label: const FittedBox(child: Text('Add Bank'))),
+                          ),
+                          SizedBox(
+                            width: (MediaQuery.of(context).size.width - 52) / 2,
+                            child: FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: AppColors.accentGreen), onPressed: _submitting ? null : _requestCashout, icon: const Icon(Icons.currency_exchange, size: 18), label: const FittedBox(child: Text('Cash Out'))),
+                          ),
+                        ]),
+                      ]),
                     ),
-                  ),
                   const SizedBox(height: 20),
 
                   const Text(

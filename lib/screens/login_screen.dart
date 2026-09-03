@@ -220,17 +220,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                const Center(
-                  child: Text(
-                    "Built by Nexa Digital Nexus Point",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textLight,
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 16),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Text("Don't have an account? ", style: TextStyle(fontSize: 13, color: AppColors.textLight)),
+                  GestureDetector(onTap: () => context.go(AppRouter.signup), child: const Text('Sign Up', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w800))),
+                ]),
+                const SizedBox(height: 14),
+                const Center(child: Text("Built by Nexa Digital Nexus Point", style: TextStyle(fontSize: 12, color: AppColors.textLight))),
               ],
             ),
           ),

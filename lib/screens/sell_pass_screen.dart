@@ -17,24 +17,9 @@ class _SellPassScreenState extends State<SellPassScreen> {
   bool _isPrinting = false;
 
   final List<Map<String, dynamic>> _plans = [
-    {
-      'title': '1 Hour Quick Pass',
-      'price': '₦200',
-      'duration': '1 Hour',
-      'subtitle': 'Great for coffee & quick meetings',
-    },
-    {
-      'title': '12 Hour Work Pass',
-      'price': '₦800',
-      'duration': '12 Hours',
-      'subtitle': 'Full workday internet access',
-    },
-    {
-      'title': '24 Hour All-Day',
-      'price': '₦1,500',
-      'duration': '24 Hours',
-      'subtitle': 'Uninterrupted overnight access',
-    },
+    {'title': '1 Hour Quick Pass', 'price': '₦200', 'duration': '1 Hour', 'subtitle': 'Great for coffee & quick meetings', 'data': 'Unlimited', 'speed': '10 Mbps', 'devices': '1 device'},
+    {'title': '12 Hour Work Pass', 'price': '₦800', 'duration': '12 Hours', 'subtitle': 'Full workday internet access', 'data': '10 GB cap', 'speed': '20 Mbps', 'devices': '1 device'},
+    {'title': '24 Hour All-Day', 'price': '₦1,500', 'duration': '24 Hours', 'subtitle': 'Uninterrupted overnight access', 'data': 'Unlimited', 'speed': '20 Mbps', 'devices': '2 devices'},
   ];
 
   String _randomCode() {
@@ -44,6 +29,12 @@ class _SellPassScreenState extends State<SellPassScreen> {
     final part2 = String.fromCharCodes(Iterable.generate(4, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
     return "WP-$part1-$part2";
   }
+
+  Widget _miniChip(String text, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.cardBorder)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 12, color: AppColors.textLight), const SizedBox(width: 4), Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary))]),
+      );
 
   void _handleGenerate() async {
     setState(() {
@@ -164,24 +155,18 @@ class _SellPassScreenState extends State<SellPassScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  plan['subtitle'],
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppColors.textLight,
-                                  ),
-                                ),
+                                Text(plan['subtitle'], style: const TextStyle(fontSize: 12, color: AppColors.textLight)),
+                                const SizedBox(height: 8),
+                                Wrap(spacing: 6, runSpacing: 6, children: [
+                                  _miniChip(plan['duration'], Icons.schedule_rounded),
+                                  _miniChip(plan['data'], Icons.storage_rounded),
+                                  _miniChip(plan['speed'], Icons.speed_rounded),
+                                  _miniChip(plan['devices'], Icons.devices_rounded),
+                                ]),
                               ],
                             ),
                           ),
-                          Text(
-                            plan['price'],
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.primary,
-                            ),
-                          ),
+                          FittedBox(fit: BoxFit.scaleDown, child: Text(plan['price'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary))),
                         ],
                       ),
                     ),
@@ -226,10 +211,13 @@ class _SellPassScreenState extends State<SellPassScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _plans[_selectedPlanIndex]['title'],
-                      style: const TextStyle(fontSize: 13, color: AppColors.textLight),
-                    ),
+                    Text(_plans[_selectedPlanIndex]['title'], style: const TextStyle(fontSize: 13, color: AppColors.textLight)),
+                    const SizedBox(height: 8),
+                    Wrap(alignment: WrapAlignment.center, spacing: 6, runSpacing: 6, children: [
+                      _miniChip(_plans[_selectedPlanIndex]['duration'], Icons.schedule_rounded),
+                      _miniChip(_plans[_selectedPlanIndex]['data'], Icons.storage_rounded),
+                      _miniChip(_plans[_selectedPlanIndex]['speed'], Icons.speed_rounded),
+                    ]),
                     const SizedBox(height: 20),
 
                     // Big 8-letter code container

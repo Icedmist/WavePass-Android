@@ -69,7 +69,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ValueListenableBuilder<List<AppNotification>>(
             valueListenable: AppNotifier.instance.feed,
             builder: (c, items, _) => Stack(children: [
-              IconButton(icon: const Icon(Icons.notifications_none, color: AppColors.primary), tooltip: 'Notifications', onPressed: () => NotificationCenterSheet.show(context)),
+              IconButton(icon: const Icon(Icons.notifications_none_rounded, color: AppColors.primary), tooltip: 'Notifications', onPressed: () => context.push(AppRouter.notifications)),
               if (AppNotifier.instance.unread > 0) Positioned(right: 8, top: 8, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.accentRed, shape: BoxShape.circle))),
             ]),
           ),

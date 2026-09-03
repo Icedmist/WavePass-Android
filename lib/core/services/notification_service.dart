@@ -23,11 +23,10 @@ class AppNotifier {
   int get unread => feed.value.where((n) => !n.read).length;
   void _add(AppNotification n) {
     feed.value = [n, ...feed.value];
-    feed.notifyListeners();
   }
   void markAllRead() {
     for (final n in feed.value) n.read = true;
-    feed.notifyListeners();
+    feed.value = List.from(feed.value);
   }
 
   void show(BuildContext context,

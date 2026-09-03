@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../screens/splash_screen.dart';
 import '../../screens/onboarding_screen.dart';
 import '../../screens/login_screen.dart';
+import '../../screens/signup_screen.dart';
 import '../../screens/home_dashboard_screen.dart';
 import '../../screens/router_setup_screen.dart';
 import '../../screens/sell_pass_screen.dart';
@@ -15,6 +16,7 @@ import '../../screens/terms_screen.dart';
 import '../../screens/privacy_screen.dart';
 import '../../screens/barcode_scanner_screen.dart';
 import '../../screens/wallet_screen.dart';
+import '../../screens/notifications_screen.dart';
 import 'scaffold_with_nav.dart';
 
 CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
@@ -44,7 +46,9 @@ class AppRouter {
   static const splash = '/';
   static const onboarding = '/onboarding';
   static const login = '/login';
+  static const signup = '/signup';
   static const dashboard = '/dashboard';
+  static const notifications = '/notifications';
   static const routerSetup = '/setup-router';
   static const sellPass = '/sell-pass';
   static const activeDevices = '/active-devices';
@@ -63,6 +67,8 @@ class AppRouter {
       GoRoute(path: splash, builder: (_, __) => const SplashScreen()),
       GoRoute(path: onboarding, builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: login, builder: (_, __) => const LoginScreen()),
+      GoRoute(path: signup, pageBuilder: (c, s) => _slideFade(const SignupScreen(), s)),
+      GoRoute(path: notifications, pageBuilder: (c, s) => _slideFade(const NotificationsScreen(), s)),
       StatefulShellRoute.indexedStack(
         builder: (c, s, shell) => ScaffoldWithNav(navigationShell: shell),
         branches: [

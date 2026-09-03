@@ -70,22 +70,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Header Logo
                 Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          "〰",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.white,
-                          ),
-                        ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
                       ),
                     ),
                     const SizedBox(width: 12),

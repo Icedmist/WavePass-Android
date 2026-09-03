@@ -75,22 +75,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           children: [
             ScaleTransition(
               scale: _scaleAnimation,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Center(
-                  child: Text(
-                    "〰",
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primary,
-                    ),
-                  ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
                 ),
               ),
             ),

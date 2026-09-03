@@ -17,6 +17,7 @@ import '../../screens/privacy_screen.dart';
 import '../../screens/barcode_scanner_screen.dart';
 import '../../screens/wallet_screen.dart';
 import '../../screens/notifications_screen.dart';
+import '../../screens/account_center_screen.dart';
 import 'scaffold_with_nav.dart';
 
 CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
@@ -49,6 +50,7 @@ class AppRouter {
   static const signup = '/signup';
   static const dashboard = '/dashboard';
   static const notifications = '/notifications';
+  static const account = '/account';
   static const routerSetup = '/setup-router';
   static const sellPass = '/sell-pass';
   static const activeDevices = '/active-devices';
@@ -69,6 +71,7 @@ class AppRouter {
       GoRoute(path: login, builder: (_, __) => const LoginScreen()),
       GoRoute(path: signup, pageBuilder: (c, s) => _slideFade(const SignupScreen(), s)),
       GoRoute(path: notifications, pageBuilder: (c, s) => _slideFade(const NotificationsScreen(), s)),
+      GoRoute(path: account, pageBuilder: (c, s) => _slideFade(const AccountCenterScreen(), s)),
       StatefulShellRoute.indexedStack(
         builder: (c, s, shell) => ScaffoldWithNav(navigationShell: shell),
         branches: [

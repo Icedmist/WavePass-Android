@@ -182,45 +182,32 @@ class _WalletScreenState extends State<WalletScreen> {
         final h = AlertDialog(
           title: const Text('Register Bank Account'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: _nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Account Name')),
-                TextField(controller: _acctCtrl,
-                    decoration: const InputDecoration(labelText: 'Account Number')),
-                TextField(controller: _bankCtrl,
-                    decoration: const InputDecoration(labelText: 'Bank Code (e.g. 058)')),
-              ],
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Account Name')),
+              TextField(controller: _acctCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account Number')),
+              TextField(controller: _bankCtrl, decoration: const InputDecoration(labelText: 'Bank Code (e.g. 058)')),
+            ]),
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop({
-                'name': _nameCtrl.text,
-                'acct': _acctCtrl.text,
-                'bank': _bankCtrl.text,
-              }),
-              child: const Text('Save'),
-            ),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop({'name': _nameCtrl.text.trim(), 'acct': _acctCtrl.text.trim(), 'bank': _bankCtrl.text.trim()}), child: const Text('Save')),
           ],
         );
         return h;
       },
     );
     if (form == null) return;
-
+    if (form['name']!.isEmpty || form['acct']!.isEmpty || form['bank']!.isEmpty) return;
+    var venueId = widget.venueId;
+    if (venueId == 'default') {
+      try {
+        final venue = await _api.getDefaultVenue();
+        venueId = venue['id']?.toString() ?? venueId;
+      } catch (_) {}
+    }
     setState(() => _submitting = true);
     try {
-      await _api.registerBankAccount(
-        venueId: widget.venueId,
-        accountName: form['name']!,
-        accountNumber: form['acct']!,
-        bankCode: form['bank']!,
-      );
+      await _api.registerBankAccount(venueId: venueId, accountName: form['name']!, accountNumber: form['acct']!, bankCode: form['bank']!);
       _nameCtrl.clear();
       _acctCtrl.clear();
       _bankCtrl.clear();

@@ -166,7 +166,10 @@ class _SellPassScreenState extends State<SellPassScreen> {
                               ],
                             ),
                           ),
-                          FittedBox(fit: BoxFit.scaleDown, child: Text(plan['price'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary))),
+                          Column(children: [
+                            FittedBox(fit: BoxFit.scaleDown, child: Text(plan['price'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary))),
+                            IconButton(icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary), onPressed: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => PlanConfiguratorSheet(existing: {'name': plan['title'], 'priceMinor': int.tryParse(plan['price'].toString().replaceAll(RegExp(r'[^0-9]'), '')) != null ? int.parse(plan['price'].toString().replaceAll(RegExp(r'[^0-9]'), '')) * 100 : 20000, 'durationSeconds': plan['duration'] == '1 Hour' ? 3600 : plan['duration'] == '12 Hours' ? 43200 : 86400, 'dataLimitBytes': plan['data'] == 'Unlimited' ? null : (double.tryParse(plan['data'].toString().split(' ').first) ?? 0) * 1024 * 1024 * 1024, 'rateLimit': plan['speed'], 'simultaneousDevices': int.tryParse(plan['devices'].toString().split(' ').first) ?? 1})), tooltip: 'Edit plan'),
+                          ]),
                         ],
                       ),
                     ),

@@ -123,7 +123,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: AppColors.cardBorder),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
               child: Column(
@@ -164,7 +164,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                     ? const Text("Sending reboot command...")
                     : const Text("Restart Router Hardware", style: TextStyle(color: AppColors.accentRed)),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppColors.accentRed.withOpacity(0.3)),
+                  side: BorderSide(color: AppColors.accentRed.withValues(alpha: 0.3)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
               ),
@@ -183,7 +183,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.cardBorder),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(

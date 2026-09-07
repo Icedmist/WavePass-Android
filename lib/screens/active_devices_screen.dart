@@ -96,7 +96,7 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
       body: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         itemCount: _devices.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final dev = _devices[index];
 
@@ -174,7 +174,7 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
                   child: LinearProgressIndicator(
                     value: dev['progress'],
                     minHeight: 6,
-                    backgroundColor: Colors.black.withOpacity(0.06),
+                    backgroundColor: Colors.black.withValues(alpha: 0.06),
                     valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentGreen),
                   ),
                 ),

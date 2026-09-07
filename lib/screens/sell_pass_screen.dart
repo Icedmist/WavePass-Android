@@ -102,7 +102,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _plans.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
                   final plan = _plans[index];
                   final isSelected = _selectedPlanIndex == index;

@@ -125,5 +125,4 @@ class _PState extends State<PlanConfiguratorSheet> {
   }
 
   Widget _field(String label, TextEditingController c, {TextInputType? type, ValueChanged<String>? onChanged}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)), const SizedBox(height: 6), TextField(controller: c, keyboardType: type, onChanged: onChanged, decoration: InputDecoration(hintText: label))]));
-  static Future<bool?> open(BuildContext c) => showModalBottomSheet<bool>(context: c, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet());
 }

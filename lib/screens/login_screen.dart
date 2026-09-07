@@ -178,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.redTint,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.accentRed.withOpacity(0.3)),
+                            border: Border.all(color: AppColors.accentRed.withValues(alpha: 0.3)),
                           ),
                           child: Text(
                             _errorMessage!,

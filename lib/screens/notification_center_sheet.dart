@@ -21,7 +21,7 @@ class NotificationCenterSheet extends StatelessWidget {
               TextButton(onPressed: AppNotifier.instance.markAllRead, child: const Text('Mark all read')),
             ])),
             const Divider(height: 1),
-            Expanded(child: items.isEmpty ? const Center(child: Text('No notifications yet', style: TextStyle(color: AppColors.textLight))) : ListView.separated(controller: ctrl, padding: const EdgeInsets.all(16), itemCount: items.length, separatorBuilder: (_, __) => const SizedBox(height: 10), itemBuilder: (c, i) {
+            Expanded(child: items.isEmpty ? const Center(child: Text('No notifications yet', style: TextStyle(color: AppColors.textLight))) : ListView.separated(controller: ctrl, padding: const EdgeInsets.all(16), itemCount: items.length, separatorBuilder: (_, _) => const SizedBox(height: 10), itemBuilder: (c, i) {
                   final n = items[i];
                   final color = {NotifyType.success: AppColors.accentGreen, NotifyType.error: AppColors.accentRed, NotifyType.warning: const Color(0xFFD97706), NotifyType.info: AppColors.primary}[n.type]!;
                   return Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: n.read ? Colors.white : AppColors.containerBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.cardBorder)), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

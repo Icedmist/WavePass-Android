@@ -156,7 +156,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.white,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.accentGreen.withOpacity(0.4)),
+                        border: Border.all(color: AppColors.accentGreen.withValues(alpha: 0.4)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -235,7 +235,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.accentGreen.withOpacity(0.1),
+                                color: AppColors.accentGreen.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
@@ -273,7 +273,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                 border: Border.all(color: AppColors.cardBorder),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),

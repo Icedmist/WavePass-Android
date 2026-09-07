@@ -25,7 +25,9 @@ class AppNotifier {
     feed.value = [n, ...feed.value];
   }
   void markAllRead() {
-    for (final n in feed.value) n.read = true;
+    for (final n in feed.value) {
+      n.read = true;
+    }
     feed.value = List.from(feed.value);
   }
 

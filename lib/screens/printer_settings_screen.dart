@@ -102,7 +102,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.accentGreen.withOpacity(0.12),
+                          color: AppColors.accentGreen.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
@@ -147,7 +147,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(color: AppColors.cardBorder),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
               child: Row(
@@ -170,7 +170,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                   ),
                   Switch(
                     value: _autoPrint,
-                    activeColor: AppColors.accentGreen,
+                    activeThumbColor: AppColors.accentGreen,
                     onChanged: (val) {
                       setState(() {
                         _autoPrint = val;

@@ -3,14 +3,6 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
-import 'notification_center_sheet.dart';
-import 'router_setup_screen.dart';
-import 'sell_pass_screen.dart';
-import 'active_devices_screen.dart';
-import 'printer_settings_screen.dart';
-import 'router_diagnostics_screen.dart';
-import 'admin_management_screen.dart';
-import 'how_to_use_screen.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -20,8 +12,8 @@ class HomeDashboardScreen extends StatefulWidget {
 }
 
 class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
-  int _activeUsers = 18;
-  int _todaySales = 24800;
+  final int _activeUsers = 18;
+  final int _todaySales = 24800;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +165,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.accentGreen.withOpacity(0.12),
+                          color: AppColors.accentGreen.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
@@ -213,7 +205,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       border: Border.all(color: AppColors.cardBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -261,7 +253,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       border: Border.all(color: AppColors.cardBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -312,7 +304,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.accentRed.withOpacity(0.3),
+                      color: AppColors.accentRed.withValues(alpha: 0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -473,7 +465,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           border: Border.all(color: AppColors.cardBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),

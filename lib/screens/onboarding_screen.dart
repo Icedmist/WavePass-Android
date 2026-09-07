@@ -317,24 +317,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   SizedBox(
                     height: 48,
                     child: ElevatedButton(
-                      onPressed: () {
-                        if (_currentPage == _slides.length - 1) {
-                          _finishOnboarding();
-                        } else {
-                          _pageController.nextPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                      ),
-                      child: Text(
-                        _currentPage == _slides.length - 1 ? "Get Started" : "Next →",
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                      ),
+                      onPressed: _creatingVenue
+                          ? null
+                          : () {
+                              if (_currentPage == _slides.length - 1) {
+                                _finishOnboarding();
+                              } else {
+                                _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 24)),
+                      child: _creatingVenue && _currentPage == _slides.length - 1
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : Text(_currentPage == _slides.length - 1 ? "Create Venue →" : "Next →", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
                     ),
                   ),
                 ],

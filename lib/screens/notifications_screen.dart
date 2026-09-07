@@ -23,7 +23,7 @@ class _NState extends State<NotificationsScreen> {
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (c, i) {
               final n = items[i];
               final color = {NotifyType.success: AppColors.accentGreen, NotifyType.error: AppColors.accentRed, NotifyType.warning: const Color(0xFFD97706), NotifyType.info: AppColors.primary}[n.type]!;

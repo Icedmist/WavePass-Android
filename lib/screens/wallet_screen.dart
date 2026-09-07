@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/wavepass_api.dart';
-import '../core/router/app_router.dart';
 
 /// Wallet / cashout hub. Shows the venue's dedicated virtual account (funded
 /// via the single Nexa Paystack key), the available balance, and lets the venue

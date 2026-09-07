@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -14,6 +15,11 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  final _venueName = TextEditingController();
+  final _venueSlug = TextEditingController();
+  final _venueLogo = TextEditingController(text: 'https://wavepass-web.vercel.app/logo.png');
+  bool _creatingVenue = false;
+  String? _venueError;
 
   final List<Map<String, dynamic>> _slides = [
     {
@@ -65,12 +71,51 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'icon': Icons.receipt_long_rounded,
       'badge': 'Bluetooth POS Ready',
     },
+    {
+      'tag': '08 / YOUR VENUE',
+      'title': 'Create Your Venue',
+      'subtitle': 'Pick a subdomain, upload logo and set your pricing — required to go live.',
+      'icon': Icons.store_rounded,
+      'badge': 'Subdomain • Logo • Pricing Required',
+    },
   ];
 
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _venueName.dispose();
+    _venueSlug.dispose();
+    _venueLogo.dispose();
+    super.dispose();
+  }
+
+  Future<void> _createVenueAndFinish() async {
+    if (_venueName.text.trim().isEmpty || _venueSlug.text.trim().isEmpty || _venueLogo.text.trim().isEmpty) {
+      setState(() => _venueError = 'Venue name, subdomain (slug) and logo URL are required — your subdomain will be {slug}.wavepass.com with your pricing & logo.');
+      return;
+    }
+    setState(() { _creatingVenue = true; _venueError = null; });
+    try {
+      await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: _venueLogo.text.trim());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('has_seen_onboarding', true);
+      if (!mounted) return;
+      context.go(AppRouter.login);
+    } catch (e) {
+      setState(() => _venueError = 'Failed: $e');
+    } finally {
+      if (mounted) setState(() => _creatingVenue = false);
+    }
+  }
+
   Future<void> _finishOnboarding() async {
+    if (_currentPage == _slides.length - 1) {
+      // last card is venue creation — require it
+      await _createVenueAndFinish();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
-
     if (!mounted) return;
     context.go(AppRouter.login);
   }
@@ -137,7 +182,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   itemCount: _slides.length,
                   itemBuilder: (context, index) {
                     final slide = _slides[index];
-
+                    final isVenueCard = index == _slides.length - 1;
+                    if (isVenueCard) {
+                      return SingleChildScrollView(
+                        child: Container(
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(32), border: Border.all(color: AppColors.cardBorder)),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Container(width: 56, height: 56, decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Icon(slide['icon'] as IconData, size: 28, color: AppColors.primary)),
+                            const SizedBox(height: 16),
+                            Text(slide['tag'] as String, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, fontFamily: 'monospace', color: AppColors.accentGreen, letterSpacing: 0.8)),
+                            const SizedBox(height: 8),
+                            Text(slide['title'] as String, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: -0.5)),
+                            const SizedBox(height: 8),
+                            Text(slide['subtitle'] as String, style: const TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4)),
+                            const SizedBox(height: 16),
+                            TextField(controller: _venueName, decoration: const InputDecoration(hintText: 'Venue name (e.g. Cafe Lagos)', labelText: 'Venue Name *')),
+                            const SizedBox(height: 10),
+                            TextField(controller: _venueSlug, decoration: InputDecoration(hintText: 'my-venue', labelText: 'Subdomain (slug) *', helperText: _venueSlug.text.isEmpty ? 'your-venue.wavepass.com' : '${_venueSlug.text.toLowerCase()}.wavepass.com'), onChanged: (_) => setState(() {})),
+                            const SizedBox(height: 10),
+                            TextField(controller: _venueLogo, decoration: const InputDecoration(hintText: 'https://.../logo.png', labelText: 'Logo URL *', helperText: 'Required — shown on your subdomain')),
+                            if (_venueError != null) ...[
+                              const SizedBox(height: 10),
+                              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.redTint, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.accentRed.withValues(alpha: 0.3))), child: Text(_venueError!, style: const TextStyle(fontSize: 11, color: AppColors.accentRedDark))),
+                            ],
+                            const SizedBox(height: 12),
+                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)), child: const Text('After venue creation, add at least one pricing plan (duration / per-GB) — required to go live.', style: TextStyle(fontSize: 11, color: AppColors.textLight))),
+                          ]),
+                        ),
+                      );
+                    }
                     return Center(
                       child: Container(
                         padding: const EdgeInsets.all(28),
@@ -166,7 +240,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              slide['tag'],
+                              slide['tag'] as String,
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
@@ -177,7 +251,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              slide['title'],
+                              slide['title'] as String,
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,
@@ -187,7 +261,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              slide['subtitle'],
+                              slide['subtitle'] as String,
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: AppColors.textLight,
@@ -203,7 +277,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 border: Border.all(color: AppColors.cardBorder),
                               ),
                               child: Text(
-                                slide['badge'],
+                                slide['badge'] as String,
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,

@@ -43,6 +43,18 @@ class WavePassApi {
     return _get('/api/v1/venues/default');
   }
 
+  Future<Map<String, dynamic>> createVenue({required String name, required String slug, required String logoUrl}) {
+    return _post('/api/v1/venues', {'name': name, 'slug': slug, 'logoUrl': logoUrl});
+  }
+
+  Future<Map<String, dynamic>> getVenueBySubdomain(String sub) {
+    return _get('/api/v1/venues/by-subdomain/${Uri.encodeComponent(sub)}');
+  }
+
+  Future<Map<String, dynamic>> getVenueByHost(String host) {
+    return _get('/api/v1/venues/by-host?host=${Uri.encodeComponent(host)}');
+  }
+
   // ── Virtual accounts (DVA per venue) ───────────────────────────────────
   Future<Map<String, dynamic>> ensureVirtualAccount(
       String venueId, {String? email}) {

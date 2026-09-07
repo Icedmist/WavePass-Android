@@ -324,8 +324,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
+                        color: Colors.white.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                       ),
                       child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 26),
                     ),

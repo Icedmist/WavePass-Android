@@ -18,6 +18,7 @@ import '../../screens/barcode_scanner_screen.dart';
 import '../../screens/wallet_screen.dart';
 import '../../screens/notifications_screen.dart';
 import '../../screens/account_center_screen.dart';
+import '../../screens/batch_vouchers_screen.dart';
 import 'scaffold_with_nav.dart';
 
 CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
@@ -61,14 +62,15 @@ class AppRouter {
   static const terms = '/terms';
   static const privacy = '/privacy';
   static const barcodeScanner = '/barcode-scanner';
+  static const batchVouchers = '/batch-vouchers';
   static const wallet = '/wallet';
 
   static final GoRouter router = GoRouter(
     initialLocation: splash,
     routes: [
-      GoRoute(path: splash, builder: (_, __) => const SplashScreen()),
-      GoRoute(path: onboarding, builder: (_, __) => const OnboardingScreen()),
-      GoRoute(path: login, builder: (_, __) => const LoginScreen()),
+      GoRoute(path: splash, builder: (_, _) => const SplashScreen()),
+      GoRoute(path: onboarding, builder: (_, _) => const OnboardingScreen()),
+      GoRoute(path: login, builder: (_, _) => const LoginScreen()),
       GoRoute(path: signup, pageBuilder: (c, s) => _slideFade(const SignupScreen(), s)),
       GoRoute(path: notifications, pageBuilder: (c, s) => _slideFade(const NotificationsScreen(), s)),
       GoRoute(path: account, pageBuilder: (c, s) => _slideFade(const AccountCenterScreen(), s)),
@@ -89,6 +91,7 @@ class AppRouter {
       GoRoute(path: terms, pageBuilder: (c, s) => _slideFade(const TermsScreen(), s)),
       GoRoute(path: privacy, pageBuilder: (c, s) => _slideFade(const PrivacyScreen(), s)),
       GoRoute(path: barcodeScanner, pageBuilder: (c, s) => _slideFade(const BarcodeScannerScreen(), s)),
+      GoRoute(path: batchVouchers, pageBuilder: (c, s) => _slideFade(const BatchVouchersScreen(), s)),
     ],
   );
 }

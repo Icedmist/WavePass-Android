@@ -34,9 +34,17 @@ Profile pill (logo + email + ONLINE), Venue (Wallet/Notifications/HowToUse), Leg
 
 Bell in `Home` `AppBar` (`notifications_none_rounded` + red dot) → `context.push('/notifications')` full page (also sheet). `AppNotifier` variant toasts `success/error/warning/info` with icon+color, feed `ValueNotifier` + `markAllRead/clear`.
 
+## 🏷️ Subdomain per Venue — Onboarding Requires Logo + Pricing
+
+`lib/core/services/wavepass_api.dart` `createVenue(name, slug, logoUrl)` → `POST /api/v1/venues` (`logoUrl` required, `slug ^[a-z0-9-]+$` → `slug.wavepass.com`); `getVenueBySubdomain` + `by-host` (`venues.service.ts:44`) resolves Host header. Onboarding `lib/screens/onboarding_screen.dart` 8th card form collects **venue name, subdomain, logo URL** (required, helper `*.wavepass.com`) → creates venue, then `PlanConfigurator` requires at least one pricing plan (duration/per-GB) to go live.
+
 ## 📡 Captive Portal
 
 Any `http://` from unpaid MAC → MikroTik → `GET /api/v1/portal/captive?mac=&ip=&link-orig=` → 302 to web `.../portal?mac=` (walled garden open for `*.vercel.app, paystack, supabase`). Paid → `302 .../success?paid=1` with `remainingMs/dataUsed/dataLimit/IP`. `GET /portal/landing?mac=&ip=` returns JSON for landing.
+
+## 💰 Installation — 75K NGN, 2-Year Warranty
+
+Venue subdomain + logo + custom pricing + router + training — **75,000 NGN** one-time, 2-year hardware/software warranty. Shown in web `app/page.tsx:152` pricing block.
 
 ## 🗃️ Supabase — All App Data
 

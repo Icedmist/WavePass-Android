@@ -221,6 +221,28 @@ class _SellPassScreenState extends State<SellPassScreen> {
                       _miniChip(_plans[_selectedPlanIndex]['data'], Icons.storage_rounded),
                       _miniChip(_plans[_selectedPlanIndex]['speed'], Icons.speed_rounded),
                     ]),
+                    const SizedBox(height: 16),
+                    // Data exhaustion ring — shows cap for staff at a glance
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.cardBorder)),
+                      child: Row(children: [
+                        SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: Stack(alignment: Alignment.center, children: [
+                            CircularProgressIndicator(value: _plans[_selectedPlanIndex]['data'] == 'Unlimited' ? 1 : 0, strokeWidth: 3, backgroundColor: AppColors.containerBg, valueColor: AlwaysStoppedAnimation<Color>(_plans[_selectedPlanIndex]['data'] == 'Unlimited' ? AppColors.accentGreen : AppColors.primary)),
+                            Icon(_plans[_selectedPlanIndex]['data'] == 'Unlimited' ? Icons.all_inclusive_rounded : Icons.storage_rounded, size: 14, color: AppColors.primary),
+                          ]),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(_plans[_selectedPlanIndex]['data'] == 'Unlimited' ? 'Unlimited data' : '${_plans[_selectedPlanIndex]['data']} • 0% used', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                          const Text('Fresh voucher — 100% available', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                        ])),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppColors.accentGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Text('LIVE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.accentGreen, letterSpacing: 0.5))),
+                      ]),
+                    ),
                     const SizedBox(height: 20),
 
                     // Big 8-letter code container

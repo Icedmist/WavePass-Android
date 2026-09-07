@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_theme.dart';
+import 'package:go_router/go_router.dart';
+import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
-import 'terms_screen.dart';
-import 'privacy_screen.dart';
-import 'how_to_use_screen.dart';
-import 'login_screen.dart';
+import '../core/services/wavepass_api.dart';
+import '../core/theme/app_theme.dart';
 
 class AdminManagementScreen extends StatefulWidget {
   const AdminManagementScreen({super.key});
-
   @override
   State<AdminManagementScreen> createState() => _AdminManagementScreenState();
 }
@@ -19,278 +17,169 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     {'name': '12 Hour Work Pass', 'price': 800, 'duration': '12 Hours'},
     {'name': '24 Hour All-Day', 'price': 1500, 'duration': '24 Hours'},
   ];
-
   bool _isSyncing = false;
+  // Subdomain tab state
+  final _nameCtrl = TextEditingController();
+  final _slugCtrl = TextEditingController();
+  final _logoCtrl = TextEditingController();
+  String? _venueId;
+  bool _loadingVenue = false;
+  bool _savingVenue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVenue();
+  }
+
+  Future<void> _loadVenue() async {
+    setState(() => _loadingVenue = true);
+    try {
+      final v = await WavePassApi.instance.getDefaultVenue();
+      if (v['id'] != null) {
+        setState(() {
+          _venueId = v['id'];
+          _nameCtrl.text = v['name'] ?? '';
+          _slugCtrl.text = v['slug'] ?? '';
+          _logoCtrl.text = v['logoUrl'] ?? '';
+        });
+      }
+    } catch (_) {
+      final v = await SupabaseService.instance.getPrimaryVenue();
+      if (v != null) {
+        setState(() {
+          _venueId = v['id'];
+          _nameCtrl.text = v['name'] ?? '';
+          _slugCtrl.text = v['slug'] ?? '';
+          _logoCtrl.text = v['logoUrl'] ?? '';
+        });
+      }
+    } finally {
+      setState(() => _loadingVenue = false);
+    }
+  }
+
+  Future<void> _saveVenue() async {
+    if (_venueId == null) return;
+    final slug = _slugCtrl.text.trim().toLowerCase();
+    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Slug must be a-z 0-9 hyphen')));
+      return;
+    }
+    setState(() => _savingVenue = true);
+    try {
+      await WavePassApi.instance.clientPatch('/api/v1/venues/$_venueId', {'name': _nameCtrl.text.trim(), 'slug': slug, 'logoUrl': _logoCtrl.text.trim()});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Venue updated: $slug.nexawavepass.com'), backgroundColor: AppColors.accentGreen));
+    } catch (e) {
+      // fallback via direct http
+      try {
+        final res = await WavePassApi.instance.patchVenue(_venueId!, {'name': _nameCtrl.text.trim(), 'slug': slug, 'logoUrl': _logoCtrl.text.trim()});
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Venue updated: ${res['slug']}.nexawavepass.com')));
+      } catch (e2) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e2'), backgroundColor: AppColors.accentRed));
+      }
+    } finally {
+      if (mounted) setState(() => _savingVenue = false);
+    }
+  }
 
   void _handleSync() async {
     setState(() => _isSyncing = true);
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     setState(() => _isSyncing = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Router synchronized! All paid sessions are active."),
-        backgroundColor: AppColors.accentGreen,
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Router synchronized! All paid sessions are active."), backgroundColor: AppColors.accentGreen));
   }
 
   void _editPrice(int index) {
     final plan = _plans[index];
     final controller = TextEditingController(text: '${plan['price']}');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Text("Edit ${plan['name']} Price", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Price in Naira (NGN):", style: TextStyle(fontSize: 12, color: AppColors.textLight)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(hintText: "e.g. 500"),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newPrice = int.tryParse(controller.text);
-              if (newPrice != null) {
-                setState(() {
-                  _plans[index]['price'] = newPrice;
-                });
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text("${plan['name']} price updated to ₦$newPrice."),
-                    backgroundColor: AppColors.accentGreen,
-                  ),
-                );
-              }
-            },
-            child: const Text("Save Price"),
-          ),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: AppColors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)), title: Text("Edit ${plan['name']} Price", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Price in Naira (NGN):", style: TextStyle(fontSize: 12, color: AppColors.textLight)), const SizedBox(height: 8), TextField(controller: controller, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: "e.g. 500"))]), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text("Cancel")), ElevatedButton(onPressed: () { final newPrice = int.tryParse(controller.text); if (newPrice != null) { setState(() => _plans[index]['price'] = newPrice); Navigator.of(ctx).pop(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${plan['name']} price updated to ₦$newPrice."), backgroundColor: AppColors.accentGreen)); } }, child: const Text("Save Price"))]));
   }
 
   void _handleLogout() async {
     await SupabaseService.instance.signOut();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    context.go(AppRouter.login);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
         backgroundColor: AppColors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.primary, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          "Admin Control Center",
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.primary,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Admin Profile Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.shield, color: Colors.white),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          "talk2icedmist@gmail.com",
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          "Venue Owner • WavePass Flagship",
-                          style: TextStyle(fontSize: 11, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+        appBar: AppBar(backgroundColor: AppColors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18), onPressed: () => context.canPop() ? context.pop() : context.go(AppRouter.dashboard)), title: const Text("Admin Center", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)), bottom: const TabBar(labelColor: AppColors.primary, unselectedLabelColor: AppColors.textLight, indicatorColor: AppColors.primary, indicatorWeight: 2.5, tabs: [Tab(icon: Icon(Icons.wifi_rounded, size: 18), text: 'Plans'), Tab(icon: Icon(Icons.confirmation_number_rounded, size: 18), text: 'Batch'), Tab(icon: Icon(Icons.language_rounded, size: 18), text: 'Subdomain')])),
+        body: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(18)), child: Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.shield_rounded, color: Colors.white, size: 20)), const SizedBox(width: 12), const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("talk2icedmist@gmail.com", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)), Text("Venue Owner • WavePass Flagship", style: TextStyle(fontSize: 11, color: Colors.white70))]))]))),
+          const SizedBox(height: 8),
+          Expanded(child: TabBarView(children: [
+            // TAB 1: PLANS
+            SingleChildScrollView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text("WI-FI PASS PRICING", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+              const SizedBox(height: 12),
+              ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _plans.length, separatorBuilder: (_, _) => const SizedBox(height: 8), itemBuilder: (c, i) {
+                final p = _plans[i];
+                return Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)), Text(p['duration'], style: const TextStyle(fontSize: 11, color: AppColors.textLight))]), Row(children: [Text("₦${p['price']}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accentGreen)), const SizedBox(width: 8), IconButton(icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary), onPressed: () => _editPrice(i))])]));
+              }),
+              const SizedBox(height: 24),
+              const Text("HARDWARE RESILIENCE", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+              const SizedBox(height: 12),
+              SizedBox(height: 48, child: ElevatedButton.icon(onPressed: _isSyncing ? null : _handleSync, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary), icon: const Icon(Icons.sync_rounded, size: 18), label: Text(_isSyncing ? "Synchronizing router..." : "Sync Passes with Router Hardware"))),
+              const SizedBox(height: 24),
+              const Text("GUIDES & POLICIES", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+              const SizedBox(height: 12),
+              _navRow("How to Use WavePass", Icons.menu_book_rounded, () => context.push(AppRouter.howToUse)),
+              const SizedBox(height: 8),
+              _navRow("Terms of Use", Icons.gavel_rounded, () => context.push(AppRouter.terms)),
+              const SizedBox(height: 8),
+              _navRow("Privacy Policy", Icons.privacy_tip_rounded, () => context.push(AppRouter.privacy)),
+              const SizedBox(height: 24),
+              SizedBox(height: 48, child: OutlinedButton.icon(onPressed: _handleLogout, icon: const Icon(Icons.logout_rounded, color: AppColors.accentRed, size: 18), label: const Text("Sign Out of Venue", style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.w800)), style: OutlinedButton.styleFrom(side: BorderSide(color: AppColors.accentRed.withValues(alpha: 0.3)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))))),
+            ])),
+            // TAB 2: BATCH
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.cardBorder)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Batch Vouchers", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)), SizedBox(height: 4), Text("Create up to 500 codes at once. Saved as PDF to device.", style: TextStyle(fontSize: 11, color: AppColors.textLight))])),
+                const SizedBox(height: 16),
+                SizedBox(height: 48, child: ElevatedButton.icon(onPressed: () => context.push(AppRouter.batchVouchers), icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text('Open Batch Generator'))),
+                const SizedBox(height: 12),
+                SizedBox(height: 48, child: OutlinedButton.icon(onPressed: () => context.push(AppRouter.batchVouchers), icon: const Icon(Icons.save_rounded), label: const Text('Generate & Save PDF'))),
+              ]),
             ),
-            const SizedBox(height: 24),
-
-            // ─── SECTION: PRICING PLANS ───
-            const Text(
-              "WI-FI PASS PRICING",
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8),
+            // TAB 3: SUBDOMAIN
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.cardBorder)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text("Subdomain & Branding", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                  const SizedBox(height: 4),
+                  const Text("Your venue lives at {slug}.nexawavepass.com with custom logo and pricing.", style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                  const SizedBox(height: 12),
+                  if (_loadingVenue) const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  if (!_loadingVenue) ...[
+                    TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Venue Name', border: OutlineInputBorder())),
+                    const SizedBox(height: 12),
+                    TextField(controller: _slugCtrl, decoration: InputDecoration(labelText: 'Subdomain (slug)', border: const OutlineInputBorder(), helperText: _slugCtrl.text.isEmpty ? 'my-venue.nexawavepass.com' : '${_slugCtrl.text.toLowerCase()}.nexawavepass.com', helperStyle: const TextStyle(fontSize: 11, color: AppColors.accentGreen)), onChanged: (_) => setState(() {})),
+                    const SizedBox(height: 12),
+                    TextField(controller: _logoCtrl, decoration: const InputDecoration(labelText: 'Logo URL (https://...)', border: OutlineInputBorder(), helperText: 'Shown on your subdomain portal')),
+                  ],
+                ])),
+                const SizedBox(height: 16),
+                SizedBox(height: 48, child: ElevatedButton.icon(onPressed: _savingVenue ? null : _saveVenue, icon: _savingVenue ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_rounded), label: Text(_savingVenue ? 'Saving...' : 'Save Subdomain & Branding'))),
+                const SizedBox(height: 12),
+                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)), child: const Text('Changing the slug updates your subdomain instantly. Ensure DNS wildcard *.nexawavepass.com points to your frontend.', style: TextStyle(fontSize: 11, color: AppColors.textLight))),
+              ]),
             ),
-            const SizedBox(height: 12),
-
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _plans.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final p = _plans[index];
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.containerBg,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.cardBorder),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                          Text(p['duration'], style: const TextStyle(fontSize: 11, color: AppColors.textLight)),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Text(
-                            "₦${p['price']}",
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accentGreen),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 18, color: AppColors.primary),
-                            onPressed: () => _editPrice(index),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // ─── SECTION: ROUTER HARDWARE TOOLS ───
-            const Text(
-              "HARDWARE RESILIENCE",
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8),
-            ),
-            const SizedBox(height: 12),
-
-            SizedBox(
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isSyncing ? null : _handleSync,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                icon: const Icon(Icons.sync, size: 18),
-                label: _isSyncing ? const Text("Synchronizing router...") : const Text("Sync Passes with Router Hardware"),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ─── SECTION: GUIDES AND POLICIES ───
-            const Text(
-              "GUIDES & POLICIES",
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8),
-            ),
-            const SizedBox(height: 12),
-
-            _buildNavRow("How to Use WavePass", Icons.menu_book, () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HowToUseScreen()));
-            }),
-            const SizedBox(height: 8),
-            _buildNavRow("Terms of Use", Icons.gavel, () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsScreen()));
-            }),
-            const SizedBox(height: 8),
-            _buildNavRow("Privacy Policy", Icons.privacy_tip, () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyScreen()));
-            }),
-            const SizedBox(height: 32),
-
-            // Log Out Button
-            SizedBox(
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout, color: AppColors.accentRed, size: 18),
-                label: const Text("Sign Out of Venue", style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.w800)),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppColors.accentRed.withOpacity(0.3)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ])),
+        ]),
       ),
     );
   }
 
-  Widget _buildNavRow(String label, IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.containerBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: AppColors.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
-            ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textLight),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _navRow(String label, IconData icon, VoidCallback onTap) => InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.cardBorder)), child: Row(children: [Icon(icon, size: 20, color: AppColors.primary), const SizedBox(width: 12), Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))), const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textLight)])));
 }

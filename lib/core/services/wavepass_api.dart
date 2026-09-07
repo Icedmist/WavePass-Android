@@ -25,11 +25,18 @@ class WavePassApi {
   }
 
   Future<Map<String, dynamic>> _get(String path) async {
-    final res = await http
-        .get(Uri.parse('$_base$path'), headers: _jsonHeaders)
-        .timeout(_timeout);
+    final res = await http.get(Uri.parse('$_base$path'), headers: _jsonHeaders).timeout(_timeout);
     return _decode(res);
   }
+
+  Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> body) async {
+    final res = await http.patch(Uri.parse('$_base$path'), headers: _jsonHeaders, body: jsonEncode(body)).timeout(_timeout);
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> clientPatch(String path, Map<String, dynamic> body) => _patch(path, body);
+
+  Future<Map<String, dynamic>> patchVenue(String id, Map<String, dynamic> data) => _patch('/api/v1/venues/$id', data);
 
   Map<String, dynamic> _decode(http.Response res) {
     if (res.body.isEmpty) return {'status': res.statusCode};
@@ -83,7 +90,7 @@ class WavePassApi {
       'accountName': accountName,
       'accountNumber': accountNumber,
       'bankCode': bankCode,
-      if (bankName != null) 'bankName': bankName,
+      'bankName': ?bankName,
     });
   }
 
@@ -97,7 +104,7 @@ class WavePassApi {
       'venueId': venueId,
       'amountMinor': amountMinor,
       'password': password,
-      if (reason != null) 'reason': reason,
+      'reason': ?reason,
     });
   }
 

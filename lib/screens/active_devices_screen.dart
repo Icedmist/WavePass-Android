@@ -1,61 +1,62 @@
 import 'package:flutter/material.dart';
+import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
+import '../core/widgets/empty_state.dart';
 
 class ActiveDevicesScreen extends StatefulWidget {
   const ActiveDevicesScreen({super.key});
-
   @override
   State<ActiveDevicesScreen> createState() => _ActiveDevicesScreenState();
 }
 
 class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
-  final List<Map<String, dynamic>> _devices = [
-    {
-      'name': 'Samsung Galaxy S23',
-      'mac': 'D4:3A:48:9E:C1:8A',
-      'ip': '10.5.50.14',
-      'plan': '12 Hour Pass',
-      'timeLeft': '5h 12m left',
-      'progress': 0.58,
-    },
-    {
-      'name': 'Apple iPhone 15 Pro',
-      'mac': 'A8:51:5B:3C:99:12',
-      'ip': '10.5.50.22',
-      'plan': '1 Hour Pass',
-      'timeLeft': '24m left',
-      'progress': 0.40,
-    },
-    {
-      'name': 'MacBook Pro 14"',
-      'mac': '3C:06:30:4F:77:E1',
-      'ip': '10.5.50.08',
-      'plan': '24 Hour All-Day',
-      'timeLeft': '18h 40m left',
-      'progress': 0.77,
-    },
-    {
-      'name': 'Google Pixel 8',
-      'mac': '90:9A:4A:12:33:FF',
-      'ip': '10.5.50.31',
-      'plan': '1 Hour Pass',
-      'timeLeft': '8m left',
-      'progress': 0.13,
-    },
-  ];
+  List<Map<String, dynamic>> _devices = [];
+  bool _loading = true;
 
-  void _disconnectDevice(int index) {
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    setState(() => _loading = true);
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue();
+      if (venue != null) {
+        final sessions = await SupabaseService.instance.getActiveSessions(venue['id']);
+        setState(() {
+          _devices = sessions.map((s) {
+            final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
+            final remaining = expiresAt != null ? expiresAt.difference(DateTime.now()).inMinutes : 0;
+            final total = s['plan'] != null ? 60 : 60;
+            final prog = expiresAt != null ? (remaining / 1440).clamp(0.0, 1.0) : 0.5;
+            return {
+              'id': s['id'],
+              'name': s['deviceId'] ?? s['mac'] ?? 'Unknown Device',
+              'mac': s['mac'] ?? '—',
+              'ip': s['ip'] ?? '—',
+              'plan': s['plan'] ?? s['voucherId'] ?? 'Pass',
+              'timeLeft': remaining > 60 ? '${remaining ~/ 60}h ${remaining % 60}m left' : '${remaining}m left',
+              'progress': prog,
+              'sessionId': s['id'],
+            };
+          }).toList();
+        });
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _disconnectDevice(int index) async {
     final dev = _devices[index];
-    setState(() {
-      _devices.removeAt(index);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("${dev['name']} disconnected from Wi-Fi."),
-        backgroundColor: AppColors.primary,
-      ),
-    );
+    try {
+      await SupabaseService.instance.client.from('Session').update({'status': 'ENDED', 'endedAt': DateTime.now().toIso8601String()}).eq('id', dev['sessionId'] ?? dev['id']);
+    } catch (_) {}
+    setState(() => _devices.removeAt(index));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${dev['name']} disconnected"), backgroundColor: AppColors.primary));
   }
 
   @override
@@ -93,10 +94,26 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
           ),
         ],
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        itemCount: _devices.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : _devices.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 64, height: 64, decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.cardBorder)), child: const Icon(Icons.devices_other_rounded, size: 28, color: AppColors.textLight)),
+                      const SizedBox(height: 12),
+                      const Text('No active devices', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                      const Text('Live sessions will appear here when guests connect.', style: TextStyle(fontSize: 11, color: AppColors.textLight), textAlign: TextAlign.center),
+                    ]),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadDevices,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    itemCount: _devices.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final dev = _devices[index];
 
@@ -202,6 +219,7 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
           );
         },
       ),
+    ),
     );
   }
 }

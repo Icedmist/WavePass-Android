@@ -21,6 +21,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   String _venueSub = '—';
   bool _hasRouter = true;
   bool _loadingStats = true;
+  List<Map<String, dynamic>> _recentSales = [];
 
   @override
   void initState() {
@@ -53,11 +54,15 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               // no predefined pricing — prompt to add
             }
           } catch (_) {}
-          try {
-            final sessions = await SupabaseService.instance.getActiveSessions(vid);
-            setState(() => _activeUsers = sessions.length);
-          } catch (_) {}
-        }
+        try {
+          final sessions = await SupabaseService.instance.getActiveSessions(vid);
+          setState(() => _activeUsers = sessions.length);
+        } catch (_) {}
+        try {
+          final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid!).order('createdAt', ascending: false).limit(5);
+          setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
+        } catch (_) {}
+      }
       }
       try {
         final stats = await WavePassApi.instance.adminStats();
@@ -74,6 +79,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       } catch (_) {}
     } finally {
       if (mounted) setState(() => _loadingStats = false);
+    }
+  }
+
+  String _timeAgo(dynamic iso) {
+    try {
+      final dt = DateTime.parse(iso.toString());
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
+    } catch (_) {
+      return '—';
     }
   }
 
@@ -509,12 +527,16 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
-
-                  _buildSaleRow("WP-8K2A-9M4X", "1 Hour Quick Pass", "₦200", "2 mins ago"),
-                  const Divider(height: 20, color: Color(0x0F000000)),
-                  _buildSaleRow("WP-4X9B-1T7L", "12 Hour Work Pass", "₦800", "14 mins ago"),
-                  const Divider(height: 20, color: Color(0x0F000000)),
-                  _buildSaleRow("WP-7M3Q-5K8P", "24 Hour All-Day", "₦1,500", "42 mins ago"),
+                  if (_recentSales.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No sales yet — sell your first pass above.', style: TextStyle(fontSize: 12, color: AppColors.textLight), textAlign: TextAlign.center),
+                    )
+                  else
+                    ..._recentSales.asMap().entries.expand((e) => [
+                          _buildSaleRow(e.value['code'], e.value['plan'], e.value['amount'], e.value['time']),
+                          if (e.key != _recentSales.length - 1) const Divider(height: 20, color: Color(0x0F000000)),
+                        ]),
                 ],
               ),
             ),

@@ -6,11 +6,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../core/constants/api_constants.dart';
 import '../core/services/supabase_service.dart';
-import '../core/services/wavepass_api.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
 
 class BatchVouchersScreen extends StatefulWidget {
@@ -32,44 +31,64 @@ class _SState extends State<BatchVouchersScreen> {
   @override
   void initState() {
     super.initState();
+    VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
+    VenueStateService.instance.plansNotifier.addListener(_onPlansChanged);
+    _onVenueChanged();
+    _onPlansChanged();
     _loadVenues();
+  }
+
+  @override
+  void dispose() {
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onVenueChanged() {
+    final v = VenueStateService.instance.currentVenue;
+    if (v != null && mounted) {
+      final vId = v['id']?.toString();
+      final vName = v['name']?.toString() ?? 'WavePass Venue';
+      setState(() {
+        _venues = [{'id': vId, 'name': vName}];
+        _selectedVenueId = vId;
+      });
+    }
+  }
+
+  void _onPlansChanged() {
+    final p = VenueStateService.instance.currentPlans;
+    if (mounted) {
+      setState(() {
+        _plans = p;
+        if (_plans.isNotEmpty) {
+          final exists = _plans.any((item) => item['id']?.toString() == _selectedPlanId);
+          if (!exists) {
+            _selectedPlanId = _plans.first['id']?.toString();
+          }
+        } else {
+          _selectedPlanId = null;
+        }
+      });
+    }
   }
 
   Future<void> _loadVenues() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final storedVenueId = prefs.getString('venueId');
-      final storedVenueName = prefs.getString('venueName');
-
-      Map<String, dynamic>? venue;
-      try {
-        if (storedVenueId != null) {
-          venue = await WavePassApi.instance.getVenueBySubdomain(storedVenueId);
-        }
-      } catch (_) {}
-      try {
-        venue ??= await WavePassApi.instance.getDefaultVenue();
-      } catch (_) {}
-      venue ??= await SupabaseService.instance.getPrimaryVenue();
+      var venue = VenueStateService.instance.currentVenue;
+      venue ??= await VenueStateService.instance.refreshVenue();
 
       if (venue != null) {
-        final vId = venue['id']?.toString() ?? storedVenueId;
-        final vName = venue['name']?.toString() ?? storedVenueName ?? 'WavePass Venue';
-        final vMap = {'id': vId, 'name': vName, 'plans': venue['plans']};
+        final vId = venue['id']?.toString();
+        final vName = venue['name']?.toString() ?? 'WavePass Venue';
+        final vMap = {'id': vId, 'name': vName};
         setState(() {
           _venues = [vMap];
           _selectedVenueId = vId;
         });
-        if (vId != null) {
-          await _loadPlans(vId, preloadedPlans: venue['plans'] as List<dynamic>?);
-        }
-      } else if (storedVenueId != null) {
-        final vMap = {'id': storedVenueId, 'name': storedVenueName ?? 'My Venue'};
-        setState(() {
-          _venues = [vMap];
-          _selectedVenueId = storedVenueId;
-        });
-        await _loadPlans(storedVenueId);
+        await VenueStateService.instance.refreshPlans();
       }
     } catch (e) {
       debugPrint('Error loading venues: $e');

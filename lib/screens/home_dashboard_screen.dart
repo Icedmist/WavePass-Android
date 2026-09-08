@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
@@ -29,21 +29,32 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
+    _onVenueChanged();
     _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    super.dispose();
+  }
+
+  void _onVenueChanged() {
+    final v = VenueStateService.instance.currentVenue;
+    if (v != null && mounted) {
+      setState(() {
+        _venueName = v['name']?.toString() ?? 'Your Venue';
+        _venueSub = v['slug'] != null ? '${v['slug']}.nexawavepass.com' : '—';
+      });
+    }
   }
 
   Future<void> _loadDashboard() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final venueId = prefs.getString('venueId');
-      String? vid = venueId;
-      Map<String, dynamic>? venue;
-      if (vid != null) {
-        try {
-          venue = await WavePassApi.instance.getVenueBySubdomain(vid);
-        } catch (_) {}
-      }
-      venue ??= await SupabaseService.instance.getPrimaryVenue();
+      var venue = VenueStateService.instance.currentVenue;
+      venue ??= await VenueStateService.instance.refreshVenue();
+      String? vid = venue?['id']?.toString();
       if (venue != null) {
         setState(() {
           _venueName = venue!['name'] ?? 'Your Venue';

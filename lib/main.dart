@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/supabase_service.dart';
+import 'core/services/venue_state_service.dart';
 import 'core/router/app_router.dart';
 
 void main() async {
@@ -10,6 +11,12 @@ void main() async {
     await SupabaseService.initialize();
   } catch (e) {
     debugPrint('Supabase initial connection handled: $e');
+  }
+
+  try {
+    await VenueStateService.instance.init();
+  } catch (e) {
+    debugPrint('VenueStateService initial load: $e');
   }
 
   runApp(const WavePassApp());

@@ -8,8 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/api_constants.dart';
-import '../core/services/supabase_service.dart';
-import '../core/services/wavepass_api.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
 
@@ -34,75 +33,79 @@ class _SellPassScreenState extends State<SellPassScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPlans();
+    VenueStateService.instance.plansNotifier.addListener(_onPlansChanged);
+    VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
+    _onVenueChanged();
+    _onPlansChanged();
+    if (VenueStateService.instance.currentPlans.isEmpty) {
+      _loadPlans();
+    }
+  }
+
+  @override
+  void dispose() {
+    VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    super.dispose();
+  }
+
+  void _onVenueChanged() {
+    final v = VenueStateService.instance.currentVenue;
+    if (v != null && mounted) {
+      setState(() {
+        _venueId = v['id']?.toString() ?? _venueId;
+        _venueName = v['name']?.toString() ?? _venueName ?? 'WavePass Venue';
+      });
+    }
+  }
+
+  void _onPlansChanged() {
+    final rawPlans = VenueStateService.instance.currentPlans;
+    if (mounted) {
+      setState(() {
+        _plans = rawPlans.map((p) {
+          final priceMinor = (p['priceMinor'] as num?)?.toInt() ?? 0;
+          final durationSec = (p['durationSeconds'] as num?)?.toInt() ?? 3600;
+          final durationStr = durationSec < 3600
+              ? '${durationSec ~/ 60} Mins'
+              : durationSec < 86400
+                  ? '${durationSec ~/ 3600} Hours'
+                  : '${durationSec ~/ 86400} Days';
+          final dataLimit = p['dataLimitBytes'];
+          final dataStr = dataLimit == null
+              ? 'Unlimited'
+              : '${((dataLimit as num) / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+          return {
+            'id': p['id']?.toString() ?? '',
+            'title': p['name']?.toString() ?? 'Pass',
+            'price': '₦${priceMinor ~/ 100}',
+            'priceMinor': priceMinor,
+            'duration': durationStr,
+            'durationSeconds': durationSec,
+            'subtitle': p['description']?.toString() ?? 'Custom plan',
+            'data': dataStr,
+            'speed': p['rateLimit']?.toString() ?? '10 Mbps',
+            'devices': '${p['simultaneousDevices'] ?? 1} device',
+          };
+        }).toList();
+        if (_selectedPlanIndex >= _plans.length) {
+          _selectedPlanIndex = 0;
+        }
+        _loadingPlans = false;
+      });
+    }
   }
 
   Future<void> _loadPlans() async {
     setState(() => _loadingPlans = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      var vid = prefs.getString('venueId');
-      var vname = prefs.getString('venueName');
-
-      Map<String, dynamic>? venue;
-      if (vid != null) {
-        try {
-          venue = await WavePassApi.instance.getVenueBySubdomain(vid);
-        } catch (_) {}
+      if (VenueStateService.instance.currentVenue == null) {
+        await VenueStateService.instance.refreshVenue();
+      } else {
+        await VenueStateService.instance.refreshPlans();
       }
-      try {
-        venue ??= await WavePassApi.instance.getDefaultVenue();
-      } catch (_) {}
-      venue ??= await SupabaseService.instance.getPrimaryVenue();
-
-      if (venue != null) {
-        _venueId = venue['id']?.toString() ?? vid;
-        _venueName = venue['name']?.toString() ?? vname ?? 'WavePass Venue';
-
-        List<dynamic>? rawPlans = venue['plans'];
-        if (rawPlans == null || rawPlans.isEmpty) {
-          try {
-            rawPlans = await SupabaseService.instance.getActivePlans(_venueId!);
-          } catch (_) {}
-        }
-        if (rawPlans != null && rawPlans.isNotEmpty) {
-          setState(() {
-            _plans = rawPlans!.map((p) {
-              final priceMinor = (p['priceMinor'] as num?)?.toInt() ?? 0;
-              final durationSec = (p['durationSeconds'] as num?)?.toInt() ?? 3600;
-              final durationStr = durationSec < 3600
-                  ? '${durationSec ~/ 60} Mins'
-                  : durationSec < 86400
-                      ? '${durationSec ~/ 3600} Hours'
-                      : '${durationSec ~/ 86400} Days';
-              final dataLimit = p['dataLimitBytes'];
-              final dataStr = dataLimit == null
-                  ? 'Unlimited'
-                  : '${((dataLimit as num) / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-              return {
-                'id': p['id']?.toString() ?? '',
-                'title': p['name']?.toString() ?? 'Pass',
-                'price': '₦${priceMinor ~/ 100}',
-                'priceMinor': priceMinor,
-                'duration': durationStr,
-                'durationSeconds': durationSec,
-                'subtitle': p['description']?.toString() ?? 'Custom plan',
-                'data': dataStr,
-                'speed': p['rateLimit']?.toString() ?? '10 Mbps',
-                'devices': '${p['simultaneousDevices'] ?? 1} device',
-              };
-            }).toList();
-            if (_selectedPlanIndex >= _plans.length) {
-              _selectedPlanIndex = 0;
-            }
-          });
-          return;
-        }
-      }
-      setState(() => _plans = []);
     } catch (e) {
       debugPrint('Error loading plans: $e');
-      setState(() => _plans = []);
     } finally {
       if (mounted) setState(() => _loadingPlans = false);
     }

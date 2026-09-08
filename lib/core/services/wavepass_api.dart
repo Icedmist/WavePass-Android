@@ -64,6 +64,40 @@ class WavePassApi {
     return _get('/api/v1/venues/by-host?host=${Uri.encodeComponent(host)}');
   }
 
+  Future<Map<String, dynamic>> checkSlugAvailability(String slug, {String? venueId}) {
+    final query = venueId != null ? '?venueId=$venueId' : '';
+    return _get('/api/v1/venues/check-slug/${Uri.encodeComponent(slug)}$query');
+  }
+
+  // ── Plan endpoints ─────────────────────────────────────────────────────
+  Future<List<dynamic>> listPlans({String? venueId}) async {
+    final query = venueId != null ? '?venueId=$venueId' : '';
+    final res = await http.get(Uri.parse('$_base/api/v1/plans$query'), headers: _jsonHeaders).timeout(_timeout);
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is List) return decoded;
+      if (decoded is Map && decoded['data'] is List) return decoded['data'];
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getPlan(String id) {
+    return _get('/api/v1/plans/$id');
+  }
+
+  Future<Map<String, dynamic>> createPlan(Map<String, dynamic> dto) {
+    return _post('/api/v1/plans', dto);
+  }
+
+  Future<Map<String, dynamic>> updatePlan(String id, Map<String, dynamic> dto) {
+    return _patch('/api/v1/plans/$id', dto);
+  }
+
+  Future<Map<String, dynamic>> deletePlan(String id) async {
+    final res = await http.delete(Uri.parse('$_base/api/v1/plans/$id'), headers: _jsonHeaders).timeout(_timeout);
+    return _decode(res);
+  }
+
   // ── Virtual accounts (DVA per venue) ───────────────────────────────────
   Future<Map<String, dynamic>> ensureVirtualAccount(
       String venueId, {String? email}) {

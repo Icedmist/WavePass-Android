@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../services/supabase_service.dart';
+import '../services/venue_state_service.dart';
 
 class PlanConfiguratorSheet extends StatefulWidget {
   const PlanConfiguratorSheet({super.key, this.existing});
@@ -60,13 +60,10 @@ class _PState extends State<PlanConfiguratorSheet> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final venue = await SupabaseService.instance.getPrimaryVenue();
-      final venueId = venue?['id'] as String? ?? 'default';
       final priceMinor = (int.tryParse(_price.text) ?? 0) * 100;
       final durationSeconds = (_hours * 3600).round();
       final dataLimitBytes = _gb == 0 ? null : (_gb * 1024 * 1024 * 1024).round();
       final payload = {
-        'venueId': venueId,
         'name': _name.text.trim().isEmpty ? 'Custom Pass' : _name.text.trim(),
         'priceMinor': priceMinor,
         'durationSeconds': durationSeconds,
@@ -77,9 +74,9 @@ class _PState extends State<PlanConfiguratorSheet> {
         'active': true,
       };
       if (widget.existing != null) {
-        await SupabaseService.instance.client.from('Plan').update(payload).eq('id', widget.existing!['id']);
+        await VenueStateService.instance.updatePlan(widget.existing!['id'].toString(), payload);
       } else {
-        await SupabaseService.instance.client.from('Plan').insert(payload);
+        await VenueStateService.instance.createPlan(payload);
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);

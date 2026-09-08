@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
@@ -27,7 +29,12 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
 
   final _venueNameController = TextEditingController();
   final _venueSlugController = TextEditingController();
-  String _venueId = 'default';
+
+  // Real-time Subdomain / Slogan Availability
+  Timer? _slugDebounce;
+  bool _isCheckingSlug = false;
+  bool? _isSlugAvailable;
+  String? _slugStatusMessage;
 
   bool _loadingProfile = false;
   bool _savingProfile = false;
@@ -42,6 +49,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
 
   @override
   void dispose() {
+    _slugDebounce?.cancel();
     _nameController.dispose();
     _emailController.dispose();
     _currentPasswordController.dispose();
@@ -50,6 +58,46 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     _venueNameController.dispose();
     _venueSlugController.dispose();
     super.dispose();
+  }
+
+  void _onSlugChanged(String raw) {
+    _slugDebounce?.cancel();
+    final slug = raw.trim().toLowerCase();
+    if (slug.isEmpty) {
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = null;
+        _slugStatusMessage = null;
+      });
+      return;
+    }
+    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = false;
+        _slugStatusMessage = 'Only lowercase letters, numbers, and hyphens allowed';
+      });
+      return;
+    }
+    setState(() {
+      _isCheckingSlug = true;
+      _slugStatusMessage = 'Checking availability...';
+    });
+    _slugDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final res = await VenueStateService.instance.checkSlugAvailability(slug);
+      if (!mounted) return;
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = res['available'] == true;
+        if (res['isCurrent'] == true) {
+          _slugStatusMessage = 'Current venue subdomain';
+        } else if (res['available'] == true) {
+          _slugStatusMessage = 'Available: https://$slug.nexawavepass.com';
+        } else {
+          _slugStatusMessage = res['reason']?.toString() ?? 'Subdomain already taken';
+        }
+      });
+    });
   }
 
   Future<void> _loadInitialData() async {
@@ -61,9 +109,10 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       _emailController.text = savedEmail;
       _nameController.text = user?.userMetadata?['name']?.toString() ?? 'Venue Owner';
 
-      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
-      if (mounted) {
-        _venueId = venue['id']?.toString() ?? 'default';
+      var venue = VenueStateService.instance.currentVenue;
+      venue ??= await VenueStateService.instance.refreshVenue();
+
+      if (mounted && venue != null) {
         _venueNameController.text = venue['name']?.toString() ?? 'WavePass Flagship';
         _venueSlugController.text = venue['slug']?.toString() ?? 'flagship';
       }
@@ -168,12 +217,14 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       return;
     }
 
+    if (_isSlugAvailable == false) {
+      _showToast(_slugStatusMessage ?? 'Subdomain is not available. Please choose another.', isError: true);
+      return;
+    }
+
     setState(() => _savingVenue = true);
     try {
-      await WavePassApi.instance.patchVenue(_venueId, {
-        'name': name,
-        'slug': slug,
-      });
+      await VenueStateService.instance.updateVenue(name: name, slug: slug);
 
       if (mounted) {
         _showToast('Venue details & subdomain updated');
@@ -493,14 +544,61 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                         decoration: const InputDecoration(hintText: 'e.g. Central City Café'),
                       ),
                       const SizedBox(height: 12),
-                      _inputLabel('SUBDOMAIN SLUG (STORES ON-NETWORK)'),
+                      _inputLabel('SUBDOMAIN SLUG / SLOGAN (STORES ON-NETWORK)'),
                       TextField(
                         controller: _venueSlugController,
+                        onChanged: _onSlugChanged,
                         decoration: const InputDecoration(
                           hintText: 'e.g. central-cafe',
                           helperText: 'Store URL: {slug}.nexawavepass.com',
                         ),
                       ),
+                      if (_isCheckingSlug || _slugStatusMessage != null) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _isCheckingSlug
+                                ? Colors.grey.withValues(alpha: 0.08)
+                                : _isSlugAvailable == true
+                                    ? AppColors.accentGreen.withValues(alpha: 0.08)
+                                    : AppColors.accentRed.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _isCheckingSlug
+                                  ? Colors.grey.withValues(alpha: 0.25)
+                                  : _isSlugAvailable == true
+                                      ? AppColors.accentGreen.withValues(alpha: 0.35)
+                                      : AppColors.accentRed.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              if (_isCheckingSlug)
+                                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primary))
+                              else if (_isSlugAvailable == true)
+                                const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accentGreen)
+                              else
+                                const Icon(Icons.cancel_rounded, size: 14, color: AppColors.accentRed),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _slugStatusMessage ?? '',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: _isCheckingSlug
+                                        ? AppColors.textMuted
+                                        : _isSlugAvailable == true
+                                            ? AppColors.accentGreen
+                                            : AppColors.accentRed,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,

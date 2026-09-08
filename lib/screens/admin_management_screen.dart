@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -5,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
@@ -32,6 +34,12 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   String? _uploadedLogoUrl;
   bool _uploadingLogo = false;
 
+  // Real-time Subdomain / Slogan Availability
+  Timer? _slugDebounce;
+  bool _isCheckingSlug = false;
+  bool? _isSlugAvailable;
+  String? _slugStatusMessage;
+
   // Router Connectivity
   String? _routerId;
   String _routerName = '';
@@ -51,15 +59,112 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   @override
   void initState() {
     super.initState();
+    VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
+    VenueStateService.instance.plansNotifier.addListener(_onPlansChanged);
+    _onVenueChanged();
+    _onPlansChanged();
     _loadAllData();
   }
 
   @override
   void dispose() {
+    _slugDebounce?.cancel();
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
     _nameCtrl.dispose();
     _slugCtrl.dispose();
     _logoCtrl.dispose();
     super.dispose();
+  }
+
+  void _onVenueChanged() {
+    final v = VenueStateService.instance.currentVenue;
+    if (v != null && mounted) {
+      final id = v['id']?.toString() ?? _venueId;
+      final name = v['name']?.toString() ?? _venueName;
+      final slug = v['slug']?.toString() ?? _venueSlug;
+      final logo = v['logoUrl']?.toString() ?? '';
+      setState(() {
+        _venueId = id;
+        _venueName = name;
+        _venueSlug = slug;
+        if (_nameCtrl.text.isEmpty) _nameCtrl.text = name;
+        if (_slugCtrl.text.isEmpty) _slugCtrl.text = slug;
+        if (_logoCtrl.text.isEmpty) _logoCtrl.text = logo;
+      });
+    }
+  }
+
+  void _onPlansChanged() {
+    final raw = VenueStateService.instance.currentPlans;
+    if (mounted) {
+      setState(() {
+        _plans = raw.map((p) {
+          final priceMinor = (p['priceMinor'] as num?)?.toInt() ?? 0;
+          final durationSec = (p['durationSeconds'] as num?)?.toInt() ?? 3600;
+          final durationStr = durationSec < 3600
+              ? '${durationSec ~/ 60} Mins'
+              : durationSec < 86400
+                  ? '${durationSec ~/ 3600} Hours'
+                  : '${durationSec ~/ 86400} Days';
+          final dataLimit = p['dataLimitBytes'];
+          final dataStr = dataLimit == null
+              ? 'Unlimited'
+              : '${((dataLimit as num) / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+
+          return {
+            'id': p['id']?.toString() ?? '',
+            'name': p['name']?.toString() ?? 'Pass',
+            'price': priceMinor ~/ 100,
+            'duration': durationStr,
+            'data': dataStr,
+            'rateLimit': p['rateLimit']?.toString() ?? '10M',
+            'devices': p['simultaneousDevices'] ?? 1,
+          };
+        }).toList();
+        _loadingPlans = false;
+      });
+    }
+  }
+
+  void _onSlugChanged(String raw) {
+    _slugDebounce?.cancel();
+    final slug = raw.trim().toLowerCase();
+    if (slug.isEmpty) {
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = null;
+        _slugStatusMessage = null;
+      });
+      return;
+    }
+    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = false;
+        _slugStatusMessage = 'Only lowercase letters, numbers, and hyphens allowed';
+      });
+      return;
+    }
+    setState(() {
+      _isCheckingSlug = true;
+      _slugStatusMessage = 'Checking availability...';
+    });
+    _slugDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final res = await VenueStateService.instance.checkSlugAvailability(slug);
+      if (!mounted) return;
+      setState(() {
+        _isCheckingSlug = false;
+        _isSlugAvailable = res['available'] == true;
+        if (res['isCurrent'] == true) {
+          _slugStatusMessage = 'Current venue subdomain';
+        } else if (res['available'] == true) {
+          _slugStatusMessage = 'Available: https://$slug.nexawavepass.com';
+        } else {
+          _slugStatusMessage = res['reason']?.toString() ?? 'Subdomain already taken';
+        }
+      });
+    });
   }
 
   Future<void> _loadAllData() async {
@@ -78,11 +183,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       final user = SupabaseService.instance.currentUser;
       _ownerEmail = user?.email;
 
-      Map<String, dynamic>? v;
-      try {
-        v = await WavePassApi.instance.getDefaultVenue();
-      } catch (_) {}
-      v ??= await SupabaseService.instance.getPrimaryVenue();
+      var v = VenueStateService.instance.currentVenue;
+      v ??= await VenueStateService.instance.refreshVenue();
 
       if (v != null && v['id'] != null) {
         final id = v['id'].toString();
@@ -271,6 +373,12 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       );
       return;
     }
+    if (_isSlugAvailable == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_slugStatusMessage ?? 'Subdomain is not available. Please pick another.'), backgroundColor: AppColors.accentRed),
+      );
+      return;
+    }
     final logoUrl = _uploadedLogoUrl ?? _logoCtrl.text.trim();
     if (logoUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -281,11 +389,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
     setState(() => _savingVenue = true);
     try {
-      await WavePassApi.instance.patchVenue(_venueId!, {
-        'name': _nameCtrl.text.trim(),
-        'slug': slug,
-        'logoUrl': logoUrl,
-      });
+      await VenueStateService.instance.updateVenue(
+        name: _nameCtrl.text.trim(),
+        slug: slug,
+        logoUrl: logoUrl,
+      );
       if (!mounted) return;
       setState(() {
         _venueName = _nameCtrl.text.trim();
@@ -361,10 +469,10 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                 final planId = plan['id'];
                 if (planId != null && planId.isNotEmpty) {
                   try {
-                    await SupabaseService.instance.client
-                        .from('Plan')
-                        .update({'priceMinor': newPrice * 100})
-                        .eq('id', planId);
+                    await VenueStateService.instance.updatePlan(
+                      planId,
+                      {'priceMinor': newPrice * 100},
+                    );
                   } catch (_) {}
                 }
                 setState(() => _plans[index]['price'] = newPrice);
@@ -403,8 +511,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     );
     if (confirm == true) {
       try {
-        await SupabaseService.instance.client.from('Plan').delete().eq('id', planId);
-        _loadPlans();
+        await VenueStateService.instance.deletePlan(planId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("$planName removed."), backgroundColor: AppColors.accentGreen),
@@ -759,13 +866,59 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                     TextField(
                       controller: _slugCtrl,
                       decoration: InputDecoration(
-                        labelText: 'Portal Subdomain (slug)',
+                        labelText: 'Portal Subdomain / Slogan (URL Slug)',
                         border: const OutlineInputBorder(),
                         helperText: 'https://${_slugCtrl.text.isEmpty ? 'venue' : _slugCtrl.text.toLowerCase()}.nexawavepass.com',
                         helperStyle: const TextStyle(fontSize: 11, color: AppColors.accentGreen, fontFamily: 'monospace'),
                       ),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: _onSlugChanged,
                     ),
+                    if (_isCheckingSlug || _slugStatusMessage != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _isCheckingSlug
+                              ? Colors.grey.withValues(alpha: 0.08)
+                              : _isSlugAvailable == true
+                                  ? AppColors.accentGreen.withValues(alpha: 0.08)
+                                  : AppColors.accentRed.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _isCheckingSlug
+                                ? Colors.grey.withValues(alpha: 0.25)
+                                : _isSlugAvailable == true
+                                    ? AppColors.accentGreen.withValues(alpha: 0.35)
+                                    : AppColors.accentRed.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            if (_isCheckingSlug)
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primary))
+                            else if (_isSlugAvailable == true)
+                              const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accentGreen)
+                            else
+                              const Icon(Icons.cancel_rounded, size: 14, color: AppColors.accentRed),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _slugStatusMessage ?? '',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: _isCheckingSlug
+                                      ? AppColors.textMuted
+                                      : _isSlugAvailable == true
+                                          ? AppColors.accentGreen
+                                          : AppColors.accentRed,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     const Text('Venue Portal Logo *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
                     const SizedBox(height: 6),

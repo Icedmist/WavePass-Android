@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
 
@@ -16,11 +17,33 @@ class _SellPassScreenState extends State<SellPassScreen> {
   String? _generatedCode;
   bool _isPrinting = false;
 
-  final List<Map<String, dynamic>> _plans = [
-    {'title': '1 Hour Quick Pass', 'price': '₦200', 'duration': '1 Hour', 'subtitle': 'Great for coffee & quick meetings', 'data': 'Unlimited', 'speed': '10 Mbps', 'devices': '1 device'},
-    {'title': '12 Hour Work Pass', 'price': '₦800', 'duration': '12 Hours', 'subtitle': 'Full workday internet access', 'data': '10 GB cap', 'speed': '20 Mbps', 'devices': '1 device'},
-    {'title': '24 Hour All-Day', 'price': '₦1,500', 'duration': '24 Hours', 'subtitle': 'Uninterrupted overnight access', 'data': 'Unlimited', 'speed': '20 Mbps', 'devices': '2 devices'},
-  ];
+  List<Map<String, dynamic>> _plans = [];
+  bool _loadingPlans = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlans();
+  }
+
+  Future<void> _loadPlans() async {
+    setState(() => _loadingPlans = true);
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue();
+      if (venue != null) {
+        final plans = await SupabaseService.instance.getActivePlans(venue['id']);
+        if (plans.isNotEmpty) {
+          setState(() => _plans = plans.map((p) => {'title': p['name'], 'price': '₦${(p['priceMinor'] as int) ~/ 100}', 'duration': '${(p['durationSeconds'] as int) ~/ 3600} Hours', 'subtitle': p['description'] ?? 'Custom plan', 'data': p['dataLimitBytes'] == null ? 'Unlimited' : '${((p['dataLimitBytes'] as int) / (1024*1024*1024)).toStringAsFixed(1)} GB', 'speed': p['rateLimit'] ?? '10 Mbps', 'devices': '${p['simultaneousDevices'] ?? 1} device', 'id': p['id']}).toList());
+        } else {
+          setState(() => _plans = []);
+        }
+      }
+    } catch (_) {
+      setState(() => _plans = []);
+    } finally {
+      setState(() => _loadingPlans = false);
+    }
+  }
 
   String _randomCode() {
     const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -82,7 +105,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
         ),
         title: const Text("Sell a Cash Pass", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)),
         actions: [
-          IconButton(icon: const Icon(Icons.tune_rounded, color: AppColors.primary), tooltip: 'Customize plan', onPressed: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet())),
+          IconButton(icon: const Icon(Icons.tune_rounded, color: AppColors.primary), tooltip: 'Customize plan', onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }),
         ],
       ),
       body: SingleChildScrollView(
@@ -91,14 +114,29 @@ class _SellPassScreenState extends State<SellPassScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_generatedCode == null) ...[
-              const Text(
-                "Select a plan for the customer paying with cash:",
-                style: TextStyle(fontSize: 13, color: AppColors.textLight),
-              ),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text("Select a plan for the customer paying with cash:", style: TextStyle(fontSize: 13, color: AppColors.textLight)),
+                TextButton.icon(onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }, icon: const Icon(Icons.add_rounded, size: 16), label: const Text('Add Plan', style: TextStyle(fontSize: 12))),
+              ]),
               const SizedBox(height: 16),
-
-              // Plan Cards List
-              ListView.separated(
+              if (_loadingPlans)
+                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(strokeWidth: 2)))
+              else if (_plans.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)),
+                  child: Column(children: [
+                    const Icon(Icons.wifi_off_rounded, size: 32, color: AppColors.textLight),
+                    const SizedBox(height: 8),
+                    const Text('No pricing yet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    const Text('Add your first pass manually after setup — duration or per-GB.', style: TextStyle(fontSize: 11, color: AppColors.textLight), textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }, icon: const Icon(Icons.add_rounded, size: 16), label: const Text('Create First Plan')),
+                  ]),
+                )
+              else
+                // Plan Cards List
+                ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _plans.length,

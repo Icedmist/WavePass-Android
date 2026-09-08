@@ -385,6 +385,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   ],
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
                       width: 48,
@@ -400,8 +401,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text("Sell a Cash Pass", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text("Sell a Cash Pass", maxLines: 1, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white))),
                           SizedBox(height: 2),
                           Text("8-letter code & print receipt in 1 tap", maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.3)),
                         ],

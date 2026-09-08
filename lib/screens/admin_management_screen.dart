@@ -4,6 +4,7 @@ import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
+import '../core/widgets/plan_configurator.dart';
 import 'how_to_use_screen.dart';
 import 'login_screen.dart';
 import 'privacy_screen.dart';
@@ -16,11 +17,29 @@ class AdminManagementScreen extends StatefulWidget {
 }
 
 class _AdminManagementScreenState extends State<AdminManagementScreen> {
-  final List<Map<String, dynamic>> _plans = [
-    {'name': '1 Hour Quick Pass', 'price': 200, 'duration': '1 Hour'},
-    {'name': '12 Hour Work Pass', 'price': 800, 'duration': '12 Hours'},
-    {'name': '24 Hour All-Day', 'price': 1500, 'duration': '24 Hours'},
-  ];
+  List<Map<String, dynamic>> _plans = [];
+  bool _loadingPlans = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadPlans();
+  }
+
+  Future<void> _loadPlans() async {
+    setState(() => _loadingPlans = true);
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue();
+      if (venue != null) {
+        final plans = await SupabaseService.instance.getActivePlans(venue['id']);
+        setState(() => _plans = plans.map((p) => {'name': p['name'], 'price': (p['priceMinor'] as int) ~/ 100, 'duration': '${(p['durationSeconds'] as int) ~/ 3600} Hours', 'id': p['id']}).toList());
+      }
+    } catch (_) {
+      setState(() => _plans = []);
+    } finally {
+      setState(() => _loadingPlans = false);
+    }
+  }
   bool _isSyncing = false;
   final _nameCtrl = TextEditingController();
   final _slugCtrl = TextEditingController();
@@ -136,14 +155,22 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
               const SizedBox(height: 12),
               Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)), child: const Text('Changing the slug updates your subdomain instantly. Ensure DNS wildcard *.nexawavepass.com points to your frontend.', style: TextStyle(fontSize: 11, color: AppColors.textLight))),
             ])),
-            // TAB 2: PLANS
+            // TAB 2: PLANS — no predefined, add manually
             SingleChildScrollView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Text("WI-FI PASS PRICING", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text("WI-FI PASS PRICING", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+                TextButton.icon(onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }, icon: const Icon(Icons.add_rounded, size: 16), label: const Text('Add Plan', style: TextStyle(fontSize: 12))),
+              ]),
               const SizedBox(height: 12),
-              ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _plans.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (c, i) {
-                final p = _plans[i];
-                return Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)), Text(p['duration'], style: const TextStyle(fontSize: 11, color: AppColors.textLight))]), Row(children: [Text("₦${p['price']}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accentGreen)), const SizedBox(width: 8), IconButton(icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary), onPressed: () => _editPrice(i))])]));
-              }),
+              if (_loadingPlans)
+                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(strokeWidth: 2)))
+              else if (_plans.isEmpty)
+                Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Column(children: [const Icon(Icons.wifi_off_rounded, size: 32, color: AppColors.textLight), const SizedBox(height: 8), const Text('No pricing yet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)), const Text('Add your first pass manually after setup — duration or per-GB.', style: TextStyle(fontSize: 11, color: AppColors.textLight), textAlign: TextAlign.center), const SizedBox(height: 12), ElevatedButton.icon(onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }, icon: const Icon(Icons.add_rounded, size: 16), label: const Text('Create First Plan'))])),
+              if (_plans.isNotEmpty)
+                ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _plans.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (c, i) {
+                  final p = _plans[i];
+                  return Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)), Text(p['duration'], style: const TextStyle(fontSize: 11, color: AppColors.textLight))]), Row(children: [Text("₦${p['price']}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accentGreen)), const SizedBox(width: 8), IconButton(icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary), onPressed: () => _editPrice(i))])]));
+                }),
               const SizedBox(height: 24),
               const Text("HARDWARE RESILIENCE", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
               const SizedBox(height: 12),

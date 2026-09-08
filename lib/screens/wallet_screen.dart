@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/widgets/shimmer.dart';
 
 /// Wallet / cashout hub. Shows the venue's dedicated virtual account (funded
 /// via the single Nexa Paystack key), the available balance, and lets the venue
@@ -296,7 +297,13 @@ class _WalletScreenState extends State<WalletScreen> {
         automaticallyImplyLeading: false,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(padding: const EdgeInsets.all(20), children: const [
+              ShimmerBox(h: 120, r: 26),
+              SizedBox(height: 16),
+              ShimmerBox(h: 140, r: 24),
+              SizedBox(height: 16),
+              ShimmerBox(h: 80, r: 16),
+            ])
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

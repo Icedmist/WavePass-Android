@@ -27,11 +27,14 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Image.asset(
-                'assets/images/logo.png',
-                width: 32,
-                height: 32,
-                fit: BoxFit.cover,
+              child: Hero(
+                tag: 'wavepass-logo',
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
             const SizedBox(width: 10),

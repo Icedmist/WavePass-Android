@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
@@ -20,6 +23,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _venueName = TextEditingController();
   final _venueSlug = TextEditingController();
   final _venueLogo = TextEditingController(text: 'https://nexawavepass.com/logo.png');
+  XFile? _pickedLogo;
+  String? _uploadedLogoUrl;
+  bool _uploadingLogo = false;
   bool _creatingVenue = false;
   String? _venueError;
   String _venueType = 'Café';
@@ -92,20 +98,55 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  Future<void> _pickVenueLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, imageQuality: 85);
+    if (picked != null) {
+      setState(() { _pickedLogo = picked; _uploadingLogo = true; });
+      try {
+        final rawBytes = await picked.readAsBytes();
+        // Compress before upload — keep under ~300KB
+        final compressed = await FlutterImageCompress.compressWithList(rawBytes, minWidth: 800, minHeight: 800, quality: 70, format: CompressFormat.jpeg);
+        final bytes = compressed.isNotEmpty ? compressed : rawBytes;
+        final fileName = 'venue-${DateTime.now().millisecondsSinceEpoch}-${picked.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}.jpg';
+        try {
+          await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
+          final url = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
+          setState(() { _uploadedLogoUrl = url; _venueLogo.text = url; });
+        } catch (_) {
+          try {
+            await SupabaseService.instance.client.storage.from('venue-logos').uploadBinary(fileName, bytes);
+            final url = SupabaseService.instance.client.storage.from('venue-logos').getPublicUrl(fileName);
+            setState(() { _uploadedLogoUrl = url; _venueLogo.text = url; });
+          } catch (_) {
+            setState(() { _uploadedLogoUrl = null; _venueLogo.text = 'https://nexawavepass.com/logo.png'; });
+          }
+        }
+      } finally {
+        setState(() => _uploadingLogo = false);
+      }
+    }
+  }
+
   Future<void> _createVenueAndFinish() async {
-    if (_venueName.text.trim().isEmpty || _venueSlug.text.trim().isEmpty || _venueLogo.text.trim().isEmpty) {
-      setState(() => _venueError = 'Venue name, subdomain (slug) and logo URL are required — your subdomain will be {slug}.nexawavepass.com with your pricing & logo.');
+    final logoUrl = _uploadedLogoUrl ?? _venueLogo.text.trim();
+    if (_venueName.text.trim().isEmpty || _venueSlug.text.trim().isEmpty || logoUrl.isEmpty) {
+      setState(() => _venueError = 'Venue name, subdomain (slug) and logo image are required — your subdomain will be {slug}.nexawavepass.com with your pricing & logo.');
+      return;
+    }
+    if (_pickedLogo == null && _uploadedLogoUrl == null && _venueLogo.text.trim().isEmpty) {
+      setState(() => _venueError = 'Please upload a venue logo image.');
       return;
     }
     setState(() { _creatingVenue = true; _venueError = null; });
     try {
-      final res = await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: _venueLogo.text.trim());
+      final res = await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: logoUrl);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
       await prefs.setString('venueId', res['id'] ?? _venueSlug.text.trim().toLowerCase());
       await prefs.setString('venueName', _venueName.text.trim());
       await prefs.setString('venueSlug', _venueSlug.text.trim().toLowerCase());
-      await prefs.setString('venueLogo', _venueLogo.text.trim());
+      await prefs.setString('venueLogo', logoUrl);
       if (!mounted) return;
       // If user already signed in, go to dashboard; else to login (which will then go to dashboard after auth)
       final user = SupabaseService.instance.currentUser;
@@ -224,9 +265,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             const SizedBox(height: 16),
                             TextField(controller: _venueName, decoration: const InputDecoration(hintText: 'Venue name (e.g. Cafe Lagos)', labelText: 'Venue Name *')),
                             const SizedBox(height: 10),
-                            TextField(controller: _venueSlug, decoration: InputDecoration(hintText: 'my-venue', labelText: 'Subdomain (slug) *', helperText: _venueSlug.text.isEmpty ? 'your-venue.wavepass.com' : '${_venueSlug.text.toLowerCase()}.wavepass.com'), onChanged: (_) => setState(() {})),
+                            TextField(controller: _venueSlug, decoration: InputDecoration(hintText: 'my-venue', labelText: 'Subdomain (slug) *', helperText: _venueSlug.text.isEmpty ? 'your-venue.nexawavepass.com' : '${_venueSlug.text.toLowerCase()}.nexawavepass.com'), onChanged: (_) => setState(() {})),
                             const SizedBox(height: 10),
-                            TextField(controller: _venueLogo, decoration: const InputDecoration(hintText: 'https://.../logo.png', labelText: 'Logo URL *', helperText: 'Required — shown on your subdomain')),
+                            // Venue logo upload (not URL)
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              const Text('Venue Logo *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)),
+                              const SizedBox(height: 6),
+                              InkWell(
+                                onTap: _pickVenueLogo,
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  height: 96,
+                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)),
+                                  child: _pickedLogo != null
+                                      ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(_pickedLogo!.path), fit: BoxFit.cover, width: double.infinity))
+                                      : _uploadedLogoUrl != null
+                                          ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_uploadedLogoUrl!, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
+                                          : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.upload_rounded, color: AppColors.primary), SizedBox(height: 4), Text('Tap to upload logo', style: TextStyle(fontSize: 11, color: AppColors.textLight))])),
+                                ),
+                              ),
+                              if (_uploadingLogo) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
+                              const SizedBox(height: 4),
+                              const Text('Required — shown on your subdomain portal', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                            ]),
                             if (_venueError != null) ...[
                               const SizedBox(height: 10),
                               Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.redTint, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.accentRed.withValues(alpha: 0.3))), child: Text(_venueError!, style: const TextStyle(fontSize: 11, color: AppColors.accentRedDark))),

@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
@@ -47,6 +50,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   String? _venueId;
   bool _loadingVenue = false;
   bool _savingVenue = false;
+  XFile? _pickedLogo;
+  String? _uploadedLogoUrl;
+  bool _uploadingLogo = false;
 
   @override
   void initState() {
@@ -81,6 +87,36 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     }
   }
 
+  Future<void> _pickAdminLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, imageQuality: 85);
+    if (picked != null) {
+      setState(() { _pickedLogo = picked; _uploadingLogo = true; });
+      try {
+        final raw = await picked.readAsBytes();
+        final compressed = await FlutterImageCompress.compressWithList(raw, minWidth: 800, minHeight: 800, quality: 70, format: CompressFormat.jpeg);
+        final bytes = compressed.isNotEmpty ? compressed : raw;
+        final fileName = 'venue-${DateTime.now().millisecondsSinceEpoch}-${picked.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}.jpg';
+        try {
+          await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
+          final url = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
+          setState(() { _uploadedLogoUrl = url; _logoCtrl.text = url; });
+        } catch (_) {
+          try {
+            await SupabaseService.instance.client.storage.from('venue-logos').uploadBinary(fileName, bytes);
+            final url = SupabaseService.instance.client.storage.from('venue-logos').getPublicUrl(fileName);
+            setState(() { _uploadedLogoUrl = url; _logoCtrl.text = url; });
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+          }
+        }
+      } finally {
+        if (mounted) setState(() => _uploadingLogo = false);
+      }
+    }
+  }
+
   Future<void> _saveVenue() async {
     if (_venueId == null) return;
     final slug = _slugCtrl.text.trim().toLowerCase();
@@ -88,9 +124,14 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Slug must be a-z 0-9 hyphen')));
       return;
     }
+    final logoUrl = _uploadedLogoUrl ?? _logoCtrl.text.trim();
+    if (logoUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a venue logo')));
+      return;
+    }
     setState(() => _savingVenue = true);
     try {
-      await WavePassApi.instance.patchVenue(_venueId!, {'name': _nameCtrl.text.trim(), 'slug': slug, 'logoUrl': _logoCtrl.text.trim()});
+      await WavePassApi.instance.patchVenue(_venueId!, {'name': _nameCtrl.text.trim(), 'slug': slug, 'logoUrl': logoUrl});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Venue updated: $slug.nexawavepass.com'), backgroundColor: AppColors.accentGreen));
     } catch (e) {
@@ -147,7 +188,26 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   const SizedBox(height: 12),
                   TextField(controller: _slugCtrl, decoration: InputDecoration(labelText: 'Subdomain (slug)', border: const OutlineInputBorder(), helperText: _slugCtrl.text.isEmpty ? 'my-venue.nexawavepass.com' : '${_slugCtrl.text.toLowerCase()}.nexawavepass.com', helperStyle: const TextStyle(fontSize: 11, color: AppColors.accentGreen)), onChanged: (_) => setState(() {})),
                   const SizedBox(height: 12),
-                  TextField(controller: _logoCtrl, decoration: const InputDecoration(labelText: 'Logo URL (https://...)', border: OutlineInputBorder(), helperText: 'Shown on your subdomain portal')),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Venue Logo *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: _pickAdminLogo,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 96,
+                        decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)),
+                        child: _pickedLogo != null
+                            ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(_pickedLogo!.path), fit: BoxFit.cover, width: double.infinity))
+                            : _logoCtrl.text.isNotEmpty
+                                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_logoCtrl.text, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
+                                : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.upload_rounded, color: AppColors.primary), SizedBox(height: 4), Text('Tap to upload logo', style: TextStyle(fontSize: 11, color: AppColors.textLight))])),
+                      ),
+                    ),
+                    if (_uploadingLogo) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
+                    const SizedBox(height: 4),
+                    const Text('Required — shown on your subdomain portal (compressed before upload)', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                  ]),
                 ],
               ])),
               const SizedBox(height: 16),

@@ -29,18 +29,38 @@ class _SState extends State<SignupScreen> {
       return;
     }
     setState(() { _loading = true; _err = null; });
+    final email = _email.text.trim();
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+    if (!emailRegex.hasMatch(email)) {
+      setState(() => _err = 'Enter a valid email address.');
+      return;
+    }
+    if (_pass.text.length < 6) {
+      setState(() => _err = 'Password must be at least 6 characters.');
+      return;
+    }
     try {
-      final res = await SupabaseService.instance.client.auth.signUp(email: _email.text.trim(), password: _pass.text, data: {'name': _name.text.trim(), 'phone': _phone.text.trim()});
+      final res = await SupabaseService.instance.client.auth.signUp(email: email, password: _pass.text, data: {'name': _name.text.trim(), 'phone': _phone.text.trim()});
       if (res.user != null) {
+        // Handle email confirmation required: session may be null until user confirms
+        if (res.session == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check your email to confirm your account, then sign in.')));
+        }
         if (!mounted) return;
         context.go(AppRouter.onboarding);
       } else {
-        setState(() => _err = 'Sign up failed. Try again.');
+        setState(() => _err = res.session == null ? 'Check email to confirm, then sign in.' : 'Sign up failed. Try again.');
       }
     } catch (e) {
-      // offline/demo fallback: go to onboarding
-      if (!mounted) return;
-      context.go(AppRouter.onboarding);
+      final msg = e.toString();
+      if (msg.contains('already registered') || msg.contains('already exists')) {
+        setState(() => _err = 'Account already exists — try Sign In.');
+      } else if (msg.contains('network') || msg.contains('Failed host')) {
+        setState(() => _err = 'Network error — check internet and try again.');
+      } else {
+        setState(() => _err = 'Sign up failed: $e');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

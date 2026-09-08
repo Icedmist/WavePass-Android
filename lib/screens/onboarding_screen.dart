@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
@@ -17,9 +18,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int _currentPage = 0;
   final _venueName = TextEditingController();
   final _venueSlug = TextEditingController();
-  final _venueLogo = TextEditingController(text: 'https://wavepass-web.vercel.app/logo.png');
+  final _venueLogo = TextEditingController(text: 'https://nexawavepass.com/logo.png');
   bool _creatingVenue = false;
   String? _venueError;
+  String _venueType = 'Café';
 
   final List<Map<String, dynamic>> _slides = [
     {
@@ -168,16 +170,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              // Progress + estimate
+              Row(children: [
+                Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: (_currentPage + 1) / _slides.length, minHeight: 4, backgroundColor: Colors.black12, valueColor: const AlwaysStoppedAnimation(AppColors.accentGreen)))),
+                const SizedBox(width: 8),
+                Text('${_currentPage + 1}/${_slides.length} • 2 min', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textLight, fontFamily: 'monospace')),
+              ]),
+              const SizedBox(height: 16),
+              // Venue type personalization (on first two cards)
+              if (_currentPage <= 1)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(spacing: 6, runSpacing: 6, children: ['Café', 'Hotel', 'Hostel', 'Event'].map((t) => ChoiceChip(label: Text(t, style: const TextStyle(fontSize: 11)), selected: _venueType == t, onSelected: (_) { HapticFeedback.selectionClick(); setState(() => _venueType = t); }, selectedColor: AppColors.primary, labelStyle: TextStyle(color: _venueType == t ? Colors.white : AppColors.primary, fontWeight: FontWeight.w700))).toList()),
+                ),
 
               // Carousel View
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
                   onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                    });
+                    HapticFeedback.selectionClick();
+                    setState(() => _currentPage = index);
                   },
                   itemCount: _slides.length,
                   itemBuilder: (context, index) {

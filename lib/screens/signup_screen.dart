@@ -18,6 +18,8 @@ class _SState extends State<SignupScreen> {
   final _pass = TextEditingController();
   final _confirm = TextEditingController();
   bool _loading = false;
+  bool _obscurePass = true;
+  bool _obscureConfirm = true;
   String? _err;
 
   Future<void> _signup() async {
@@ -104,8 +106,26 @@ class _SState extends State<SignupScreen> {
                     _field('FULL NAME', _name, 'John Doe'),
                     _field('EMAIL ADDRESS', _email, 'admin@venue.com', type: TextInputType.emailAddress),
                     _field('PHONE (OPTIONAL)', _phone, '+234...', type: TextInputType.phone),
-                    _field('PASSWORD', _pass, '••••••••', obscure: true),
-                    _field('CONFIRM PASSWORD', _confirm, '••••••••', obscure: true),
+                    _field(
+                      'PASSWORD',
+                      _pass,
+                      '••••••••',
+                      obscure: _obscurePass,
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.textLight, size: 20),
+                        onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                      ),
+                    ),
+                    _field(
+                      'CONFIRM PASSWORD',
+                      _confirm,
+                      '••••••••',
+                      obscure: _obscureConfirm,
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.textLight, size: 20),
+                        onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ),
                     if (_err != null) ...[
                       const SizedBox(height: 12),
                       Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.redTint, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.accentRed.withValues(alpha: 0.3))), child: Text(_err!, style: const TextStyle(fontSize: 12, color: AppColors.accentRedDark, fontWeight: FontWeight.w600))),
@@ -127,13 +147,13 @@ class _SState extends State<SignupScreen> {
     );
   }
 
-  Widget _field(String label, TextEditingController c, String hint, {TextInputType? type, bool obscure = false}) {
+  Widget _field(String label, TextEditingController c, String hint, {TextInputType? type, bool obscure = false, Widget? suffixIcon}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.5)),
         const SizedBox(height: 6),
-        TextField(controller: c, keyboardType: type, obscureText: obscure, decoration: InputDecoration(hintText: hint)),
+        TextField(controller: c, keyboardType: type, obscureText: obscure, decoration: InputDecoration(hintText: hint, suffixIcon: suffixIcon)),
       ]),
     );
   }

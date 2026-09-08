@@ -114,42 +114,53 @@ class _WalletScreenState extends State<WalletScreen> {
       builder: (ctx) {
         final amtCtrl = TextEditingController();
         final passCtrl = TextEditingController();
-        return AlertDialog(
-          title: const Text('Cash Out'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amtCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Amount (NGN)',
-                  helperText: 'Payout goes to your registered bank account',
+        bool obscurePass = true;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Cash Out'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amtCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (NGN)',
+                    helperText: 'Payout goes to your registered bank account',
+                  ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: obscurePass,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm your password',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        color: AppColors.textLight,
+                        size: 20,
+                      ),
+                      onPressed: () => setDialogState(() => obscurePass = !obscurePass),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm your password',
-                ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop({
+                  'amount': double.tryParse(amtCtrl.text),
+                  'password': passCtrl.text,
+                }),
+                child: const Text('Cash Out'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop({
-                'amount': double.tryParse(amtCtrl.text),
-                'password': passCtrl.text,
-              }),
-              child: const Text('Cash Out'),
-            ),
-          ],
         );
       },
     );

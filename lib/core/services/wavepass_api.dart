@@ -34,6 +34,8 @@ class WavePassApi {
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) => _post(path, body);
+
   Future<Map<String, dynamic>> clientPatch(String path, Map<String, dynamic> body) => _patch(path, body);
 
   Future<Map<String, dynamic>> patchVenue(String id, Map<String, dynamic> data) => _patch('/api/v1/venues/$id', data);
@@ -149,5 +151,55 @@ class WavePassApi {
   Future<String> getRouterProvisionScript(String routerId) async {
     final res = await http.get(Uri.parse('$_base/api/v1/routers/$routerId/provision.rsc')).timeout(_timeout);
     return res.body;
+  }
+
+  Future<Map<String, dynamic>> createRouter({
+    required String venueId,
+    required String name,
+    required String endpoint,
+    required String connectionMode,
+    String? rosVersion,
+  }) {
+    return _post('/api/v1/routers', {
+      'venueId': venueId,
+      'name': name,
+      'endpoint': endpoint,
+      'connectionMode': connectionMode,
+      'rosVersion': ?rosVersion,
+    });
+  }
+
+  Future<Map<String, dynamic>> updateProfile({
+    required String email,
+    String? name,
+    String? newEmail,
+  }) {
+    return _post('/api/v1/admin/update-profile', {
+      'email': email,
+      'name': ?name,
+      'newEmail': ?newEmail,
+    });
+  }
+
+  Future<Map<String, dynamic>> changePassword({
+    required String email,
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    return _post('/api/v1/admin/change-password', {
+      'email': email,
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+  }
+
+  Future<Map<String, dynamic>> deleteAccount({
+    required String email,
+    required String password,
+  }) {
+    return _post('/api/v1/admin/delete-account', {
+      'email': email,
+      'password': password,
+    });
   }
 }

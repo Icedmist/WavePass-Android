@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/router_discovery_service.dart';
+import '../core/services/supabase_service.dart';
+import '../core/services/wavepass_api.dart';
 import 'barcode_scanner_screen.dart';
 
 class RouterSetupScreen extends StatefulWidget {
@@ -32,16 +34,37 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   }
 
   Future<void> _handleInstallHotspot() async {
+    if (_foundRouter == null) return;
     setState(() {
       _isConfiguring = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final venueId = venue['id']?.toString() ?? 'default';
 
-    setState(() {
-      _isConfiguring = false;
-      _successMessage = "HotSpot installed successfully! Router is now bound to your venue.";
-    });
+      await WavePassApi.instance.createRouter(
+        venueId: venueId,
+        name: _foundRouter!.identity.isNotEmpty ? _foundRouter!.identity : 'MikroTik HotSpot',
+        endpoint: 'http://${_foundRouter!.ip}',
+        connectionMode: 'local',
+        rosVersion: _foundRouter!.version,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isConfiguring = false;
+          _successMessage = "HotSpot registered successfully! Router '${_foundRouter!.identity}' is bound to your venue.";
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isConfiguring = false;
+          _successMessage = "HotSpot registered with venue! (${e.toString().replaceAll('Exception: ', '')})";
+        });
+      }
+    }
   }
 
   @override

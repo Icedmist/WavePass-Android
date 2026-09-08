@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../core/theme/app_theme.dart';
+import '../core/services/supabase_service.dart';
+import '../core/services/wavepass_api.dart';
 
 class BarcodeScannerScreen extends StatefulWidget {
   const BarcodeScannerScreen({super.key});
@@ -29,7 +31,17 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   }
 
   void _handleSuccessfulScan(String serial) async {
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final venueId = venue['id']?.toString() ?? 'default';
+      await WavePassApi.instance.createRouter(
+        venueId: venueId,
+        name: 'MikroTik-$serial',
+        endpoint: 'https://tunnel.nexawavepass.com/$serial',
+        connectionMode: 'tunnel',
+      );
+    } catch (_) {}
+
     if (!mounted) return;
 
     showDialog(

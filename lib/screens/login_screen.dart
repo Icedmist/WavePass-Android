@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/constants/api_constants.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
@@ -37,9 +41,26 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await SupabaseService.instance.signIn(email, password);
       if (response.user != null) {
         if (!mounted) return;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('sb-user-email', email);
         context.go(AppRouter.dashboard);
+        return;
       }
+      throw Exception('No session');
     } catch (e) {
+      // Fallback: backend admin verify-password with email (for talk2icedmist@gmail.com + NexaAdmin#2025!WavePass)
+      try {
+        final r = await http.post(Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/verify-password'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'email': email, 'password': password})).timeout(const Duration(seconds: 10));
+        final j = jsonDecode(r.body) as Map<String, dynamic>;
+        if (j['ok'] == true && j['token'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('admin_token', j['token']);
+          await prefs.setString('sb-user-email', email);
+          if (!mounted) return;
+          context.go(AppRouter.dashboard);
+          return;
+        }
+      } catch (_) {}
       if (!mounted) return;
       setState(() => _errorMessage = e.toString().contains('Invalid') ? 'Invalid credentials' : 'Login failed: $e');
     } finally {

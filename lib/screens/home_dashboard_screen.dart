@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/services/supabase_service.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
@@ -12,8 +15,67 @@ class HomeDashboardScreen extends StatefulWidget {
 }
 
 class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
-  final int _activeUsers = 18;
-  final int _todaySales = 24800;
+  int _activeUsers = 0;
+  int _todaySales = 0;
+  String _venueName = 'Your Venue';
+  String _venueSub = '—';
+  bool _hasRouter = true;
+  bool _loadingStats = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _loadDashboard() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final venueId = prefs.getString('venueId');
+      String? vid = venueId;
+      Map<String, dynamic>? venue;
+      if (vid != null) {
+        try {
+          venue = await WavePassApi.instance.getVenueBySubdomain(vid);
+        } catch (_) {}
+      }
+      venue ??= await SupabaseService.instance.getPrimaryVenue();
+      if (venue != null) {
+        setState(() {
+          _venueName = venue!['name'] ?? 'Your Venue';
+          _venueSub = venue['slug'] != null ? '${venue['slug']}.nexawavepass.com' : '—';
+        });
+        vid = venue['id'] as String?;
+        if (vid != null) {
+          try {
+            final plans = await SupabaseService.instance.getActivePlans(vid);
+            if (plans.isEmpty) {
+              // no predefined pricing — prompt to add
+            }
+          } catch (_) {}
+          try {
+            final sessions = await SupabaseService.instance.getActiveSessions(vid);
+            setState(() => _activeUsers = sessions.length);
+          } catch (_) {}
+        }
+      }
+      try {
+        final stats = await WavePassApi.instance.adminStats();
+        if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
+        if (stats['sessions'] != null) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
+      } catch (_) {}
+      // check router
+      try {
+        final venueForRouter = venue ?? await SupabaseService.instance.getPrimaryVenue();
+        if (venueForRouter != null) {
+          final res = await SupabaseService.instance.client.from('Router').select('id').eq('venueId', venueForRouter['id']).limit(1);
+          setState(() => _hasRouter = (res as List).isNotEmpty);
+        }
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _loadingStats = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,21 +102,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  "WavePass Flagship",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
+                  _venueName,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  "Lagos, Nigeria",
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textLight,
-                  ),
+                  _venueSub,
+                  style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -117,6 +176,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (!_hasRouter && !_loadingStats)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: AppColors.warmSand.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.warmSand)),
+                child: Row(children: [
+                  const Icon(Icons.router_rounded, size: 18, color: Color(0xFF92400E)),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Text('Router not yet set up — you can skip, but guests cannot connect until a router is added.', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF92400E)))),
+                  TextButton(onPressed: () => context.push(AppRouter.routerSetup), child: const Text('Set Up', style: TextStyle(fontSize: 11))),
+                ]),
+              ),
             // ─── CARD 1: TODAY REVENUE & SUMMARY ───
             Container(
               padding: const EdgeInsets.all(22),

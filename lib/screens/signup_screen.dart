@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
@@ -42,13 +43,15 @@ class _SState extends State<SignupScreen> {
     try {
       final res = await SupabaseService.instance.client.auth.signUp(email: email, password: _pass.text, data: {'name': _name.text.trim(), 'phone': _phone.text.trim()});
       if (res.user != null) {
-        // Handle email confirmation required: session may be null until user confirms
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('has_seen_onboarding', true);
+        await prefs.setString('sb-user-email', email);
         if (res.session == null) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check your email to confirm your account, then sign in.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created — check email to confirm, then you will be on dashboard.')));
         }
         if (!mounted) return;
-        context.go(AppRouter.onboarding);
+        context.go(AppRouter.dashboard);
       } else {
         setState(() => _err = res.session == null ? 'Check email to confirm, then sign in.' : 'Sign up failed. Try again.');
       }

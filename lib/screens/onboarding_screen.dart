@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
+import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
@@ -93,16 +94,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _createVenueAndFinish() async {
     if (_venueName.text.trim().isEmpty || _venueSlug.text.trim().isEmpty || _venueLogo.text.trim().isEmpty) {
-      setState(() => _venueError = 'Venue name, subdomain (slug) and logo URL are required — your subdomain will be {slug}.wavepass.com with your pricing & logo.');
+      setState(() => _venueError = 'Venue name, subdomain (slug) and logo URL are required — your subdomain will be {slug}.nexawavepass.com with your pricing & logo.');
       return;
     }
     setState(() { _creatingVenue = true; _venueError = null; });
     try {
-      await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: _venueLogo.text.trim());
+      final res = await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: _venueLogo.text.trim());
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
+      await prefs.setString('venueId', res['id'] ?? _venueSlug.text.trim().toLowerCase());
+      await prefs.setString('venueName', _venueName.text.trim());
+      await prefs.setString('venueSlug', _venueSlug.text.trim().toLowerCase());
+      await prefs.setString('venueLogo', _venueLogo.text.trim());
       if (!mounted) return;
-      context.go(AppRouter.login);
+      // If user already signed in, go to dashboard; else to login (which will then go to dashboard after auth)
+      final user = SupabaseService.instance.currentUser;
+      if (user != null) {
+        context.go(AppRouter.dashboard);
+      } else {
+        context.go(AppRouter.login);
+      }
     } catch (e) {
       setState(() => _venueError = 'Failed: $e');
     } finally {

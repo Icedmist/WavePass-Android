@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
@@ -18,6 +21,24 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _isConfiguring = false;
   String? _successMessage;
 
+  // Custom gateway credentials / IP
+  bool _showCustomSettings = false;
+  final _ipCtrl = TextEditingController(text: "192.168.88.1");
+  final _userCtrl = TextEditingController(text: "admin");
+  final _passCtrl = TextEditingController();
+
+  // Export script state
+  bool _exportingScript = false;
+  String? _exportedScript;
+
+  @override
+  void dispose() {
+    _ipCtrl.dispose();
+    _userCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleAutoDiscover() async {
     setState(() {
       _isScanning = true;
@@ -25,12 +46,31 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       _successMessage = null;
     });
 
-    final router = await RouterDiscoveryService.discoverLocalRouter();
+    final targetIp = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
+    final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
+    final pass = _passCtrl.text.trim();
 
-    setState(() {
-      _isScanning = false;
-      _foundRouter = router;
-    });
+    final router = await RouterDiscoveryService.discoverLocalRouter(
+      ip: targetIp,
+      username: user,
+      password: pass,
+    );
+
+    if (mounted) {
+      setState(() {
+        _isScanning = false;
+        _foundRouter = router;
+      });
+
+      if (router == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("No MikroTik router detected at $targetIp. Verify you are connected to the router's Wi-Fi."),
+            backgroundColor: AppColors.accentRed,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _handleInstallHotspot() async {
@@ -67,6 +107,70 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     }
   }
 
+  Future<void> _handleExportScript() async {
+    setState(() => _exportingScript = true);
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final slug = venue['slug']?.toString() ?? 'venue';
+
+      final script = """
+# ========================================================
+# WavePass MikroTik HotSpot Quick Provisioning Script
+# Venue: ${venue['name'] ?? 'WavePass'} ($slug)
+# Generated: ${DateTime.now().toIso8601String()}
+# ========================================================
+
+/ip hotspot profile
+add dns-name="$slug.nexawavepass.com" \\
+    hotspot-address=192.168.88.1 \\
+    html-directory=hotspot \\
+    login-by=http-chap,http-pap,mac-cookie \\
+    name="wavepass-profile"
+
+/ip hotspot
+add address-pool=default-dhcp \\
+    disabled=no \\
+    interface=wlan1 \\
+    name="wavepass-hotspot" \\
+    profile="wavepass-profile"
+
+/ip hotspot walled-garden
+add comment="WavePass API" dst-host="api.nexawavepass.com"
+add comment="WavePass Portal" dst-host="*.nexawavepass.com"
+add comment="Paystack Checkout" dst-host="*.paystack.co"
+add comment="Paystack API" dst-host="api.paystack.co"
+add comment="Supabase Auth" dst-host="*.supabase.co"
+
+/system identity
+set name="WavePass-$slug"
+
+# Setup complete! Router is online.
+""";
+
+      setState(() {
+        _exportedScript = script;
+      });
+
+      await Clipboard.setData(ClipboardData(text: script));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("RouterOS configuration script copied to clipboard! Paste into MikroTik Terminal."),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to generate script: $e"), backgroundColor: AppColors.accentRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingScript = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,8 +179,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.primary, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
+          onPressed: () => context.canPop() ? context.pop() : context.go(AppRouter.dashboard),
         ),
         title: const Text(
           "Set Up a Router",
@@ -93,12 +197,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              "Choose how you would like to connect your router. No complex typing needed.",
+              "Connect your MikroTik router to your venue. Choose the method that best matches your network setup.",
               style: TextStyle(fontSize: 13, color: AppColors.textLight, height: 1.4),
             ),
             const SizedBox(height: 20),
 
-            // ─── OPTION 1: AUTO-FIND ON LOCAL WI-FI (APPROACH 1) ───
+            // ─── OPTION 1: AUTO-FIND ON LOCAL WI-FI ───
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
@@ -122,8 +226,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                         ),
                       ),
                       Text(
-                        "Zero-Typing Setup",
-                        style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                        "Auto Wi-Fi Detection",
+                        style: TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -138,15 +242,82 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    "1. Connect your phone to the open router Wi-Fi (MikroTik).\n2. Tap the button below to detect and setup in 5 seconds.",
+                    "1. Connect phone to your MikroTik Wi-Fi subnet.\n2. Tap 'Find My Router' to query hardware identity and install HotSpot in 1 tap.",
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textLight,
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
+                  // Optional IP / Credentials toggle
+                  InkWell(
+                    onTap: () => setState(() => _showCustomSettings = !_showCustomSettings),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _showCustomSettings ? Icons.keyboard_arrow_up_rounded : Icons.tune_rounded,
+                            size: 16,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _showCustomSettings ? "Hide Custom Gateway IP" : "Custom Gateway IP & Credentials",
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  if (_showCustomSettings) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _ipCtrl,
+                            decoration: const InputDecoration(
+                              labelText: "Gateway IP",
+                              hintText: "192.168.88.1",
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _userCtrl,
+                            decoration: const InputDecoration(
+                              labelText: "Username",
+                              hintText: "admin",
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _passCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: "Password (leave empty if fresh)",
+                        hintText: "••••••••",
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -254,7 +425,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                                       ),
                               ),
                             )
-                          else
+                          else ...[
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -278,6 +449,30 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => context.push(AppRouter.routerDiagnostics),
+                                    icon: const Icon(Icons.speed_rounded, size: 16),
+                                    label: const Text("View Diagnostics", style: TextStyle(fontSize: 12)),
+                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => context.go(AppRouter.dashboard),
+                                    style: OutlinedButton.styleFrom(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                    child: const Text("Dashboard", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -287,7 +482,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
             ),
             const SizedBox(height: 20),
 
-            // ─── OPTION 2: CAMERA BARCODE SCAN (APPROACH 2) ───
+            // ─── OPTION 2: CAMERA BARCODE SCAN ───
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
@@ -319,7 +514,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                       ),
                       Text(
                         "Cloud Box Provisioning",
-                        style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                        style: TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -334,7 +529,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    "Point your phone camera at the router serial barcode on the packaging box. The router will configure itself when plugged into internet.",
+                    "Point camera at the serial barcode on your MikroTik box. Connects automatically through secure cloud tunnel.",
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textLight,
@@ -342,7 +537,6 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -369,6 +563,98 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                       ),
                     ),
                   ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // ─── OPTION 3: EXPORT MIKROTIK SETUP SCRIPT (.RSC) ───
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: AppColors.containerBg,
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text(
+                        "OPTION 03",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      Text(
+                        "WinBox / Terminal Script",
+                        style: TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Export .rsc Setup Script",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    "Generate and copy the pre-configured RouterOS script with walled-garden rules and DNS captive profiles.",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textLight,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _exportingScript ? null : _handleExportScript,
+                      icon: _exportingScript
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.code_rounded, color: AppColors.primary, size: 20),
+                      label: Text(
+                        _exportingScript ? "Generating..." : "Copy Setup Script (.rsc)",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                  if (_exportedScript != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.cardBorder),
+                      ),
+                      child: Text(
+                        _exportedScript!,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

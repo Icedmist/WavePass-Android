@@ -19,7 +19,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   int _todaySales = 0;
   String _venueName = 'Your Venue';
   String _venueSub = '—';
-  bool _hasRouter = true;
+  bool _hasRouter = false;
+  bool _routerOnline = false;
+  String _routerName = '';
+  String _routerEndpoint = '';
   bool _loadingStats = true;
   List<Map<String, dynamic>> _recentSales = [];
 
@@ -69,12 +72,48 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
         if (stats['sessions'] != null) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
       } catch (_) {}
-      // check router
+      // check router status truthfully from database and hardware health
       try {
         final venueForRouter = venue ?? await SupabaseService.instance.getPrimaryVenue();
         if (venueForRouter != null) {
-          final res = await SupabaseService.instance.client.from('Router').select('id').eq('venueId', venueForRouter['id']).limit(1);
-          setState(() => _hasRouter = (res as List).isNotEmpty);
+          final res = await SupabaseService.instance.client
+              .from('Router')
+              .select('id, name, endpoint, status, connectionMode, lastSeen')
+              .eq('venueId', venueForRouter['id'])
+              .limit(1);
+          final list = res as List;
+          if (list.isNotEmpty) {
+            final r = list.first as Map<String, dynamic>;
+            final rStatus = r['status']?.toString() ?? 'OFFLINE';
+            final rId = r['id']?.toString();
+            final isOnline = rStatus == 'ONLINE';
+            if (mounted) {
+              setState(() {
+                _hasRouter = true;
+                _routerName = r['name']?.toString() ?? 'MikroTik Gateway';
+                _routerEndpoint = r['endpoint']?.toString() ?? '';
+                _routerOnline = isOnline;
+              });
+            }
+            if (rId != null) {
+              WavePassApi.instance.getRouterHealth(rId).then((health) {
+                if (mounted && (health['status'] != null || health['reachable'] != null)) {
+                  setState(() {
+                    _routerOnline = health['status'] == 'ONLINE' || health['reachable'] == true;
+                  });
+                }
+              }).catchError((_) {});
+            }
+          } else {
+            if (mounted) {
+              setState(() {
+                _hasRouter = false;
+                _routerOnline = false;
+                _routerName = '';
+                _routerEndpoint = '';
+              });
+            }
+          }
         }
       } catch (_) {}
     } finally {
@@ -160,36 +199,68 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             tooltip: "Admin Control",
             onPressed: () => context.go(AppRouter.admin),
           ),
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.containerBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.cardBorder),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.accentGreen,
-                    shape: BoxShape.circle,
-                  ),
+          InkWell(
+            onTap: () {
+              if (_hasRouter) {
+                context.push(AppRouter.routerDiagnostics);
+              } else {
+                context.push(AppRouter.routerSetup);
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              margin: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _routerOnline
+                    ? AppColors.accentGreen.withValues(alpha: 0.1)
+                    : _hasRouter
+                        ? AppColors.accentRed.withValues(alpha: 0.1)
+                        : Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _routerOnline
+                      ? AppColors.accentGreen.withValues(alpha: 0.3)
+                      : _hasRouter
+                          ? AppColors.accentRed.withValues(alpha: 0.3)
+                          : Colors.orange.withValues(alpha: 0.3),
                 ),
-                const SizedBox(width: 6),
-                const Text(
-                  "ONLINE",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accentGreen,
-                    fontFamily: 'monospace',
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _routerOnline
+                          ? AppColors.accentGreen
+                          : _hasRouter
+                              ? AppColors.accentRed
+                              : Colors.orange,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    _routerOnline
+                        ? "ONLINE"
+                        : _hasRouter
+                            ? "OFFLINE"
+                            : "NO ROUTER",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: _routerOnline
+                          ? AppColors.accentGreen
+                          : _hasRouter
+                              ? AppColors.accentRed
+                              : Colors.orange.shade800,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -340,49 +411,100 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 ),
                 const SizedBox(width: 12),
 
-                // STAT 2: ROUTER PING
+                // STAT 2: ROUTER CONNECTIVITY STATUS (REAL HARDWARE STATE)
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppColors.cardBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
+                  child: InkWell(
+                    onTap: () {
+                      if (_hasRouter) {
+                        context.push(AppRouter.routerDiagnostics);
+                      } else {
+                        context.push(AppRouter.routerSetup);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: _routerOnline
+                              ? AppColors.accentGreen.withValues(alpha: 0.3)
+                              : _hasRouter
+                                  ? AppColors.accentRed.withValues(alpha: 0.3)
+                                  : AppColors.cardBorder,
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          "ROUTER SPEED",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textLight,
-                            letterSpacing: 0.5,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          "18ms",
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "MIKROTIK ROUTER",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textLight,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: _routerOnline
+                                      ? AppColors.accentGreen
+                                      : _hasRouter
+                                          ? AppColors.accentRed
+                                          : Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          "Response latency",
-                          style: TextStyle(fontSize: 11, color: AppColors.textLight),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            _routerOnline
+                                ? "ONLINE"
+                                : _hasRouter
+                                    ? "OFFLINE"
+                                    : "UNLINKED",
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: _routerOnline
+                                  ? AppColors.accentGreen
+                                  : _hasRouter
+                                      ? AppColors.accentRed
+                                      : Colors.orange.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _routerOnline
+                                ? (_routerName.isNotEmpty
+                                    ? (_routerEndpoint.isNotEmpty
+                                        ? "$_routerName • ${_routerEndpoint.replaceAll('http://', '').replaceAll('https://', '')}"
+                                        : "$_routerName • Connected")
+                                    : "RouterOS • Connected")
+                                : _hasRouter
+                                    ? "Tap to check health"
+                                    : "Tap to pair router",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

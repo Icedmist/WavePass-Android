@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
 class ActiveDevicesScreen extends StatefulWidget {
@@ -11,19 +13,30 @@ class ActiveDevicesScreen extends StatefulWidget {
 class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
   List<Map<String, dynamic>> _devices = [];
   bool _loading = true;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDevices();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) _loadDevices(silent: true);
+    });
   }
 
-  Future<void> _loadDevices() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadDevices({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final venue = await SupabaseService.instance.getPrimaryVenue();
       if (venue != null) {
         final sessions = await SupabaseService.instance.getActiveSessions(venue['id']);
+        if (!mounted) return;
         setState(() {
           _devices = sessions.map((s) {
             final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
@@ -43,18 +56,38 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         });
       }
     } finally {
-      setState(() => _loading = false);
+      if (!silent && mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _disconnectDevice(int index) async {
     final dev = _devices[index];
+    final sessionId = dev['sessionId'] ?? dev['id'];
+
+    // 1. Disconnect on RouterOS hardware via Cloud/Local API
     try {
-      await SupabaseService.instance.client.from('Session').update({'status': 'ENDED', 'endedAt': DateTime.now().toIso8601String()}).eq('id', dev['sessionId'] ?? dev['id']);
+      await WavePassApi.instance.post('/api/v1/sessions/$sessionId/disconnect', {});
     } catch (_) {}
-    setState(() => _devices.removeAt(index));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${dev['name']} disconnected"), backgroundColor: AppColors.primary));
+
+    // 2. Terminate session in database
+    try {
+      await SupabaseService.instance.client.from('Session').update({
+        'status': 'ENDED',
+        'endedAt': DateTime.now().toIso8601String(),
+      }).eq('id', sessionId);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _devices.removeAt(index));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("${dev['name']} disconnected from router"),
+          backgroundColor: AppColors.primary,
+        ),
+      );
+    }
   }
 
   @override

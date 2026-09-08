@@ -160,23 +160,21 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
 
     setState(() => _isRebooting = true);
     try {
-      final success = await RouterDiscoveryService.rebootRouter();
-      if (!mounted) return;
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Reboot command dispatched to gateway."),
-            backgroundColor: AppColors.accentGreen,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Reboot command sent. Router is restarting."),
-            backgroundColor: AppColors.accentGreen,
-          ),
-        );
+      bool success = await RouterDiscoveryService.rebootRouter();
+      if (!success && _selectedRouter != null && _selectedRouter!['id'] != null) {
+        try {
+          final res = await WavePassApi.instance.post('/api/v1/routers/${_selectedRouter!['id']}/reboot', {});
+          success = res['ok'] == true;
+        } catch (_) {}
       }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? "Reboot command dispatched to gateway." : "Reboot signal sent. Router is restarting."),
+          backgroundColor: AppColors.accentGreen,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

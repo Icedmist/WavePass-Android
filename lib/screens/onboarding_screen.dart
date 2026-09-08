@@ -226,80 +226,110 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ),
                       );
                     }
-                    return Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(28),
-                        decoration: BoxDecoration(
-                          color: AppColors.containerBg,
-                          borderRadius: BorderRadius.circular(32),
-                          border: Border.all(color: AppColors.cardBorder),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: AppColors.cardBorder),
-                              ),
-                              child: Icon(
-                                slide['icon'] as IconData,
-                                size: 28,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              slide['tag'] as String,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                fontFamily: 'monospace',
-                                color: AppColors.accentGreen,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              slide['title'] as String,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.primary,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              slide['subtitle'] as String,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textLight,
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppColors.cardBorder),
-                              ),
-                              child: Text(
-                                slide['badge'] as String,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
+                    final title = index == 5 && _venueType != 'Café' ? 'Sell Passes for Your $_venueType' : slide['title'] as String;
+                    final subtitle = index == 1 ? 'For your $_venueType, setup takes 5 seconds — no typing.' : slide['subtitle'] as String;
+                    return Semantics(
+                      label: '${slide['title']} — ${slide['subtitle']}',
+                      button: false,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(28),
+                          decoration: BoxDecoration(
+                            color: AppColors.containerBg,
+                            borderRadius: BorderRadius.circular(32),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(color: AppColors.cardBorder),
+                                ),
+                                child: Icon(
+                                  slide['icon'] as IconData,
+                                  size: 28,
                                   color: AppColors.primary,
                                 ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 24),
+                              Text(
+                                slide['tag'] as String,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  fontFamily: 'monospace',
+                                  color: AppColors.accentGreen,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.primary,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                subtitle,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textLight,
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              if (index == 3 || index == 4)
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    HapticFeedback.lightImpact();
+                                    showDialog(context: context, builder: (c) => AlertDialog(title: const Text('Demo Scan'), content: const Text('Camera would open here — demo captured serial WP-SCAN-1234'), actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Got it'))]));
+                                  },
+                                  icon: const Icon(Icons.camera_alt_rounded, size: 16),
+                                  label: const Text('Try scan demo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                ),
+                              if (index == 6)
+                                Container(
+                                  margin: const EdgeInsets.only(top: 12),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)),
+                                  child: Row(children: [
+                                    const Icon(Icons.trending_up_rounded, size: 18, color: AppColors.accentGreen),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text('Venues like your $_venueType earn ₦24k/day', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                                      const Text('Live counter • 1,240 venues', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                                    ])),
+                                  ]),
+                                ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: AppColors.cardBorder),
+                                ),
+                                child: Text(
+                                  slide['badge'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );

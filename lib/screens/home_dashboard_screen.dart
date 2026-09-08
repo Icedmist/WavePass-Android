@@ -59,7 +59,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           setState(() => _activeUsers = sessions.length);
         } catch (_) {}
         try {
-          final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid!).order('createdAt', ascending: false).limit(5);
+          final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
           setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
         } catch (_) {}
       }
@@ -149,6 +149,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             icon: const Icon(Icons.help_outline, color: AppColors.primary, size: 20),
             tooltip: "How to Use",
             onPressed: () => context.push(AppRouter.howToUse),
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined, color: AppColors.primary, size: 22),
+            tooltip: "Account Center & Sign Out",
+            onPressed: () => context.push(AppRouter.account),
           ),
           IconButton(
             icon: const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 22),

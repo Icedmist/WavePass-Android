@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AccountCenterScreen extends StatelessWidget {
   const AccountCenterScreen({super.key});
@@ -34,7 +35,13 @@ class AccountCenterScreen extends StatelessWidget {
           _row(context, 'Privacy Policy', Icons.privacy_tip_rounded, () => context.push(AppRouter.privacy)),
         ]),
         _section('SESSION', [
-          _row(context, 'Sign Out', Icons.logout_rounded, () async { await SupabaseService.instance.signOut(); if (context.mounted) context.go(AppRouter.login); }, danger: true),
+          _row(context, 'Sign Out', Icons.logout_rounded, () async {
+            await SupabaseService.instance.signOut();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('sb-user-email');
+            await prefs.remove('admin_token');
+            if (context.mounted) context.go(AppRouter.login);
+          }, danger: true),
         ]),
         const SizedBox(height: 12),
         const Center(child: Text('Built by Nexa Digital Nexus Point • techwithnexa.com', style: TextStyle(fontSize: 11, color: AppColors.textLight))),

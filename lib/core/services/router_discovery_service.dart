@@ -56,18 +56,33 @@ class RouterDiscoveryService {
         );
       }
     } catch (e) {
-      // Return demo router representation when running in mock / simulator mode
-      return DiscoveredRouter(
-        ip: "192.168.88.1",
-        identity: "MikroTik hAP ax² Gateway",
-        version: "RouterOS v7.15.2",
-        cpuLoad: "4%",
-        uptime: "14d 6h",
-        totalMemory: "1024 MB",
-        isReachable: true,
-      );
+      // Unreachable or not connected to router Wi-Fi subnet
+      return null;
     }
     return null;
+  }
+
+  // Reboot router via RouterOS REST API over local subnet
+  static Future<bool> rebootRouter({
+    String ip = "192.168.88.1",
+    String username = "admin",
+    String password = "",
+  }) async {
+    try {
+      final client = http.Client();
+      final uri = Uri.parse("http://$ip/rest/system/reboot");
+      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+      final response = await client.post(
+        uri,
+        headers: {
+          'Authorization': authHeader,
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
   }
 
   // Approach 2: Provision via Box Barcode Serial Number

@@ -162,16 +162,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  Future<void> _finishOnboarding() async {
-    if (_currentPage == _slides.length - 1) {
-      // last card is venue creation — require it
-      await _createVenueAndFinish();
-      return;
-    }
+  Future<void> _goToLogin() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
     if (!mounted) return;
     context.go(AppRouter.login);
+  }
+
+  Future<void> _goToSignup() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('has_seen_onboarding', true);
+    if (!mounted) return;
+    context.go(AppRouter.signup);
+  }
+
+  Future<void> _finishOnboarding() async {
+    if (_currentPage == _slides.length - 1 && _venueName.text.trim().isNotEmpty) {
+      await _createVenueAndFinish();
+      return;
+    }
+    await _goToLogin();
   }
 
   @override
@@ -183,7 +193,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: [
-              // Top Skip Row
+              // Top Action Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -209,16 +219,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ],
                   ),
-                  TextButton(
-                    onPressed: _finishOnboarding,
-                    child: const Text(
-                      "Skip",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textLight,
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: _goToLogin,
+                        child: const Text(
+                          "Sign In",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
                       ),
-                    ),
+                      TextButton(
+                        onPressed: _goToSignup,
+                        child: const Text(
+                          "Sign Up",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -280,7 +305,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   child: _pickedLogo != null
                                       ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(_pickedLogo!.path), fit: BoxFit.cover, width: double.infinity))
                                       : _uploadedLogoUrl != null
-                                          ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_uploadedLogoUrl!, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
+                                          ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_uploadedLogoUrl!, fit: BoxFit.cover, width: double.infinity, errorBuilder: (ctx, err, stack) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
                                           : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.upload_rounded, color: AppColors.primary), SizedBox(height: 4), Text('Tap to upload logo', style: TextStyle(fontSize: 11, color: AppColors.textLight))])),
                                 ),
                               ),
@@ -294,6 +319,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ],
                             const SizedBox(height: 12),
                             Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.cardBorder)), child: const Text('After venue creation, add at least one pricing plan (duration / per-GB) — required to go live.', style: TextStyle(fontSize: 11, color: AppColors.textLight))),
+                            const SizedBox(height: 14),
+                            Center(
+                              child: TextButton(
+                                onPressed: _goToLogin,
+                                child: const Text('Already have a venue? Sign In directly →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                              ),
+                            ),
                           ]),
                         ),
                       );
@@ -447,6 +479,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : Text(_currentPage == _slides.length - 1 ? "Create Venue →" : "Next →", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
                     ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("Existing operator? ", style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+                  GestureDetector(
+                    onTap: _goToLogin,
+                    child: const Text("Sign In", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                  ),
+                  const Text("  •  ", style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+                  GestureDetector(
+                    onTap: _goToSignup,
+                    child: const Text("Create Account", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
                   ),
                 ],
               ),

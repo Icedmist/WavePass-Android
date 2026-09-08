@@ -36,27 +36,28 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (!mounted) return;
 
     try {
+      final prefs = await SharedPreferences.getInstance();
       final user = SupabaseService.instance.currentUser;
-      if (user != null) {
+      final adminToken = prefs.getString('admin_token');
+      if (user != null || (adminToken != null && adminToken.isNotEmpty)) {
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;
       }
+      final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+      if (!mounted) return;
+      if (!hasSeenOnboarding) {
+        context.go(AppRouter.onboarding);
+      } else {
+        context.go(AppRouter.login);
+      }
+      return;
     } catch (_) {
       // Supabase not yet initialized (e.g. In unit tests)
     }
 
     if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-
-    if (!mounted) return;
-    if (!hasSeenOnboarding) {
-      context.go(AppRouter.onboarding);
-    } else {
-      context.go(AppRouter.login);
-    }
+    context.go(AppRouter.login);
   }
 
   @override

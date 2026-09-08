@@ -86,7 +86,29 @@ class _WalletScreenState extends State<WalletScreen> {
   String get _acctNumber => _virtualAccount?['accountNumber']?.toString() ?? '—';
   String get _acctName => _virtualAccount?['accountName']?.toString() ?? '—';
 
+  bool get _isPaystackConfigured {
+    if (_virtualAccount == null) return false;
+    final meta = _virtualAccount?['metadata'];
+    if (meta is Map && (meta['mock'] == true || meta['mock']?.toString() == 'true')) {
+      return false;
+    }
+    final bank = (_virtualAccount?['bankName']?.toString() ?? '').toLowerCase();
+    if (bank.contains('mock')) return false;
+    final acct = _virtualAccount?['accountNumber']?.toString() ?? '';
+    if (acct.isEmpty || acct == '—') return false;
+    return true;
+  }
+
   Future<void> _requestCashout() async {
+    if (!_isPaystackConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wallet Not Available: Paystack is not configured on the server.'),
+          backgroundColor: AppColors.accentRed,
+        ),
+      );
+      return;
+    }
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) {
@@ -176,6 +198,15 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _registerBank() async {
+    if (!_isPaystackConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wallet Not Available: Paystack is not configured on the server.'),
+          backgroundColor: AppColors.accentRed,
+        ),
+      );
+      return;
+    }
     final form = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) {
@@ -319,22 +350,86 @@ class _WalletScreenState extends State<WalletScreen> {
                           child: Text(_error!, style: const TextStyle(color: AppColors.accentRed)),
                         ),
                       ),
-                    // DEDICATED VIRTUAL ACCOUNT
-                    Container(
-                      padding: const EdgeInsets.all(22),
-                      decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(26)),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('VENUE VIRTUAL ACCOUNT', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: Colors.white54)),
-                        const SizedBox(height: 12),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(_acctNumber, style: const TextStyle(fontSize: 26, letterSpacing: 1.5, fontFamily: 'monospace', fontWeight: FontWeight.w900, color: Colors.white)),
+                    // VIRTUAL ACCOUNT / WALLET STATUS
+                    if (!_isPaystackConfigured)
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: AppColors.containerBg,
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(color: AppColors.cardBorder),
                         ),
-                        const SizedBox(height: 4),
-                        Text(_acctName, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ]),
-                    ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accentRed.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.accentRed, size: 24),
+                                ),
+                                const SizedBox(width: 14),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Wallet Not Available',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Paystack is not configured',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.accentRed,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Dedicated Virtual Accounts (DVA) and automated bank payouts require active Paystack API credentials on the server. Please configure PAYSTACK_SECRET_KEY in the backend environment to activate venue wallets.',
+                              style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(26)),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('VENUE VIRTUAL ACCOUNT', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: Colors.white54)),
+                              if (_virtualAccount?['bankName'] != null)
+                                Text(_virtualAccount!['bankName'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70)),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(_acctNumber, style: const TextStyle(fontSize: 26, letterSpacing: 1.5, fontFamily: 'monospace', fontWeight: FontWeight.w900, color: Colors.white)),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(_acctName, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ]),
+                      ),
                     const SizedBox(height: 16),
                     // BALANCE
                     Container(
@@ -348,13 +443,29 @@ class _WalletScreenState extends State<WalletScreen> {
                         Wrap(spacing: 12, runSpacing: 12, children: [
                           SizedBox(
                             width: (MediaQuery.of(context).size.width - 52) / 2,
-                            child: FilledButton.icon(onPressed: _submitting ? null : _registerBank, icon: const Icon(Icons.account_balance, size: 18), label: const FittedBox(child: Text('Add Bank'))),
+                            child: FilledButton.icon(
+                              onPressed: (_submitting || !_isPaystackConfigured) ? null : _registerBank,
+                              icon: const Icon(Icons.account_balance, size: 18),
+                              label: const FittedBox(child: Text('Add Bank')),
+                            ),
                           ),
                           SizedBox(
                             width: (MediaQuery.of(context).size.width - 52) / 2,
-                            child: FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: AppColors.accentGreen), onPressed: _submitting ? null : _requestCashout, icon: const Icon(Icons.currency_exchange, size: 18), label: const FittedBox(child: Text('Cash Out'))),
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: AppColors.accentGreen),
+                              onPressed: (_submitting || !_isPaystackConfigured) ? null : _requestCashout,
+                              icon: const Icon(Icons.currency_exchange, size: 18),
+                              label: const FittedBox(child: Text('Cash Out')),
+                            ),
                           ),
                         ]),
+                        if (!_isPaystackConfigured) ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Wallet actions are disabled until Paystack is configured on the backend server.',
+                            style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                          ),
+                        ],
                       ]),
                     ),
                   const SizedBox(height: 20),

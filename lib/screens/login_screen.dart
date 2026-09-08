@@ -43,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('sb-user-email', email);
+        if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;
       }

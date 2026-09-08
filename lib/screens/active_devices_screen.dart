@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
-import '../core/widgets/empty_state.dart';
 
 class ActiveDevicesScreen extends StatefulWidget {
   const ActiveDevicesScreen({super.key});
@@ -29,7 +28,6 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
           _devices = sessions.map((s) {
             final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
             final remaining = expiresAt != null ? expiresAt.difference(DateTime.now()).inMinutes : 0;
-            final total = s['plan'] != null ? 60 : 60;
             final prog = expiresAt != null ? (remaining / 1440).clamp(0.0, 1.0) : 0.5;
             return {
               'id': s['id'],

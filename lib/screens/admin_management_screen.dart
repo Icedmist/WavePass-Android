@@ -8,10 +8,6 @@ import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
-import 'how_to_use_screen.dart';
-import 'login_screen.dart';
-import 'privacy_screen.dart';
-import 'terms_screen.dart';
 
 class AdminManagementScreen extends StatefulWidget {
   const AdminManagementScreen({super.key});
@@ -200,7 +196,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                         child: _pickedLogo != null
                             ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(_pickedLogo!.path), fit: BoxFit.cover, width: double.infinity))
                             : _logoCtrl.text.isNotEmpty
-                                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_logoCtrl.text, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
+                                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_logoCtrl.text, fit: BoxFit.cover, width: double.infinity, errorBuilder: (c, err, stack) => const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textLight))))
                                 : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.upload_rounded, color: AppColors.primary), SizedBox(height: 4), Text('Tap to upload logo', style: TextStyle(fontSize: 11, color: AppColors.textLight))])),
                       ),
                     ),
@@ -227,7 +223,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
               else if (_plans.isEmpty)
                 Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Column(children: [const Icon(Icons.wifi_off_rounded, size: 32, color: AppColors.textLight), const SizedBox(height: 8), const Text('No pricing yet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)), const Text('Add your first pass manually after setup — duration or per-GB.', style: TextStyle(fontSize: 11, color: AppColors.textLight), textAlign: TextAlign.center), const SizedBox(height: 12), ElevatedButton.icon(onPressed: () async { final ok = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const PlanConfiguratorSheet()); if (ok == true) _loadPlans(); }, icon: const Icon(Icons.add_rounded, size: 16), label: const Text('Create First Plan'))])),
               if (_plans.isNotEmpty)
-                ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _plans.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (c, i) {
+                ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _plans.length, separatorBuilder: (ctx, idx) => const SizedBox(height: 8), itemBuilder: (c, i) {
                   final p = _plans[i];
                   return Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.cardBorder)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)), Text(p['duration'], style: const TextStyle(fontSize: 11, color: AppColors.textLight))]), Row(children: [Text("₦${p['price']}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accentGreen)), const SizedBox(width: 8), IconButton(icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary), onPressed: () => _editPrice(i))])]));
                 }),

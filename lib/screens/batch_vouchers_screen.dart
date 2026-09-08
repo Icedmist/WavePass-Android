@@ -1,15 +1,17 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../core/services/supabase_service.dart';
-import '../core/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../core/constants/api_constants.dart';
+import '../core/services/supabase_service.dart';
+import '../core/services/wavepass_api.dart';
+import '../core/theme/app_theme.dart';
 
 class BatchVouchersScreen extends StatefulWidget {
   const BatchVouchersScreen({super.key});
@@ -35,30 +37,76 @@ class _SState extends State<BatchVouchersScreen> {
 
   Future<void> _loadVenues() async {
     try {
-      final v = await SupabaseService.instance.getPrimaryVenue();
-      if (v != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final storedVenueId = prefs.getString('venueId');
+      final storedVenueName = prefs.getString('venueName');
+
+      Map<String, dynamic>? venue;
+      try {
+        if (storedVenueId != null) {
+          venue = await WavePassApi.instance.getVenueBySubdomain(storedVenueId);
+        }
+      } catch (_) {}
+      try {
+        venue ??= await WavePassApi.instance.getDefaultVenue();
+      } catch (_) {}
+      venue ??= await SupabaseService.instance.getPrimaryVenue();
+
+      if (venue != null) {
+        final vId = venue['id']?.toString() ?? storedVenueId;
+        final vName = venue['name']?.toString() ?? storedVenueName ?? 'WavePass Venue';
+        final vMap = {'id': vId, 'name': vName, 'plans': venue['plans']};
         setState(() {
-          _venues = [v];
-          _selectedVenueId = v['id'];
+          _venues = [vMap];
+          _selectedVenueId = vId;
         });
-        _loadPlans(v['id']);
+        if (vId != null) {
+          await _loadPlans(vId, preloadedPlans: venue['plans'] as List<dynamic>?);
+        }
+      } else if (storedVenueId != null) {
+        final vMap = {'id': storedVenueId, 'name': storedVenueName ?? 'My Venue'};
+        setState(() {
+          _venues = [vMap];
+          _selectedVenueId = storedVenueId;
+        });
+        await _loadPlans(storedVenueId);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error loading venues: $e');
+    }
   }
 
-  Future<void> _loadPlans(String venueId) async {
-    final plans = await SupabaseService.instance.getActivePlans(venueId);
-    setState(() {
-      _plans = plans;
-      if (plans.isNotEmpty) _selectedPlanId = plans.first['id'];
-    });
+  Future<void> _loadPlans(String venueId, {List<dynamic>? preloadedPlans}) async {
+    List<Map<String, dynamic>> plans = [];
+    if (preloadedPlans != null && preloadedPlans.isNotEmpty) {
+      plans = List<Map<String, dynamic>>.from(preloadedPlans);
+    } else {
+      try {
+        plans = await SupabaseService.instance.getActivePlans(venueId);
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _plans = plans;
+        if (plans.isNotEmpty) {
+          _selectedPlanId = plans.first['id']?.toString();
+        } else {
+          _selectedPlanId = null;
+        }
+      });
+    }
   }
 
   Future<void> _generateBatch() async {
-    if (_selectedVenueId == null || _selectedPlanId == null) return;
+    if (_selectedVenueId == null || _selectedPlanId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a venue and pricing plan before generating vouchers.')),
+      );
+      return;
+    }
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (qty < 1 || qty > 500) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quantity must be 1-500')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quantity must be between 1 and 500')));
       return;
     }
     setState(() => _loading = true);
@@ -66,17 +114,37 @@ class _SState extends State<BatchVouchersScreen> {
       final res = await http.post(
         Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/vouchers/batches'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'venueId': _selectedVenueId, 'planId': _selectedPlanId, 'quantity': qty}),
-      );
-      if (res.statusCode >= 400) throw Exception('Failed: ${res.body}');
+        body: jsonEncode({
+          'venueId': _selectedVenueId,
+          'planId': _selectedPlanId,
+          'quantity': qty,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (res.statusCode >= 400) {
+        throw Exception('Server error ${res.statusCode}: ${res.body}');
+      }
       final data = jsonDecode(res.body);
       final list = (data is List ? data : data['codes'] ?? data) as List;
-      setState(() => _generated = list.map((e) => e is String ? {'code': e} : Map<String, dynamic>.from(e)).toList());
-      // also auto-generate PDF preview
+      setState(() {
+        _generated = list.map((e) => e is String ? {'code': e} : Map<String, dynamic>.from(e)).toList();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Generated ${_generated.length} vouchers successfully!'),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.accentRed));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Generation failed: $e'), backgroundColor: AppColors.accentRed),
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -164,7 +232,10 @@ class _SState extends State<BatchVouchersScreen> {
               const Text('Select venue & plan, set quantity (1-500), generate codes, then save as PDF to device.', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _selectedVenueId,
+                key: ValueKey('venue_$_selectedVenueId'),
+                initialValue: (_selectedVenueId != null && _venues.any((v) => v['id'] == _selectedVenueId))
+                    ? _selectedVenueId
+                    : null,
                 decoration: const InputDecoration(labelText: 'Venue', border: OutlineInputBorder()),
                 items: _venues.map((v) => DropdownMenuItem(value: v['id'] as String, child: Text(v['name'] ?? v['id']))).toList(),
                 onChanged: (val) {
@@ -174,7 +245,10 @@ class _SState extends State<BatchVouchersScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _selectedPlanId,
+                key: ValueKey('plan_$_selectedPlanId'),
+                initialValue: (_selectedPlanId != null && _plans.any((p) => p['id'] == _selectedPlanId))
+                    ? _selectedPlanId
+                    : null,
                 decoration: const InputDecoration(labelText: 'Plan', border: OutlineInputBorder()),
                 items: _plans.map((p) => DropdownMenuItem(value: p['id'] as String, child: Text('${p['name']} — ₦${(p['priceMinor'] as int) ~/ 100}'))).toList(),
                 onChanged: (val) => setState(() => _selectedPlanId = val),

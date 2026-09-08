@@ -125,4 +125,29 @@ class WavePassApi {
   Future<Map<String, dynamic>> adminStats() {
     return _get('/api/v1/admin/stats');
   }
+
+  // ── Router endpoints ──────────────────────────────────────────────────
+  Future<List<dynamic>> listRouters({String? venueId}) async {
+    final query = venueId != null ? '?venueId=$venueId' : '';
+    final res = await http.get(Uri.parse('$_base/api/v1/routers$query'), headers: _jsonHeaders).timeout(_timeout);
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is List) return decoded;
+      if (decoded is Map && decoded['data'] is List) return decoded['data'];
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getRouterHealth(String routerId) {
+    return _get('/api/v1/routers/$routerId/health');
+  }
+
+  Future<Map<String, dynamic>> testRouter(String routerId) {
+    return _post('/api/v1/routers/$routerId/test', {});
+  }
+
+  Future<String> getRouterProvisionScript(String routerId) async {
+    final res = await http.get(Uri.parse('$_base/api/v1/routers/$routerId/provision.rsc')).timeout(_timeout);
+    return res.body;
+  }
 }

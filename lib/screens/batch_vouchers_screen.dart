@@ -74,10 +74,7 @@ class _SState extends State<BatchVouchersScreen> {
       setState(() => _generated = list.map((e) => e is String ? {'code': e} : Map<String, dynamic>.from(e)).toList());
       // also auto-generate PDF preview
     } catch (e) {
-      // fallback mock codes for offline
-      final mock = List.generate(qty, (i) => {'code': 'WP-${(1000 + i).toString().padLeft(4, '0')}-${(2000 + i).toString().padLeft(4, '0')}'});
-      setState(() => _generated = mock);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Offline mock: $e'), backgroundColor: AppColors.warmSand));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.accentRed));
     } finally {
       setState(() => _loading = false);
     }

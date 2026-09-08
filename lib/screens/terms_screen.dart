@@ -14,7 +14,7 @@ class TermsScreen extends StatelessWidget {
     ('07 / SUSPENSION', 'We may suspend or terminate accounts or sessions for Terms violation, fraud, or abuse, with notice where feasible. Venue owners may also locally disconnect devices from the Active Devices screen.'),
     ('08 / LIABILITY', 'To the extent permitted by law, WavePass/Nexa liability is limited to the amount you paid for the active pass. We are not liable for indirect loss, loss of data, or third-party content accessed over the Wi-Fi.'),
     ('09 / CHANGES', 'We may update these Terms with 30 days notice in-app and on /terms. Continued use after the effective date constitutes acceptance. Material pricing changes do not affect already-paid passes.'),
-    ('10 / CONTACT', 'Questions: talk2icedmist@gmail.com • https://techwithnexa.com • In-app: Admin → Help. Governing law: Federal Republic of Nigeria.'),
+    ('10 / CONTACT', 'Questions: support@nexawavepass.com • https://techwithnexa.com • In-app: Admin → Help. Governing law: Federal Republic of Nigeria.'),
   ];
 
   @override

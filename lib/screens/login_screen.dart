@@ -12,7 +12,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController(text: 'talk2icedmist@gmail.com');
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
@@ -40,9 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
         context.go(AppRouter.dashboard);
       }
     } catch (e) {
-      // In offline / simulator mode, allow demo login
       if (!mounted) return;
-      context.go(AppRouter.dashboard);
+      setState(() => _errorMessage = e.toString().contains('Invalid') ? 'Invalid credentials' : 'Login failed: $e');
     } finally {
       if (mounted) {
         setState(() {

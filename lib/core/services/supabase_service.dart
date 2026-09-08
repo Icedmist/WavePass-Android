@@ -43,41 +43,10 @@ class SupabaseService {
     }
   }
 
-  // Plans queries
+  // Plans queries — no mock fallback, returns empty on error for prod parity
   Future<List<Map<String, dynamic>>> getActivePlans(String venueId) async {
-    try {
-      final res = await client
-          .from('Plan')
-          .select('*')
-          .eq('venueId', venueId)
-          .eq('active', true)
-          .order('priceMinor', ascending: true);
-      return List<Map<String, dynamic>>.from(res);
-    } catch (e) {
-      return [
-        {
-          'id': 'plan_1hr',
-          'name': '1 Hour Quick Pass',
-          'priceMinor': 20000,
-          'durationSeconds': 3600,
-          'rateLimit': 'profile_1h',
-        },
-        {
-          'id': 'plan_12hr',
-          'name': '12 Hour Work Pass',
-          'priceMinor': 80000,
-          'durationSeconds': 43200,
-          'rateLimit': 'profile_12h',
-        },
-        {
-          'id': 'plan_24hr',
-          'name': '24 Hour All-Day Pass',
-          'priceMinor': 150000,
-          'durationSeconds': 86400,
-          'rateLimit': 'profile_24h',
-        },
-      ];
-    }
+    final res = await client.from('Plan').select('*').eq('venueId', venueId).eq('active', true).order('priceMinor', ascending: true);
+    return List<Map<String, dynamic>>.from(res);
   }
 
   // Active sessions query

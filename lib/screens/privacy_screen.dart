@@ -7,14 +7,14 @@ class PrivacyScreen extends StatelessWidget {
   static const _sections = [
     ('01 / WHAT WE COLLECT', 'Only what we need: device MAC/IP to bind your pass, Paystack-provided email for receipt (optional), and venue transaction metadata (plan, price, duration, voucher hash). We do not read browsing history, files, or app data. Card/bank numbers never touch our servers.'),
     ('02 / WHY WE USE IT', 'MAC/IP verifies you have an active pass (passwordless HotSpot). Email triggers Paystack receipts. Venue aggregates (revenue, ARPU, active sessions) are computed server-side from Payment/Order — not from personal profiles.'),
-    ('03 / RETENTION', 'Sessions and audit logs roll after expiry. Fulfilled payments and voucher hashes are retained 90 days for reconciliation, then anonymized. Unredeemed vouchers expire in 7 days. You can request deletion via the venue or talk2icedmist@gmail.com.'),
+    ('03 / RETENTION', 'Sessions and audit logs roll after expiry. Fulfilled payments and voucher hashes are retained 90 days for reconciliation, then anonymized. Unredeemed vouchers expire in 7 days. You can request deletion via the venue or support@nexawavepass.com.'),
     ('04 / SHARING', 'No sale or rental to advertisers. We share only with processors needed to operate: Paystack (payments, under their policy), secure encrypted database (at rest), and the venue\'s MikroTik router (local HotSpot user, no cloud browsing logs).'),
     ('05 / SECURITY', 'All hops are HTTPS/TLS 1.2+ with HMAC-SHA512 webhook verification, server-locked pricing, atomic idempotent fulfilment, and voucher SHA-256 hashing. Router API uses least-privilege credentials and Walled Garden for payments only.'),
     ('06 / COOKIES & TRACKING', 'Web portal uses only essential cookies for auth and MAC prefill (?mac=). No third-party ad trackers. Mobile app uses secure local storage for onboarding flag and session only.'),
-    ('07 / YOUR RIGHTS', 'Access, correction, export, or deletion: email talk2icedmist@gmail.com with your venue and MAC. We respond within 30 days, subject to legal retention (e.g., payment audit).'),
+    ('07 / YOUR RIGHTS', 'Access, correction, export, or deletion: email support@nexawavepass.com with your venue and MAC. We respond within 30 days, subject to legal retention (e.g., payment audit).'),
     ('08 / CHILDREN', 'Not directed to children under 13. Venues must obtain guardian consent where required by local law before issuing passes to minors.'),
     ('09 / INTERNATIONAL', 'Data is hosted in secure cloud and processed in Nigeria (venues). Paystack transfers are NGN-only. By using WavePass, you consent to this processing.'),
-    ('10 / CONTACT', 'Controller: Nexa Digital Nexus Point (techwithnexa.com) • DPO: talk2icedmist@gmail.com. Updates posted here 30 days before effective date.'),
+    ('10 / CONTACT', 'Controller: Nexa Digital Nexus Point (techwithnexa.com) • DPO: support@nexawavepass.com. Updates posted here 30 days before effective date.'),
   ];
 
   @override

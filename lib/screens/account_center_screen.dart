@@ -17,7 +17,7 @@ class AccountCenterScreen extends StatelessWidget {
           ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.asset('assets/images/logo.png', width: 44, height: 44, fit: BoxFit.cover)),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(user?.email ?? 'talk2icedmist@gmail.com', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(user?.email ?? 'Venue Owner', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
             const Text('Venue Owner • WavePass Flagship', style: TextStyle(color: Colors.white70, fontSize: 11)),
             const SizedBox(height: 6),
             Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Text('ONLINE', style: TextStyle(color: AppColors.accentGreen, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'monospace'))),

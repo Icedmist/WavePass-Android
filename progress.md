@@ -6,6 +6,7 @@
 - **State Management & Routing**: `go_router` + `StatefulShellRoute` + `ValueNotifier`
 - **Backend Services**: NestJS Fastify API (`api.nexawavepass.com`) + Supabase PostgreSQL
 - **Static Analysis**: **0 warnings, 0 errors** (`flutter analyze` clean)
+- **Unit & Widget Tests**: **All tests passing** (`flutter test` clean)
 
 ---
 
@@ -30,21 +31,44 @@
 - [x] **Cloud Voucher Generation**: Wired passcode generation directly to backend `POST /api/v1/vouchers/batches` with `{ venueId, planId, quantity: 1 }`, ensuring generated codes exist in the database with corresponding SHA-256 hashes.
 - [x] **Robust Offline Fallback**: Generates deterministic alphanumeric fallback passes (`WP-XXXX-XXXX`) when internet connectivity is interrupted.
 - [x] **Index Safety**: Clamped plan selections against runtime plan lists, resolving `RangeError (index): Invalid value: Valid value range is empty: 0`.
-- [x] **ESC/POS Thermal Printing**: Built dynamic PDF receipt generation formatted for 58mm and 80mm thermal rolls via `package:printing` and `package:pdf`, respecting automated printing preferences.
+- [x] **ESC/POS Thermal Printing with QR Codes**: Built dynamic PDF receipt generation formatted for 58mm and 80mm thermal rolls via `package:printing` and `package:pdf`, embedding direct login QR codes (`pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: loginUrl)`).
+- [x] **Cashier Screen QR Display**: Added pure Flutter `QrCodeWidget` rendered via `package:barcode` and `CustomPainter` directly on the screen so customers can scan the cashier's phone to connect and log in instantly.
 
-### 4. High-Volume Batch Voucher Production (`batch_vouchers_screen.dart`)
+### 4. High-Volume Batch Voucher Production & Mikhmon Parity (`batch_vouchers_screen.dart`)
 - [x] **Multi-Source Data Loading**: Queries `WavePassApi.getDefaultVenue()` and Supabase to populate venues and active pricing tiers.
 - [x] **Reactive Dropdown Bindings**: Replaced static dropdown initial values with dynamic `ValueKey` bindings, ensuring dropdowns populate properly upon asynchronous loading.
 - [x] **Batch Generation (`POST /api/v1/vouchers/batches`)**: Generates 1 to 500 voucher codes in a single request.
-- [x] **PDF Export**: Compiles generated vouchers into tabular PDF reports, automatically saved to application and external download directories with direct file preview and sharing.
+- [x] **Customizable Generator Parameters (Mikhmon Style)**:
+  - Custom Voucher Prefix (e.g. `WP-`, `VIP-`, or venue initials).
+  - Configurable Code Length (4, 6, 8 characters).
+  - Configurable Character Sets: `Alphanumeric` (excluding ambiguous characters), `Numbers Only`, and `Uppercase Letters`.
+  - Mode Selection: `Voucher Code (Username = Password)` vs `Username & Password` (with separate generated passwords).
+- [x] **Printable Cutout Cards (A4 Grid Template)**:
+  - 2-column grid layout (8 cards per page) with dashed cut lines (`pw.BorderStyle.dashed`).
+  - Venue name header with `WI-FI TICKET` badge.
+  - Individual QR code per card encoding `http://$slug.nexawavepass.com/login?code=$code`.
+  - Plan name, price badge (`₦X`), and duration/data limit.
+  - Bold monospace credentials box (`VOUCHER: WP-XXXX` or dual `USER / PIN`).
+  - Guest connection instructions.
+- [x] **Audit Summary Table (A4)**: Clean tabular report for venue accounting and bookkeeping.
+- [x] **Real-Time Voucher Filter**: Instant search filter to find vouchers by code prefix or number.
+- [x] **One-Tap Clipboard Copy**: Tap any voucher code to copy with confirmation feedback.
 
-### 5. Real Router Diagnostics & Telemetry (`router_diagnostics_screen.dart`)
-- [x] **Removed Hardcoded Mockups**: Completely eliminated fake metrics (4% CPU, 842MB RAM, fake WAN IP).
-- [x] **Real Cloud Telemetry**: Fetches venue routers from `WavePassApi.listRouters(venueId)` and `WavePassApi.getDefaultVenue()`.
-- [x] **Live Ping Verification**: Integrated `POST /api/v1/routers/:id/test` and `GET /api/v1/routers/:id/health` with real-time status updates (`ONLINE` / `OFFLINE`).
-- [x] **Local Subnet Discovery**: Probes `http://192.168.88.1/rest/system/resource` via `RouterDiscoveryService` when connected to local router Wi-Fi to fetch real CPU load, RAM, and uptime.
-- [x] **RouterOS Provisioning Script**: Displays dynamic captive portal and walled garden setup scripts (`GET /api/v1/routers/:id/provision.rsc`) with one-tap clipboard copy.
-- [x] **Empty State**: Displays guided empty state directing operators to `/setup-router` when no gateway is configured.
+### 5. Zero-Failure MikroTik Router Setup (`router_setup_screen.dart`, `router_discovery_service.dart`)
+- [x] **Android 9+ Cleartext HTTP Traffic**: Added `android:usesCleartextTraffic="true"` and network permissions in `android/app/src/main/AndroidManifest.xml` so local subnet REST queries to `http://192.168.88.1` succeed in production release builds.
+- [x] **Automated 1-Tap RouterOS REST Provisioning**:
+  - Programmatically updates router system identity (`/rest/system/identity` -> `WavePass-$slug`).
+  - Creates/updates hotspot profile (`/rest/ip/hotspot/profile` -> DNS `$slug.nexawavepass.com`, login-by `http-chap,http-pap,mac-cookie`).
+  - Registers cloud walled garden domains (`/rest/ip/hotspot/walled-garden` -> `*.nexawavepass.com`, `*.paystack.co`, `*.supabase.co`).
+  - Ensures hotspot server is bound and enabled on interface `wlan1`.
+- [x] **Graceful Fallback**: If RouterOS REST API is disabled on older RouterOS v6 devices, the app automatically falls back to generating the copyable RouterOS `.rsc` provisioning script for Terminal.
+- [x] **Barcode Scanner Error Handling (`barcode_scanner_screen.dart`)**:
+  - Sanitizes serial numbers (`.trim().toUpperCase()`).
+  - Replaced swallowed exceptions with informative error dialogs and retry capability.
+  - Automatically resets `_isProcessing` state upon dismissal so the scanner remains responsive.
+- [x] **Active Hotspot Session Telemetry & Hardware Disconnect**:
+  - Added `fetchActiveHotspotUsers()` to query live client leases from `/rest/ip/hotspot/active`.
+  - Added `disconnectHotspotUser()` to instantly kick abusive or expired clients directly at the router hardware.
 
 ### 6. Real Thermal Printer Discovery & Setup (`printer_settings_screen.dart`)
 - [x] **Hardware Discovery**: Scans and lists actual paired Bluetooth and network printers using `Printing.listPrinters()`.
@@ -58,17 +82,19 @@
 - [x] **Action Guarding**: Disables "Add Bank" and "Cash Out" buttons and rejects execution if Paystack is unconfigured, preventing user confusion.
 - [x] **Password-Confirmed Cashout**: Operators verify their personal password to disburse venue funds via Paystack transfer.
 
-### 8. Static Analysis & Quality Assurance
-- [x] Fixed all unused imports, unused variables, and deprecated form field attributes.
-- [x] Resolved async BuildContext gaps with mounted checks.
-- [x] Ran `flutter analyze` — **0 warnings, 0 errors**.
-
-### 9. Stability Hardening, Loop Prevention & Bug Clearing
-- [x] **Voucher Clipboard Copy (`batch_vouchers_screen.dart`)**: Implemented functional `Clipboard.setData` and feedback snackbar for voucher codes (clearing previously empty `onTap` stub).
-- [x] **Socket Resource Leak Resolution (`router_discovery_service.dart`)**: Wrapped all `http.Client()` calls with `try-finally` to ensure `.close()` is called on every subnet probe and reboot command.
+### 8. Stability Hardening & Loop Prevention
+- [x] **Socket Resource Leak Resolution (`router_discovery_service.dart`)**: Wrapped all `http.Client()` calls with `try-finally` to ensure `.close()` is called on every subnet probe, active user query, and reboot command.
 - [x] **Subnet & Venue State Key Synchronization (`venue_state_service.dart`, `onboarding_screen.dart`)**: Fixed mismatch where venue ID was passed instead of subdomain slug, and synced active & legacy SharedPreferences keys across onboarding and session start.
-- [x] **Asynchronous State Hazards Cleared**: Resolved unmounted `setState()` across `home_dashboard_screen.dart`, `batch_vouchers_screen.dart`, `router_diagnostics_screen.dart`, `wallet_screen.dart`, `printer_settings_screen.dart`, and `admin_management_screen.dart`.
+- [x] **Asynchronous State Hazards Cleared**: Resolved unmounted `setState()` across all screens.
 - [x] **Auto-Refresh Loop Guard (`active_devices_screen.dart`)**: Added concurrency flag `_isRefreshing` to prevent overlapping 15-second timer requests during slow network conditions.
-- [x] **Navigation Shell Pop Protection (`active_devices_screen.dart`)**: Replaced raw `Navigator.pop()` with `canPop() ? pop() : context.go('/dashboard')` to prevent no-ops in the bottom nav shell.
-- [x] **Provision Dialog Stack Safety (`router_diagnostics_screen.dart`)**: Added `PopScope` and dialog state tracking to ensure dismissing the loading indicator never inadvertently pops the host screen.
+- [x] **Navigation Shell Pop Protection (`active_devices_screen.dart`)**: Replaced raw `Navigator.pop()` with `canPop() ? pop() : context.go('/dashboard')`.
+- [x] **Provision Dialog Stack Safety (`router_diagnostics_screen.dart`)**: Added `PopScope` and dialog state tracking.
 - [x] **Auth Gate Verification Loop Prevention (`signup_screen.dart`)**: Redirects to `/login` with an email confirmation prompt when session is null instead of redirecting to an unauthenticated dashboard.
+
+### 9. Multi-Repository Agent Workflow Protocol
+- [x] Created and merged `AGENT_WORKFLOW.md` across all four ecosystem repositories:
+  - `Icedmist/WavePass-Android` (PR #3)
+  - `Icedmist/WavePass-Backend` (PR #4)
+  - `Icedmist/WavePass-Web` (PR #2)
+  - `Icedmist/wavepass` (PR #2)
+- [x] Established strict protocol: Issue Creation -> Feature/Fix Branch -> Verification -> Conventional Commit with `icedmist <talk2icedmist@gmail.com>` -> Pull Request -> Squash Merge -> Local Sync.

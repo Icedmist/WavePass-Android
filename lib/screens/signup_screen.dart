@@ -50,7 +50,9 @@ class _SState extends State<SignupScreen> {
         await prefs.setString('sb-user-email', email);
         if (res.session == null) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created — check email to confirm, then you will be on dashboard.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created — check email to confirm, then sign in.')));
+          context.go(AppRouter.login);
+          return;
         }
         if (!mounted) return;
         context.go(AppRouter.dashboard);

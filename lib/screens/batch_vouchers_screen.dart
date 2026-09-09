@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -84,6 +85,7 @@ class _SState extends State<BatchVouchersScreen> {
         final vId = venue['id']?.toString();
         final vName = venue['name']?.toString() ?? 'WavePass Venue';
         final vMap = {'id': vId, 'name': vName};
+        if (!mounted) return;
         setState(() {
           _venues = [vMap];
           _selectedVenueId = vId;
@@ -145,6 +147,7 @@ class _SState extends State<BatchVouchersScreen> {
       }
       final data = jsonDecode(res.body);
       final list = (data is List ? data : data['codes'] ?? data) as List;
+      if (!mounted) return;
       setState(() {
         _generated = list.map((e) => e is String ? {'code': e} : Map<String, dynamic>.from(e)).toList();
       });
@@ -224,7 +227,7 @@ class _SState extends State<BatchVouchersScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF failed: $e')));
     } finally {
-      setState(() => _savingPdf = false);
+      if (mounted) setState(() => _savingPdf = false);
     }
   }
 
@@ -305,8 +308,18 @@ class _SState extends State<BatchVouchersScreen> {
                   leading: Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(8)), child: Center(child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)))),
                   title: Text(_generated[i]['code'].toString(), style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w800, fontSize: 13)),
                   trailing: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textLight),
-                  onTap: () {
-                    // copy to clipboard
+                  onTap: () async {
+                    final code = _generated[i]['code'].toString();
+                    await Clipboard.setData(ClipboardData(text: code));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Voucher $code copied to clipboard'),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: AppColors.primary,
+                        ),
+                      );
+                    }
                   },
                 ),
               ),

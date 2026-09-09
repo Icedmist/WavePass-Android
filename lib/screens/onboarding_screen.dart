@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
@@ -141,12 +142,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() { _creatingVenue = true; _venueError = null; });
     try {
       final res = await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: logoUrl);
+      final vId = res['id']?.toString() ?? _venueSlug.text.trim().toLowerCase();
+      final vName = _venueName.text.trim();
+      final vSlug = _venueSlug.text.trim().toLowerCase();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
-      await prefs.setString('venueId', res['id'] ?? _venueSlug.text.trim().toLowerCase());
-      await prefs.setString('venueName', _venueName.text.trim());
-      await prefs.setString('venueSlug', _venueSlug.text.trim().toLowerCase());
+      await prefs.setString('wavepass_active_venue_id', vId);
+      await prefs.setString('venueId', vId);
+      await prefs.setString('wavepass_active_venue_name', vName);
+      await prefs.setString('venueName', vName);
+      await prefs.setString('wavepass_active_venue_slug', vSlug);
+      await prefs.setString('venueSlug', vSlug);
+      await prefs.setString('wavepass_active_venue_logo', logoUrl);
       await prefs.setString('venueLogo', logoUrl);
+
+      VenueStateService.instance.venueNotifier.value = {
+        'id': vId,
+        'name': vName,
+        'slug': vSlug,
+        'logoUrl': logoUrl,
+      };
+
       if (!mounted) return;
       // If user already signed in, go to dashboard; else to login (which will then go to dashboard after auth)
       final user = SupabaseService.instance.currentUser;

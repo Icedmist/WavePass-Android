@@ -62,3 +62,13 @@
 - [x] Fixed all unused imports, unused variables, and deprecated form field attributes.
 - [x] Resolved async BuildContext gaps with mounted checks.
 - [x] Ran `flutter analyze` — **0 warnings, 0 errors**.
+
+### 9. Stability Hardening, Loop Prevention & Bug Clearing
+- [x] **Voucher Clipboard Copy (`batch_vouchers_screen.dart`)**: Implemented functional `Clipboard.setData` and feedback snackbar for voucher codes (clearing previously empty `onTap` stub).
+- [x] **Socket Resource Leak Resolution (`router_discovery_service.dart`)**: Wrapped all `http.Client()` calls with `try-finally` to ensure `.close()` is called on every subnet probe and reboot command.
+- [x] **Subnet & Venue State Key Synchronization (`venue_state_service.dart`, `onboarding_screen.dart`)**: Fixed mismatch where venue ID was passed instead of subdomain slug, and synced active & legacy SharedPreferences keys across onboarding and session start.
+- [x] **Asynchronous State Hazards Cleared**: Resolved unmounted `setState()` across `home_dashboard_screen.dart`, `batch_vouchers_screen.dart`, `router_diagnostics_screen.dart`, `wallet_screen.dart`, `printer_settings_screen.dart`, and `admin_management_screen.dart`.
+- [x] **Auto-Refresh Loop Guard (`active_devices_screen.dart`)**: Added concurrency flag `_isRefreshing` to prevent overlapping 15-second timer requests during slow network conditions.
+- [x] **Navigation Shell Pop Protection (`active_devices_screen.dart`)**: Replaced raw `Navigator.pop()` with `canPop() ? pop() : context.go('/dashboard')` to prevent no-ops in the bottom nav shell.
+- [x] **Provision Dialog Stack Safety (`router_diagnostics_screen.dart`)**: Added `PopScope` and dialog state tracking to ensure dismissing the loading indicator never inadvertently pops the host screen.
+- [x] **Auth Gate Verification Loop Prevention (`signup_screen.dart`)**: Redirects to `/login` with an email confirmation prompt when session is null instead of redirecting to an unauthenticated dashboard.

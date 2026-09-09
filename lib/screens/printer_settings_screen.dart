@@ -29,6 +29,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _loadSettingsAndPrinters() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _autoPrint = prefs.getBool('wavepass_auto_print_receipts') ?? true;
       _paperWidthMm = prefs.getInt('wavepass_printer_paper_width') ?? 58;

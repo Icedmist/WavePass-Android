@@ -15,7 +15,9 @@ class VenueStateService {
   static const String keyVenueName = 'wavepass_active_venue_name';
   static const String keyLegacyVenueName = 'venueName';
   static const String keyVenueSlug = 'wavepass_active_venue_slug';
+  static const String keyLegacyVenueSlug = 'venueSlug';
   static const String keyVenueLogo = 'wavepass_active_venue_logo';
+  static const String keyLegacyVenueLogo = 'venueLogo';
 
   final ValueNotifier<Map<String, dynamic>?> venueNotifier = ValueNotifier<Map<String, dynamic>?>(null);
   final ValueNotifier<List<Map<String, dynamic>>> plansNotifier = ValueNotifier<List<Map<String, dynamic>>>([]);
@@ -39,8 +41,8 @@ class VenueStateService {
       final prefs = await SharedPreferences.getInstance();
       final cachedId = prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
       final cachedName = prefs.getString(keyVenueName) ?? prefs.getString(keyLegacyVenueName);
-      final cachedSlug = prefs.getString(keyVenueSlug);
-      final cachedLogo = prefs.getString(keyVenueLogo);
+      final cachedSlug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
+      final cachedLogo = prefs.getString(keyVenueLogo) ?? prefs.getString(keyLegacyVenueLogo);
 
       if (cachedId != null && cachedId.isNotEmpty) {
         venueNotifier.value = {
@@ -63,11 +65,12 @@ class VenueStateService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final vid = targetVenueId ?? prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
+      final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
 
-      // 1. Try finding by ID or default from backend
-      if (vid != null && vid.isNotEmpty) {
+      // 1. Try finding by subdomain or default from backend
+      if (slug != null && slug.isNotEmpty) {
         try {
-          final res = await WavePassApi.instance.getVenueBySubdomain(vid);
+          final res = await WavePassApi.instance.getVenueBySubdomain(slug);
           if (res['id'] != null) venue = res;
         } catch (_) {}
       }

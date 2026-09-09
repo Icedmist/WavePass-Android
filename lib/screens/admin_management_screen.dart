@@ -192,6 +192,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         final slug = v['slug']?.toString() ?? 'venue';
         final logo = v['logoUrl']?.toString() ?? '';
 
+        if (!mounted) return;
         setState(() {
           _venueId = id;
           _venueName = name;

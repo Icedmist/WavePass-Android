@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/widgets/shimmer.dart';
 
@@ -55,8 +56,11 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       var venueId = widget.venueId;
       if (venueId == 'default') {
-        final venue = await _api.getDefaultVenue();
-        venueId = venue['id']?.toString() ?? 'default';
+        venueId = VenueStateService.instance.currentVenueId ?? 'default';
+        if (venueId == 'default') {
+          final venue = await _api.getDefaultVenue();
+          venueId = venue['id']?.toString() ?? 'default';
+        }
       }
 
       final va = await _api.getVirtualAccount(venueId);
@@ -68,6 +72,7 @@ class _WalletScreenState extends State<WalletScreen> {
       final cashoutsList = cashoutsRaw is List
           ? (cashoutsRaw as List<dynamic>)
           : (cashoutsRaw['data'] as List<dynamic>? ?? cashoutsRaw['cashouts'] as List<dynamic>? ?? []);
+      if (!mounted) return;
       setState(() {
         _virtualAccount = vaData;
         _balance = bal;
@@ -75,9 +80,9 @@ class _WalletScreenState extends State<WalletScreen> {
         _error = null;
       });
     } catch (e) {
-      setState(() => _error = 'Could not load wallet: $e');
+      if (mounted) setState(() => _error = 'Could not load wallet: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

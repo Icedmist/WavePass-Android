@@ -24,19 +24,33 @@ class DiscoveredRouter {
 
 class RouterDiscoveryService {
   // Approach 1: Auto-discover MikroTik router over local subnet
+  // Tries admin:blank, then wavepass:YOURPASS (setup script), then 192.168.1.1 fallback. Does NOT change admin password.
   static Future<DiscoveredRouter?> discoverLocalRouter({
     String ip = "192.168.88.1",
     String username = "admin",
     String password = "",
   }) async {
-    // 1. Probe primary or specified IP
+    // 1. Probe with supplied creds (default admin:"")
     DiscoveredRouter? router = await _probeRouter(ip, username, password);
     if (router != null) return router;
 
-    // 2. If default 192.168.88.1 was specified and failed, probe secondary common subnet 192.168.1.1
+    // 2. Try wavepass user (created by wavepass-setup.rsc) if admin failed
+    if (username == "admin") {
+      router = await _probeRouter(ip, "wavepass", password.isEmpty ? "CHANGE_THIS_WAVEPASS_PASSWORD" : password);
+      if (router != null) return router;
+      // also try wavepass with empty (fresh) — will fail gracefully
+      router = await _probeRouter(ip, "wavepass", "");
+      if (router != null) return router;
+    }
+
+    // 3. If default 192.168.88.1 was specified and failed, probe secondary 192.168.1.1 with both users
     if (ip == "192.168.88.1") {
       router = await _probeRouter("192.168.1.1", username, password);
       if (router != null) return router;
+      if (username == "admin") {
+        router = await _probeRouter("192.168.1.1", "wavepass", "");
+        if (router != null) return router;
+      }
     }
 
     return null;

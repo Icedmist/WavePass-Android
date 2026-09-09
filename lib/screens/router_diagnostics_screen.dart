@@ -24,6 +24,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
   List<Map<String, dynamic>> _routers = [];
   Map<String, dynamic>? _selectedRouter;
   DiscoveredRouter? _localDiscovered;
+  RouterDualConnectionStatus? _dualStatus;
   String? _venueName;
 
   @override
@@ -77,8 +78,8 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
         }
       });
 
-      // Attempt non-blocking local subnet discovery if on local Wi-Fi
-      _probeLocalSubnet();
+      // Concurrently probe both Local Subnet (LAN Direct) and Cloud/WireGuard Tunnel
+      _probeDualConnection();
     } catch (e) {
       if (mounted) setState(() => _error = 'Failed to load router info: $e');
     } finally {
@@ -86,11 +87,25 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     }
   }
 
-  Future<void> _probeLocalSubnet() async {
+  Future<void> _probeDualConnection() async {
     try {
-      final local = await RouterDiscoveryService.discoverLocalRouter();
-      if (mounted && local != null) {
-        setState(() => _localDiscovered = local);
+      final prefs = await SharedPreferences.getInstance();
+      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final tunnelEndpoint = _selectedRouter?['endpoint']?.toString() ?? prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+      final username = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final password = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+
+      final dual = await RouterDiscoveryService.checkDualConnection(
+        localIp: localIp,
+        tunnelEndpoint: tunnelEndpoint,
+        username: username,
+        password: password,
+      );
+      if (mounted) {
+        setState(() {
+          _dualStatus = dual;
+          _localDiscovered = dual.localRouter;
+        });
       }
     } catch (_) {}
   }
@@ -103,23 +118,26 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     setState(() => _testingConnection = true);
     try {
       final updated = await WavePassApi.instance.testRouter(routerId);
+      // Run concurrent dual link probe (LAN & Tunnel) directly from device
+      await _probeDualConnection();
       if (!mounted) return;
 
       setState(() {
         _selectedRouter = {
           ..._selectedRouter!,
           ...updated,
-          'status': updated['status'] ?? 'OFFLINE',
+          'status': (_dualStatus?.isAnyOnline == true) ? 'ONLINE' : (updated['status'] ?? 'OFFLINE'),
           'lastSeen': updated['lastSeen'] ?? DateTime.now().toIso8601String(),
         };
       });
 
-      final isOnline = _selectedRouter!['status'] == 'ONLINE';
+      final isOnline = _selectedRouter!['status'] == 'ONLINE' || _dualStatus?.isAnyOnline == true;
+      final summary = _dualStatus?.latencySummary != null ? " (${_dualStatus!.latencySummary})" : "";
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isOnline
-              ? "Router is ONLINE and responding to queries."
-              : "Router ping returned OFFLINE. Check gateway power and backhaul cable."),
+              ? "Router is ONLINE and responding!$summary"
+              : "Router returned OFFLINE on both LAN and Cloud Tunnel."),
           backgroundColor: isOnline ? AppColors.accentGreen : AppColors.accentRed,
         ),
       );
@@ -556,6 +574,10 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
         ),
         const SizedBox(height: 20),
 
+        // Dual Connection Link Topology Card (LAN Direct & Cloud Tunnel)
+        _buildDualConnectionCard(),
+        const SizedBox(height: 16),
+
         // Local Subnet Live Hardware Telemetry
         Container(
           padding: const EdgeInsets.all(20),
@@ -614,9 +636,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 ),
                 const SizedBox(height: 10),
                 TextButton.icon(
-                  onPressed: _probeLocalSubnet,
+                  onPressed: _probeDualConnection,
                   icon: const Icon(Icons.wifi_find, size: 16),
-                  label: const Text("Probe Local Subnet (192.168.88.1)"),
+                  label: const Text("Probe Dual Links (LAN & Tunnel)"),
                 ),
               ],
             ],
@@ -663,6 +685,168 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
         ),
         const SizedBox(height: 32),
       ],
+    );
+  }
+
+  Widget _buildDualConnectionCard() {
+    final isLocalOnline = _dualStatus?.isLocalOnline ?? (_localDiscovered?.isReachable == true);
+    final isTunnelOnline = _dualStatus?.isTunnelOnline ?? false;
+    final activeMode = _dualStatus?.activeMode ?? (isLocalOnline ? 'local' : 'offline');
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "DUAL-MODE LINK TOPOLOGY",
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: activeMode != 'offline'
+                      ? AppColors.accentGreen.withValues(alpha: 0.12)
+                      : AppColors.accentRed.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  activeMode == 'local'
+                      ? 'LAN DIRECT ACTIVE'
+                      : (activeMode == 'tunnel' ? 'TUNNEL ACTIVE' : 'OFFLINE'),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: activeMode != 'offline' ? AppColors.accentGreen : AppColors.accentRed,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // LAN Direct Link Row
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.containerBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isLocalOnline ? AppColors.accentGreen.withValues(alpha: 0.3) : AppColors.cardBorder,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.wifi_tethering_rounded,
+                  size: 20,
+                  color: isLocalOnline ? AppColors.accentGreen : AppColors.textLight,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Local Subnet Direct (LAN)",
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _dualStatus?.localRouter?.latencyMs != null
+                            ? "http://192.168.88.1 • ${_dualStatus!.localRouter!.latencyMs}ms latency"
+                            : "http://192.168.88.1 (Shop Wi-Fi Gateway)",
+                        style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isLocalOnline ? AppColors.accentGreen.withValues(alpha: 0.12) : AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isLocalOnline ? "ONLINE" : "DISCONNECTED",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isLocalOnline ? AppColors.accentGreen : AppColors.textLight,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // WireGuard / Cloud Tunnel Link Row
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.containerBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isTunnelOnline ? AppColors.accentGreen.withValues(alpha: 0.3) : AppColors.cardBorder,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.cloud_sync_rounded,
+                  size: 20,
+                  color: isTunnelOnline ? AppColors.accentGreen : AppColors.textLight,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "WireGuard / Cloud Tunnel",
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _dualStatus?.tunnelRouter?.latencyMs != null
+                            ? "${_dualStatus!.tunnelRouter!.ip} • ${_dualStatus!.tunnelRouter!.latencyMs}ms"
+                            : (_selectedRouter?['endpoint']?.toString() ?? "Remote Cloud Proxy"),
+                        style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isTunnelOnline ? AppColors.accentGreen.withValues(alpha: 0.12) : AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isTunnelOnline ? "ONLINE" : "STANDBY",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isTunnelOnline ? AppColors.accentGreen : AppColors.textLight,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

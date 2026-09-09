@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
 import '../core/constants/api_constants.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
@@ -212,15 +213,35 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         });
       }
 
+      // Synchronously provision batch vouchers to router hardware (LAN Direct / Cloud Tunnel)
+      int routerPushed = 0;
+      String? routerMode;
+      for (final item in compiled) {
+        try {
+          final res = await RouterDiscoveryService.provisionVoucherDualRoute(
+            code: item['code'] as String,
+            pass: item['password'] as String?,
+            profile: 'default',
+          );
+          if (res['success'] == true) {
+            routerPushed++;
+            routerMode = res['mode']?.toString();
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _generated = compiled;
       });
 
       if (mounted) {
+        final routerInfo = routerPushed > 0
+            ? ' ($routerPushed live on router via ${routerMode == 'local' ? 'LAN Direct' : 'Tunnel'})'
+            : '';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Generated ${_generated.length} vouchers successfully!'),
+            content: Text('Generated ${_generated.length} vouchers successfully!$routerInfo'),
             backgroundColor: AppColors.accentGreen,
           ),
         );

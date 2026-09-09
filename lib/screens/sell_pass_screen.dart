@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/api_constants.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
@@ -25,6 +26,8 @@ class _SellPassScreenState extends State<SellPassScreen> {
   bool _isGenerating = false;
   String? _generatedCode;
   bool _isPrinting = false;
+  String? _directProvisionMode; // 'local', 'tunnel', or null
+  bool _directProvisionAttempted = false;
 
   List<Map<String, dynamic>> _plans = [];
   bool _loadingPlans = true;
@@ -175,10 +178,31 @@ class _SellPassScreenState extends State<SellPassScreen> {
     // Safe fallback if offline or backend network issue
     code ??= _randomCode();
 
+    // Synchronously provision directly onto router hardware (LAN Direct / Cloud Tunnel)
+    String? directMode;
+    try {
+      final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
+      final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
+        code: code,
+        pass: code,
+        profile: durationSec <= 3600
+            ? 'profile_1h'
+            : (durationSec <= 43200 ? 'profile_12h' : 'profile_1d'),
+        sessionTimeoutSeconds: durationSec,
+      );
+      if (directRes['success'] == true) {
+        directMode = directRes['mode']?.toString();
+      }
+    } catch (e) {
+      debugPrint('Direct router provisioning attempt: $e');
+    }
+
     if (!mounted) return;
     setState(() {
       _isGenerating = false;
       _generatedCode = code;
+      _directProvisionMode = directMode;
+      _directProvisionAttempted = true;
     });
 
     // Auto-print receipt if enabled in printer settings
@@ -596,6 +620,41 @@ class _SellPassScreenState extends State<SellPassScreen> {
                                   ),
                                 ),
                               ),
+                              if (_directProvisionAttempted) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: (_directProvisionMode != null)
+                                        ? AppColors.accentGreen.withValues(alpha: 0.12)
+                                        : AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _directProvisionMode != null ? Icons.check_circle_rounded : Icons.cloud_done_rounded,
+                                        size: 13,
+                                        color: _directProvisionMode != null ? AppColors.accentGreen : AppColors.primary,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        _directProvisionMode == 'local'
+                                            ? 'Live on Router Hardware (LAN Direct)'
+                                            : (_directProvisionMode == 'tunnel'
+                                                ? 'Live on Router Hardware (Cloud Tunnel)'
+                                                : 'Queued for Cloud Sync'),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: _directProvisionMode != null ? AppColors.accentGreen : AppColors.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

@@ -23,6 +23,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   // Custom gateway credentials / IP
   bool _showCustomSettings = false;
   final _ipCtrl = TextEditingController(text: "192.168.88.1");
+  final _tunnelCtrl = TextEditingController();
   final _userCtrl = TextEditingController(text: "admin");
   final _passCtrl = TextEditingController();
 
@@ -33,6 +34,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   @override
   void dispose() {
     _ipCtrl.dispose();
+    _tunnelCtrl.dispose();
     _userCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
@@ -46,14 +48,26 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     });
 
     final targetIp = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
+    final tunnel = _tunnelCtrl.text.trim();
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
     final pass = _passCtrl.text.trim();
 
-    final router = await RouterDiscoveryService.discoverLocalRouter(
+    // 1. Probe local router
+    DiscoveredRouter? router = await RouterDiscoveryService.discoverLocalRouter(
       ip: targetIp,
       username: user,
       password: pass,
     );
+
+    // 2. If local probe fails and tunnel endpoint provided, probe tunnel
+    if (router == null && tunnel.isNotEmpty) {
+      router = await RouterDiscoveryService.probeEndpoint(
+        tunnel,
+        username: user,
+        password: pass,
+        connectionType: "Tunnel",
+      );
+    }
 
     if (mounted) {
       setState(() {
@@ -64,7 +78,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       if (router == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("No MikroTik router detected at $targetIp. Verify you are connected to the router's Wi-Fi."),
+            content: Text("No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi."),
             backgroundColor: AppColors.accentRed,
           ),
         );
@@ -86,6 +100,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
       final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
       final pass = _passCtrl.text.trim();
+      final tunnel = _tunnelCtrl.text.trim().isNotEmpty ? _tunnelCtrl.text.trim() : null;
 
       // 1. Configure router hardware via RouterOS REST API
       final hwResult = await RouterDiscoveryService.installHotspotOnRouter(
@@ -94,14 +109,17 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         password: pass,
         slug: slug,
         venueName: venueName,
+        tunnelEndpoint: tunnel,
       );
 
       // 2. Register router with WavePass Cloud API
+      final endpoint = tunnel ?? 'http://${_foundRouter!.ip}';
+      final mode = tunnel != null ? 'tunnel' : 'local';
       await WavePassApi.instance.createRouter(
         venueId: venueId,
         name: _foundRouter!.identity.isNotEmpty ? _foundRouter!.identity : 'MikroTik HotSpot',
-        endpoint: 'http://${_foundRouter!.ip}',
-        connectionMode: 'local',
+        endpoint: endpoint,
+        connectionMode: mode,
         rosVersion: _foundRouter!.version,
       );
 
@@ -135,8 +153,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 # WavePass MikroTik HotSpot Quick Provisioning Script
 # Venue: ${venue['name'] ?? 'WavePass'} ($slug)
 # Generated: ${DateTime.now().toIso8601String()}
+# Uses standard admin credentials; no extra users created.
 # ========================================================
 
+# --------------------------------------------------------
+# 1. Enable RouterOS REST API services
+# --------------------------------------------------------
+/ip service
+set www disabled=no port=80
+set www-ssl disabled=no port=443
+
+# --------------------------------------------------------
+# 2. Hotspot Profile & Interface
+# --------------------------------------------------------
 /ip hotspot profile
 add dns-name="$slug.nexawavepass.com" \\
     hotspot-address=192.168.88.1 \\
@@ -151,6 +180,9 @@ add address-pool=default-dhcp \\
     name="wavepass-hotspot" \\
     profile="wavepass-profile"
 
+# --------------------------------------------------------
+# 3. Walled Garden Domains
+# --------------------------------------------------------
 /ip hotspot walled-garden
 add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
@@ -158,6 +190,26 @@ add comment="Paystack Checkout" dst-host="*.paystack.co"
 add comment="Paystack API" dst-host="api.paystack.co"
 add comment="Supabase Auth" dst-host="*.supabase.co"
 
+# --------------------------------------------------------
+# 4. Standard Rate-Limit User Profiles (Mikhmon Parity)
+# --------------------------------------------------------
+/ip hotspot user profile
+add name="profile_1h" rate-limit="10M/5M" shared-users=1 comment="WavePass 1h"
+add name="profile_12h" rate-limit="15M/5M" shared-users=1 comment="WavePass 12h"
+add name="profile_1d" rate-limit="20M/10M" shared-users=1 comment="WavePass 24h"
+
+# --------------------------------------------------------
+# 5. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
+# --------------------------------------------------------
+/system script
+add name="wavepass-cleanup" source="/ip hotspot user remove [find comment=\\"expired\\"]" comment="WavePass low-RAM expired user cleanup"
+
+/system scheduler
+add name="wavepass-cleanup" interval=2h on-event="wavepass-cleanup" comment="WavePass 2-hour user cleanup"
+
+# --------------------------------------------------------
+# 6. System Identity
+# --------------------------------------------------------
 /system identity
 set name="WavePass-$slug"
 
@@ -328,6 +380,16 @@ set name="WavePass-$slug"
                       decoration: const InputDecoration(
                         labelText: "Password (leave empty if fresh)",
                         hintText: "••••••••",
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _tunnelCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Cloud Tunnel Endpoint (Optional)",
+                        hintText: "http://10.8.0.2:80 or tunnel.nexawavepass.com",
                         isDense: true,
                         border: OutlineInputBorder(),
                       ),

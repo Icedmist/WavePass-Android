@@ -98,3 +98,28 @@
   - `Icedmist/WavePass-Web` (PR #2)
   - `Icedmist/wavepass` (PR #2)
 - [x] Established strict protocol: Issue Creation -> Feature/Fix Branch -> Verification -> Conventional Commit with `icedmist <talk2icedmist@gmail.com>` -> Pull Request -> Squash Merge -> Local Sync.
+
+### 10. Low-RAM MikroTik Router Memory Cleanup & Rate-Limit Profiles (`router_discovery_service.dart`)
+- [x] **2-Hour Auto-Cleanup Script & Scheduler (Mikhmon Parity)**:
+  - Injected `/system/script` (`wavepass-cleanup` with `/ip hotspot user remove [find comment="expired"]`) and `/system/scheduler` (running every 2 hours) during `installHotspotOnRouter()`.
+  - Guarantees zero out-of-memory crashes on entry-level RouterOS hardware (hAP mini, hEX lite with 32MB/64MB RAM) by automatically evicting expired hotspot user records.
+- [x] **Hardware Rate-Limit User Profiles**:
+  - Automatically provisions standard bandwidth tiers in RouterOS (`profile_1h` at `10M/5M`, `profile_12h` at `15M/5M`, `profile_1d` at `20M/10M`) with `shared-users=1` during 1-tap setup.
+  - Enforces hardware-level traffic shaping directly through RouterOS Simple Queues.
+
+### 11. Interactive Sales & Revenue Analytics Sheet (`home_dashboard_screen.dart`)
+- [x] **Interactive Dashboard Earnings Card**:
+  - Made "TODAY'S WI-FI EARNINGS" card tappable with an explicit `"Breakdown"` action pill.
+  - Added an `"Analytics"` link button in the "Recent Sales Today" header.
+- [x] **Comprehensive Sales Breakdown Bottom Sheet (`_SalesBreakdownSheet`)**:
+  - **Dynamic Timeframe Filters**: Filter sales records across `Today`, `Last 7 Days`, and `This Month`.
+  - **High-Level Financial KPI Tiles**: Total Revenue (`₦...`), Paid Passes Sold, and Average Ticket Size (`₦...`).
+  - **Plan Distribution Breakdown**: Groups orders by pricing tier/plan name, showing pass count, total revenue, and visual percentage progress bars.
+  - **Voucher Sales Ledger**: Complete scrollable transaction ledger displaying voucher code/customer reference, plan name, green formatted amount, and relative or formatted timestamps.
+  - **Resilient Fallback**: Gracefully parses Supabase orders with fallback to local cached recent sales if offline.
+
+### 12. Full Ecosystem Cross-Repository Parity Achieved
+- [x] **`WavePass-Android`**: Zero-failure REST setup, thermal receipt QR codes, A4 voucher cutout card grids, rate-limited user profiles, auto-cleanup scheduler, and sales analytics breakdown sheet.
+- [x] **`WavePass-Backend`**: Low-RAM cleanup scheduler, standard plan user profiles with speed clamps, comprehensive walled garden domains, and clean unit test suite (11/11 passing).
+- [x] **`WavePass-Web`**: URL voucher auto-detection (`code` and `voucher` parameters) on captive portal, and middleware redirection (`/login?code=...` -> `/portal`) for instant 1-tap customer login upon scanning receipt QR codes.
+

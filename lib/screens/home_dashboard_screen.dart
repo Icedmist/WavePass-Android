@@ -175,22 +175,24 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _venueName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  _venueSub,
-                  style: const TextStyle(fontSize: 11, color: AppColors.textLight),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _venueName,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    _venueSub,
+                    style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -394,11 +396,15 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          "${_recentSales.isNotEmpty ? _recentSales.length : 24} paid passes sold",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textLight,
+                        Flexible(
+                          child: Text(
+                            "${_recentSales.isNotEmpty ? _recentSales.length : 24} paid passes sold",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -1055,23 +1061,27 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          "Sales Analytics",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            "Sales Analytics",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.primary,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          "Revenue and voucher performance breakdown",
-                          style: TextStyle(fontSize: 12, color: AppColors.textLight),
-                        ),
-                      ],
+                          SizedBox(height: 2),
+                          Text(
+                            "Revenue and voucher performance breakdown",
+                            style: TextStyle(fontSize: 12, color: AppColors.textLight),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, color: AppColors.primary),

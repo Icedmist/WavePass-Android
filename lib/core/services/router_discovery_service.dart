@@ -237,6 +237,59 @@ class RouterDiscoveryService {
         (results['errors'] as List<String>).add('HotSpot: $e');
       }
 
+      // 5. Configure Standard Rate-Limit User Profiles (Mikhmon Parity)
+      try {
+        final userProfUri = Uri.parse("http://$ip/rest/ip/hotspot/user/profile");
+        final tiers = [
+          {'name': 'profile_1h', 'rate-limit': '10M/5M', 'shared-users': '1', 'comment': 'WavePass 1h'},
+          {'name': 'profile_12h', 'rate-limit': '15M/5M', 'shared-users': '1', 'comment': 'WavePass 12h'},
+          {'name': 'profile_1d', 'rate-limit': '20M/10M', 'shared-users': '1', 'comment': 'WavePass 24h'},
+        ];
+        int tierSuccess = 0;
+        for (final tier in tiers) {
+          try {
+            final tRes = await client.put(
+              userProfUri,
+              headers: headers,
+              body: jsonEncode(tier),
+            ).timeout(const Duration(seconds: 3));
+            if (tRes.statusCode >= 200 && tRes.statusCode < 300) tierSuccess++;
+          } catch (_) {}
+        }
+        results['userProfiles'] = tierSuccess > 0;
+      } catch (e) {
+        (results['errors'] as List<String>).add('UserProfiles: $e');
+      }
+
+      // 6. Inject Low-RAM Memory Auto-Cleanup Script & 2-Hour Scheduler (Mikhmon Parity)
+      try {
+        final scriptUri = Uri.parse("http://$ip/rest/system/script");
+        await client.put(
+          scriptUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-cleanup',
+            'source': '/ip hotspot user remove [find comment="expired"]',
+            'comment': 'WavePass low-RAM expired user cleanup',
+          }),
+        ).timeout(const Duration(seconds: 3));
+
+        final schedUri = Uri.parse("http://$ip/rest/system/scheduler");
+        final schedRes = await client.put(
+          schedUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-cleanup',
+            'interval': '2h',
+            'on-event': 'wavepass-cleanup',
+            'comment': 'WavePass 2-hour user cleanup',
+          }),
+        ).timeout(const Duration(seconds: 3));
+        results['cleanupScheduler'] = schedRes.statusCode >= 200 && schedRes.statusCode < 300;
+      } catch (e) {
+        (results['errors'] as List<String>).add('CleanupScheduler: $e');
+      }
+
       final anySuccess = results['identity'] == true ||
           results['profile'] == true ||
           results['walledGarden'] == true ||

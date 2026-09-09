@@ -31,68 +31,108 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   }
 
   void _handleSuccessfulScan(String serial) async {
+    final cleanSerial = serial.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (cleanSerial.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid barcode or serial number'), backgroundColor: AppColors.accentRed),
+        );
+        setState(() => _isProcessing = false);
+      }
+      return;
+    }
+
     try {
       final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
       final venueId = venue['id']?.toString() ?? 'default';
       await WavePassApi.instance.createRouter(
         venueId: venueId,
-        name: 'MikroTik-$serial',
-        endpoint: 'https://tunnel.nexawavepass.com/$serial',
+        name: 'MikroTik-$cleanSerial',
+        endpoint: 'https://tunnel.nexawavepass.com/$cleanSerial',
         connectionMode: 'tunnel',
       );
-    } catch (_) {}
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: const [
-            Icon(Icons.check_circle, color: AppColors.accentGreen, size: 24),
-            SizedBox(width: 8),
-            Text("Router Identified", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Serial Number Scanned:", style: TextStyle(fontSize: 12, color: AppColors.textLight)),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.containerBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                serial,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontFamily: 'monospace', fontSize: 14),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              "When you plug this router into your internet cable, it will automatically connect to WavePass.",
-              style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text("Done"),
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: AppColors.accentGreen, size: 24),
+              SizedBox(width: 8),
+              Text("Router Identified", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            ],
           ),
-        ],
-      ),
-    );
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Serial Number Scanned:", style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.containerBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  cleanSerial,
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontFamily: 'monospace', fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "When you plug this router into your internet cable, it will automatically connect to WavePass.",
+                style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              child: const Text("Done"),
+            ),
+          ],
+        ),
+      ).then((_) {
+        if (mounted) setState(() => _isProcessing = false);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: AppColors.accentRed, size: 24),
+              SizedBox(width: 8),
+              Text("Registration Failed", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            ],
+          ),
+          content: Text(
+            "Could not register router with serial $cleanSerial:\n${e.toString().replaceAll('Exception: ', '')}",
+            style: const TextStyle(fontSize: 13, color: AppColors.primary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text("Try Again"),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

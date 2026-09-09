@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'wavepass_api.dart';
 
 class DiscoveredRouter {
   final String ip;
@@ -121,8 +122,188 @@ class RouterDiscoveryService {
     required String venueId,
     required String routerName,
   }) async {
-    // In production, this posts the serial to Supabase/NestJS to attach to the venue
-    await Future.delayed(const Duration(milliseconds: 1200));
-    return true;
+    try {
+      final res = await WavePassApi.instance.createRouter(
+        venueId: venueId,
+        name: routerName.isNotEmpty ? routerName : 'MikroTik-$serialNumber',
+        endpoint: 'https://tunnel.nexawavepass.com/$serialNumber',
+        connectionMode: 'tunnel',
+      );
+      return res['id'] != null || res['status'] == 200 || res['status'] == 201;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Approach 1 Hardware Execution: Installs the Hotspot profile, DNS captive portal,
+  /// and walled garden directly on the MikroTik router via RouterOS REST API.
+  static Future<Map<String, dynamic>> installHotspotOnRouter({
+    required String ip,
+    required String username,
+    required String password,
+    required String slug,
+    required String venueName,
+  }) async {
+    final client = http.Client();
+    final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+    final headers = {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    final results = <String, dynamic>{
+      'identity': false,
+      'profile': false,
+      'walledGarden': false,
+      'hotspot': false,
+      'errors': <String>[],
+    };
+
+    try {
+      // 1. Set System Identity: WavePass-$slug
+      try {
+        final idUri = Uri.parse("http://$ip/rest/system/identity");
+        final idRes = await client.patch(
+          idUri,
+          headers: headers,
+          body: jsonEncode({'name': 'WavePass-$slug'}),
+        ).timeout(const Duration(seconds: 4));
+        results['identity'] = idRes.statusCode >= 200 && idRes.statusCode < 300;
+      } catch (e) {
+        (results['errors'] as List<String>).add('Identity: $e');
+      }
+
+      // 2. Add / Update Hotspot Profile: wavepass-profile
+      try {
+        final profUri = Uri.parse("http://$ip/rest/ip/hotspot/profile");
+        final profRes = await client.put(
+          profUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-profile',
+            'dns-name': '$slug.nexawavepass.com',
+            'hotspot-address': ip,
+            'login-by': 'http-chap,http-pap,mac-cookie',
+            'html-directory': 'hotspot',
+          }),
+        ).timeout(const Duration(seconds: 4));
+        results['profile'] = profRes.statusCode >= 200 && profRes.statusCode < 300;
+      } catch (e) {
+        (results['errors'] as List<String>).add('Profile: $e');
+      }
+
+      // 3. Add Walled Garden Domains
+      try {
+        final wgUri = Uri.parse("http://$ip/rest/ip/hotspot/walled-garden");
+        final domains = [
+          'api.nexawavepass.com',
+          '*.nexawavepass.com',
+          '*.paystack.co',
+          'api.paystack.co',
+          '*.supabase.co',
+        ];
+        int wgSuccess = 0;
+        for (final domain in domains) {
+          try {
+            final res = await client.put(
+              wgUri,
+              headers: headers,
+              body: jsonEncode({'dst-host': domain, 'comment': 'WavePass Walled Garden'}),
+            ).timeout(const Duration(seconds: 3));
+            if (res.statusCode >= 200 && res.statusCode < 300) wgSuccess++;
+          } catch (_) {}
+        }
+        results['walledGarden'] = wgSuccess > 0;
+      } catch (e) {
+        (results['errors'] as List<String>).add('WalledGarden: $e');
+      }
+
+      // 4. Ensure HotSpot Server on wlan1 or default interface
+      try {
+        final hsUri = Uri.parse("http://$ip/rest/ip/hotspot");
+        final hsRes = await client.put(
+          hsUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-hotspot',
+            'interface': 'wlan1',
+            'profile': 'wavepass-profile',
+            'disabled': 'false',
+          }),
+        ).timeout(const Duration(seconds: 4));
+        results['hotspot'] = hsRes.statusCode >= 200 && hsRes.statusCode < 300;
+      } catch (e) {
+        (results['errors'] as List<String>).add('HotSpot: $e');
+      }
+
+      final anySuccess = results['identity'] == true ||
+          results['profile'] == true ||
+          results['walledGarden'] == true ||
+          results['hotspot'] == true;
+
+      results['success'] = anySuccess;
+      return results;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Queries live active sessions directly from the MikroTik hardware (/rest/ip/hotspot/active).
+  static Future<List<Map<String, dynamic>>> fetchActiveHotspotUsers({
+    String ip = "192.168.88.1",
+    String username = "admin",
+    String password = "",
+  }) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse("http://$ip/rest/ip/hotspot/active");
+      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+      final res = await client.get(
+        uri,
+        headers: {
+          'Authorization': authHeader,
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is List) {
+          return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    } catch (_) {
+      return [];
+    } finally {
+      client.close();
+    }
+    return [];
+  }
+
+  /// Disconnects an active hotspot client directly on the physical MikroTik router.
+  static Future<bool> disconnectHotspotUser({
+    String ip = "192.168.88.1",
+    String username = "admin",
+    String password = "",
+    required String activeIdOrUser,
+  }) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse("http://$ip/rest/ip/hotspot/active/$activeIdOrUser");
+      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+      final res = await client.delete(
+        uri,
+        headers: {
+          'Authorization': authHeader,
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close();
+    }
   }
 }

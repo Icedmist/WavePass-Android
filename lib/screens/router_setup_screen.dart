@@ -6,7 +6,6 @@ import '../core/theme/app_theme.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
-import 'barcode_scanner_screen.dart';
 
 class RouterSetupScreen extends StatefulWidget {
   const RouterSetupScreen({super.key});
@@ -82,7 +81,22 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     try {
       final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
       final venueId = venue['id']?.toString() ?? 'default';
+      final venueName = venue['name']?.toString() ?? 'WavePass Venue';
+      final slug = venue['slug']?.toString() ?? 'venue';
 
+      final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
+      final pass = _passCtrl.text.trim();
+
+      // 1. Configure router hardware via RouterOS REST API
+      final hwResult = await RouterDiscoveryService.installHotspotOnRouter(
+        ip: _foundRouter!.ip,
+        username: user,
+        password: pass,
+        slug: slug,
+        venueName: venueName,
+      );
+
+      // 2. Register router with WavePass Cloud API
       await WavePassApi.instance.createRouter(
         venueId: venueId,
         name: _foundRouter!.identity.isNotEmpty ? _foundRouter!.identity : 'MikroTik HotSpot',
@@ -92,16 +106,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       );
 
       if (mounted) {
+        final hwSuccess = hwResult['success'] == true;
         setState(() {
           _isConfiguring = false;
-          _successMessage = "HotSpot registered successfully! Router '${_foundRouter!.identity}' is bound to your venue.";
+          _successMessage = hwSuccess
+              ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS '$slug.nexawavepass.com'."
+              : "Router '${_foundRouter!.identity}' bound to venue. Note: If REST API is disabled on router, use Option 3 below to copy the setup script into Terminal.";
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isConfiguring = false;
-          _successMessage = "HotSpot registered with venue! (${e.toString().replaceAll('Exception: ', '')})";
+          _successMessage = "HotSpot registered with venue. (${e.toString().replaceAll('Exception: ', '')})";
         });
       }
     }
@@ -541,11 +558,7 @@ set name="WavePass-$slug"
                     width: double.infinity,
                     height: 48,
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-                        );
-                      },
+                      onPressed: () => context.push(AppRouter.barcodeScanner),
                       icon: const Icon(Icons.qr_code_scanner, color: AppColors.primary, size: 20),
                       label: const Text(
                         "Open Barcode Scanner",

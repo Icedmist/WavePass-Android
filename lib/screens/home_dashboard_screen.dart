@@ -24,6 +24,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   String _routerName = '';
   String _routerEndpoint = '';
   bool _loadingStats = true;
+  String? _venueId;
   List<Map<String, dynamic>> _recentSales = [];
 
   @override
@@ -62,6 +63,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           _venueSub = venue['slug'] != null ? '${venue['slug']}.nexawavepass.com' : '—';
         });
         vid = venue['id'] as String?;
+        _venueId = vid;
         if (vid != null) {
           try {
             final plans = await SupabaseService.instance.getActivePlans(vid);
@@ -299,79 +301,110 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 ]),
               ),
             // ─── CARD 1: TODAY REVENUE & SUMMARY ───
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: AppColors.containerBg,
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: AppColors.cardBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "TODAY'S WI-FI EARNINGS",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textLight,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        "₦${_todaySales.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
-                        style: const TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.primary,
-                          letterSpacing: -1.0,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        "NGN",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentGreen.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          "+18% from yesterday",
+            InkWell(
+              onTap: () => _showSalesBreakdownSheet(context),
+              borderRadius: BorderRadius.circular(26),
+              child: Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: AppColors.containerBg,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: AppColors.cardBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "TODAY'S WI-FI EARNINGS",
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.accentGreen,
+                            color: AppColors.textLight,
+                            letterSpacing: 0.8,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        "24 paid passes sold",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textLight,
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                "Breakdown",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_ios_rounded, size: 10, color: AppColors.primary),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          "₦${_todaySales.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
+                          style: const TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                            letterSpacing: -1.0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          "NGN",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            "+18% from yesterday",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.accentGreen,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "${_recentSales.isNotEmpty ? _recentSales.length : 24} paid passes sold",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -654,8 +687,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text(
+                    children: [
+                      const Text(
                         "Recent Sales Today",
                         style: TextStyle(
                           fontSize: 15,
@@ -663,9 +696,27 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                           color: AppColors.primary,
                         ),
                       ),
-                      Text(
-                        "Last 5 orders",
-                        style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                      InkWell(
+                        onTap: () => _showSalesBreakdownSheet(context),
+                        borderRadius: BorderRadius.circular(6),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                "Analytics",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              SizedBox(width: 2),
+                              Icon(Icons.arrow_forward_ios_rounded, size: 10, color: AppColors.primary),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -800,6 +851,544 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  void _showSalesBreakdownSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _SalesBreakdownSheet(
+        venueId: _venueId,
+        initialRecentSales: _recentSales,
+        todaySales: _todaySales,
+      ),
+    );
+  }
+}
+
+class _PlanStat {
+  int count;
+  int revenue;
+  _PlanStat({required this.count, required this.revenue});
+}
+
+enum _SalesPeriod { today, week, month }
+
+class _SalesBreakdownSheet extends StatefulWidget {
+  final String? venueId;
+  final List<Map<String, dynamic>> initialRecentSales;
+  final int todaySales;
+
+  const _SalesBreakdownSheet({
+    this.venueId,
+    required this.initialRecentSales,
+    required this.todaySales,
+  });
+
+  @override
+  State<_SalesBreakdownSheet> createState() => _SalesBreakdownSheetState();
+}
+
+class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
+  _SalesPeriod _period = _SalesPeriod.today;
+  bool _loading = false;
+  List<Map<String, dynamic>> _orders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchOrders();
+  }
+
+  Future<void> _fetchOrders() async {
+    final vid = widget.venueId;
+    if (vid == null) return;
+    setState(() => _loading = true);
+    try {
+      final res = await SupabaseService.instance.client
+          .from('Order')
+          .select('id, customerRef, amountMinor, status, createdAt, Plan(name)')
+          .eq('venueId', vid)
+          .order('createdAt', ascending: false)
+          .limit(200);
+      if (mounted) {
+        setState(() {
+          _orders = List<Map<String, dynamic>>.from(res);
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredOrders {
+    if (_orders.isEmpty && widget.initialRecentSales.isNotEmpty && _period == _SalesPeriod.today) {
+      return widget.initialRecentSales;
+    }
+    final now = DateTime.now();
+    return _orders.where((o) {
+      final rawDate = o['createdAt'];
+      if (rawDate == null) return false;
+      final dt = DateTime.tryParse(rawDate.toString())?.toLocal();
+      if (dt == null) return false;
+      switch (_period) {
+        case _SalesPeriod.today:
+          return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+        case _SalesPeriod.week:
+          return dt.isAfter(now.subtract(const Duration(days: 7)));
+        case _SalesPeriod.month:
+          return dt.isAfter(now.subtract(const Duration(days: 30)));
+      }
+    }).toList();
+  }
+
+  int get _totalRevenueNgn {
+    final list = _filteredOrders;
+    int total = 0;
+    for (final o in list) {
+      if (o.containsKey('amountMinor')) {
+        total += ((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100;
+      } else if (o.containsKey('amount')) {
+        final amtStr = o['amount'].toString().replaceAll(RegExp(r'[^\d]'), '');
+        total += int.tryParse(amtStr) ?? 0;
+      }
+    }
+    if (total == 0 && _period == _SalesPeriod.today && widget.todaySales > 0) {
+      return widget.todaySales;
+    }
+    return total;
+  }
+
+  int get _passesCount => _filteredOrders.length;
+
+  int get _avgTicketNgn {
+    final count = _passesCount;
+    if (count == 0) return 0;
+    return _totalRevenueNgn ~/ count;
+  }
+
+  Map<String, _PlanStat> get _planBreakdown {
+    final Map<String, _PlanStat> stats = {};
+    for (final o in _filteredOrders) {
+      String planName = 'Standard Pass';
+      if (o['Plan'] != null && o['Plan'] is Map && o['Plan']['name'] != null) {
+        planName = o['Plan']['name'].toString();
+      } else if (o['plan'] != null) {
+        planName = o['plan'].toString();
+      }
+      int amt = 0;
+      if (o.containsKey('amountMinor')) {
+        amt = ((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100;
+      } else if (o.containsKey('amount')) {
+        final amtStr = o['amount'].toString().replaceAll(RegExp(r'[^\d]'), '');
+        amt = int.tryParse(amtStr) ?? 0;
+      }
+      if (!stats.containsKey(planName)) {
+        stats[planName] = _PlanStat(count: 0, revenue: 0);
+      }
+      stats[planName]!.count += 1;
+      stats[planName]!.revenue += amt;
+    }
+    return stats;
+  }
+
+  String _formatNgn(int amount) {
+    return amount.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+  }
+
+  String _formatDate(dynamic iso) {
+    if (iso == null) return '—';
+    try {
+      final dt = DateTime.parse(iso.toString()).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return iso.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final planMap = _planBreakdown;
+    final totalRev = _totalRevenueNgn;
+    final passesSold = _passesCount;
+    final filtered = _filteredOrders;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (ctx, scrollController) => Column(
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          "Sales Analytics",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          "Revenue and voucher performance breakdown",
+                          style: TextStyle(fontSize: 12, color: AppColors.textLight),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: AppColors.primary),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    _buildPeriodTab(_SalesPeriod.today, "Today"),
+                    const SizedBox(width: 8),
+                    _buildPeriodTab(_SalesPeriod.week, "Last 7 Days"),
+                    const SizedBox(width: 8),
+                    _buildPeriodTab(_SalesPeriod.month, "This Month"),
+                  ],
+                ),
+              ),
+              const Divider(height: 16),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildMetricTile(
+                                  label: "TOTAL REVENUE",
+                                  value: "₦${_formatNgn(totalRev)}",
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _buildMetricTile(
+                                  label: "PASSES SOLD",
+                                  value: "$passesSold",
+                                  color: AppColors.accentGreen,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _buildMetricTile(
+                                  label: "AVG TICKET",
+                                  value: "₦${_formatNgn(_avgTicketNgn)}",
+                                  color: AppColors.textLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 22),
+                          const Text(
+                            "PLAN DISTRIBUTION",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textLight,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (planMap.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.containerBg,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  "No sales recorded for this period.",
+                                  style: TextStyle(fontSize: 12, color: AppColors.textLight),
+                                ),
+                              ),
+                            )
+                          else
+                            ...planMap.entries.map((entry) {
+                              final pName = entry.key;
+                              final stat = entry.value;
+                              final pct = totalRev > 0 ? (stat.revenue / totalRev) : 0.0;
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppColors.cardBorder),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          pName,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        Text(
+                                          "₦${_formatNgn(stat.revenue)}",
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "${stat.count} passes sold",
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textLight,
+                                          ),
+                                        ),
+                                        Text(
+                                          "${(pct * 100).toStringAsFixed(0)}% of sales",
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.accentGreen,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: LinearProgressIndicator(
+                                        value: pct.clamp(0.0, 1.0),
+                                        minHeight: 6,
+                                        backgroundColor: AppColors.cardBorder,
+                                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentGreen),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          const SizedBox(height: 22),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "SALES TRANSACTIONS",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textLight,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              Text(
+                                "${filtered.length} total",
+                                style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (filtered.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.containerBg,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  "No individual transactions found.",
+                                  style: TextStyle(fontSize: 12, color: AppColors.textLight),
+                                ),
+                              ),
+                            )
+                          else
+                            ...filtered.asMap().entries.map((e) {
+                              final o = e.value;
+                              final code = o['customerRef'] ?? o['code'] ?? (o['id']?.toString().substring(0, 8).toUpperCase() ?? 'PASS');
+                              final plan = o['Plan']?['name'] ?? o['plan'] ?? 'Pass';
+                              final amt = o.containsKey('amountMinor')
+                                  ? '₦${_formatNgn(((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100)}'
+                                  : (o['amount']?.toString() ?? '₦0');
+                              final time = o.containsKey('createdAt')
+                                  ? _formatDate(o['createdAt'])
+                                  : (o['time']?.toString() ?? '—');
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.containerBg,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          code.toString(),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                            fontFamily: 'monospace',
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        Text(
+                                          plan.toString(),
+                                          style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                                        ),
+                                      ],
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          amt,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.accentGreen,
+                                          ),
+                                        ),
+                                        Text(
+                                          time,
+                                          style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPeriodTab(_SalesPeriod period, String label) {
+    final active = _period == period;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _period = period),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? AppColors.primary : AppColors.containerBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: active ? AppColors.white : AppColors.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricTile({required String label, required String value, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textLight,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }

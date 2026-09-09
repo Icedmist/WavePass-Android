@@ -123,3 +123,18 @@
 - [x] **`WavePass-Backend`**: Low-RAM cleanup scheduler, standard plan user profiles with speed clamps, comprehensive walled garden domains, and clean unit test suite (11/11 passing).
 - [x] **`WavePass-Web`**: URL voucher auto-detection (`code` and `voucher` parameters) on captive portal, and middleware redirection (`/login?code=...` -> `/portal`) for instant 1-tap customer login upon scanning receipt QR codes.
 
+### 13. Automated UI Verification & Layout Overflow Hardening
+- [x] **Automated Sales Analytics Widget Test (`test/sales_analytics_test.dart`)**:
+  - Validates dashboard earnings card presentation and `"Breakdown"` action pill trigger.
+  - Verifies opening of the `_SalesBreakdownSheet` modal bottom sheet.
+  - Tests timeframe tab switching (`Today`, `Last 7 Days`, `This Month`), KPI metrics display, and Plan Distribution rendering.
+  - Tests modal dismissal via close button returning cleanly to dashboard.
+- [x] **Layout Overflow Hardening (`home_dashboard_screen.dart`)**:
+  - Wrapped AppBar title and subtitle in `Expanded` with text ellipsis to prevent horizontal overflow on narrow displays.
+  - Wrapped earnings card footer text in `Flexible` with text ellipsis.
+  - Wrapped Sales Analytics header column in `Expanded` with text ellipsis.
+- [x] **Static Analysis & Test Verification**:
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All tests passed** (`widget_test.dart` and `sales_analytics_test.dart` passing 100%).
+
+

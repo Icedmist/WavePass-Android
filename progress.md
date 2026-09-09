@@ -137,4 +137,36 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All tests passed** (`widget_test.dart` and `sales_analytics_test.dart` passing 100%).
 
+### 14. Dual Connection Modes (LAN & Tunnel), Default Admin Credentials, and Synchronous Router-First Voucher Provisioning (Issue #18)
+- [x] **Default Admin Credentials Standardized**:
+  - Removed legacy `wavepass` user probe fallback; standardized on MikroTik default `admin` user with blank password (or user-defined password).
+  - Cleaned setup scripts and REST API calls across discovery service.
+- [x] **Dual Connection Modes (LAN & Tunnel)**:
+  - **Local Subnet Direct (LAN)**: Direct REST API communication at `http://192.168.88.1:80` with sub-millisecond latency when cashier/operator is on shop Wi-Fi.
+  - **Remote Cloud / WireGuard Tunnel**: Secure remote tunnel communication (e.g. `http://10.8.0.2:80` or `https://tunnel.nexawavepass.com/...`) when operator is off-site.
+  - Implemented `RouterDiscoveryService.checkDualConnection()` to concurrently probe both paths and determine optimal routing (`local` > `tunnel` > `offline`).
+- [x] **Synchronous Router-First Voucher Provisioning (Mikhmon Parity)**:
+  - Implemented `createHotspotUserDirectly()` and `provisionVoucherDualRoute()` in `RouterDiscoveryService`:
+    - Immediately pushes generated passes to `/rest/ip/hotspot/user` via RouterOS REST API.
+    - Automatic fallback from custom duration profiles (`profile_1h`, `profile_12h`, `profile_1d`) to `'default'` if custom profiles do not exist on the device.
+    - Fallback from `PUT /rest/ip/hotspot/user` to `POST /rest/ip/hotspot/user/add` for maximum compatibility across RouterOS versions.
+    - Cash passes are instantly live on physical router hardware at time of sale, eliminating cloud queue delay for walk-up customers.
+- [x] **POS Cash Pass Terminal Integration (`sell_pass_screen.dart`)**:
+  - Integrated `provisionVoucherDualRoute()` into `_handleGenerate()`.
+  - Added visual hardware status badge: `"Live on Router Hardware (LAN Direct)"` / `"Live on Router Hardware (Cloud Tunnel)"` / `"Queued for Cloud Sync"`.
+- [x] **High-Volume Batch Production Integration (`batch_vouchers_screen.dart`)**:
+  - Automatically loops through compiled batch vouchers and provisions them directly onto physical router hardware.
+  - Shows feedback on total vouchers pushed directly to hardware.
+- [x] **Dual-Mode Diagnostics UI (`router_diagnostics_screen.dart`)**:
+  - Added interactive **Dual-Mode Link Topology** card showing real-time ping latency, connection state, and active routing mode for both LAN Direct and Remote Tunnel.
+  - Upgraded connectivity ping tests to probe both links concurrently.
+- [x] **Router Setup & Configuration Script Export (`router_setup_screen.dart`)**:
+  - Added optional Cloud Tunnel endpoint input field.
+  - Enabled `/ip service set www disabled=no port=80` and `www-ssl port=443` in exported setup script to guarantee REST API accessibility.
+- [x] **Test Verification**:
+  - Added `test/router_dual_connection_test.dart` validating dual-mode status resolution, model attributes, and priority fallbacks.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 7 tests passed**.
+
+
 

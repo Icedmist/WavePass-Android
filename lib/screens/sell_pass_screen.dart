@@ -11,6 +11,7 @@ import '../core/constants/api_constants.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
+import '../core/widgets/qr_code_widget.dart';
 
 class SellPassScreen extends StatefulWidget {
   const SellPassScreen({super.key});
@@ -29,6 +30,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
   bool _loadingPlans = true;
   String? _venueId;
   String? _venueName;
+  String? _venueSlug;
 
   @override
   void initState() {
@@ -55,6 +57,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       setState(() {
         _venueId = v['id']?.toString() ?? _venueId;
         _venueName = v['name']?.toString() ?? _venueName ?? 'WavePass Venue';
+        _venueSlug = v['slug']?.toString() ?? _venueSlug ?? 'venue';
       });
     }
   }
@@ -197,6 +200,9 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final width = prefs.getInt('wavepass_printer_paper_width') ?? 58;
       final format = width == 80 ? PdfPageFormat.roll80 : PdfPageFormat.roll57;
 
+      final slug = _venueSlug ?? 'venue';
+      final loginUrl = 'http://$slug.nexawavepass.com/login?code=$_generatedCode';
+
       final doc = pw.Document();
       doc.addPage(
         pw.Page(
@@ -215,6 +221,15 @@ class _SellPassScreenState extends State<SellPassScreen> {
               pw.SizedBox(height: 2),
               pw.Text(_generatedCode!, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2)),
               pw.SizedBox(height: 6),
+              pw.BarcodeWidget(
+                barcode: pw.Barcode.qrCode(),
+                data: loginUrl,
+                width: width == 80 ? 75 : 60,
+                height: width == 80 ? 75 : 60,
+              ),
+              pw.SizedBox(height: 3),
+              pw.Text('Scan QR to Connect & Login', style: const pw.TextStyle(fontSize: 7)),
+              pw.SizedBox(height: 4),
               pw.Text('Plan: ${selectedPlan['title']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
               pw.Text('Duration: ${selectedPlan['duration']} • Data: ${selectedPlan['data']}', style: const pw.TextStyle(fontSize: 8)),
               pw.Text('Price: ${selectedPlan['price']}', style: const pw.TextStyle(fontSize: 9)),
@@ -586,10 +601,24 @@ class _SellPassScreenState extends State<SellPassScreen> {
                         ),
                         const SizedBox(height: 16),
 
+                        // Direct on-screen QR code for customer scan-to-login
+                        Center(
+                          child: QrCodeWidget(
+                            data: 'http://${_venueSlug ?? 'venue'}.nexawavepass.com/login?code=$_generatedCode',
+                            size: 130,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         const Text(
-                          "Customer connects to venue Wi-Fi and enters this code on their phone screen to unlock internet.",
+                          "Scan QR with camera to connect & log in instantly",
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          "Or customer connects to venue Wi-Fi and enters code manually.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, color: AppColors.textLight, height: 1.3),
                         ),
                       ],
                     ),

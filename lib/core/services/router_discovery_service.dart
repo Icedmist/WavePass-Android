@@ -57,8 +57,8 @@ class RouterDiscoveryService {
   }
 
   static Future<DiscoveredRouter?> _probeRouter(String ip, String username, String password) async {
+    final client = http.Client();
     try {
-      final client = http.Client();
       final uri = Uri.parse("http://$ip/rest/system/resource");
       final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
 
@@ -84,6 +84,8 @@ class RouterDiscoveryService {
       }
     } catch (_) {
       return null;
+    } finally {
+      client.close();
     }
     return null;
   }
@@ -94,8 +96,8 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
+    final client = http.Client();
     try {
-      final client = http.Client();
       final uri = Uri.parse("http://$ip/rest/system/reboot");
       final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
       final response = await client.post(
@@ -108,6 +110,8 @@ class RouterDiscoveryService {
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (_) {
       return false;
+    } finally {
+      client.close();
     }
   }
 

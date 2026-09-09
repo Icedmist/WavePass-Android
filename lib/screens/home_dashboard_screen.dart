@@ -56,6 +56,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       venue ??= await VenueStateService.instance.refreshVenue();
       String? vid = venue?['id']?.toString();
       if (venue != null) {
+        if (!mounted) return;
         setState(() {
           _venueName = venue!['name'] ?? 'Your Venue';
           _venueSub = venue['slug'] != null ? '${venue['slug']}.nexawavepass.com' : '—';
@@ -68,20 +69,24 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               // no predefined pricing — prompt to add
             }
           } catch (_) {}
-        try {
-          final sessions = await SupabaseService.instance.getActiveSessions(vid);
-          setState(() => _activeUsers = sessions.length);
-        } catch (_) {}
-        try {
-          final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
-          setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
-        } catch (_) {}
-      }
+          try {
+            final sessions = await SupabaseService.instance.getActiveSessions(vid);
+            if (mounted) setState(() => _activeUsers = sessions.length);
+          } catch (_) {}
+          try {
+            final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
+            if (mounted) {
+              setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
+            }
+          } catch (_) {}
+        }
       }
       try {
         final stats = await WavePassApi.instance.adminStats();
-        if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
-        if (stats['sessions'] != null) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
+        if (mounted) {
+          if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
+          if (stats['sessions'] != null && _activeUsers == 0) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
+        }
       } catch (_) {}
       // check router status truthfully from database and hardware health
       try {

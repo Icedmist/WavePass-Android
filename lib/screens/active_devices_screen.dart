@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
@@ -13,6 +15,7 @@ class ActiveDevicesScreen extends StatefulWidget {
 class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
   List<Map<String, dynamic>> _devices = [];
   bool _loading = true;
+  bool _isRefreshing = false;
   Timer? _autoRefreshTimer;
 
   @override
@@ -31,7 +34,9 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
   }
 
   Future<void> _loadDevices({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    if (!silent && mounted) setState(() => _loading = true);
     try {
       final venue = await SupabaseService.instance.getPrimaryVenue();
       if (venue != null) {
@@ -56,6 +61,7 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         });
       }
     } finally {
+      _isRefreshing = false;
       if (!silent && mounted) {
         setState(() => _loading = false);
       }
@@ -99,7 +105,7 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: AppColors.primary, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go(AppRouter.dashboard),
         ),
         title: const Text(
           "Active Devices",

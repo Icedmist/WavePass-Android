@@ -80,7 +80,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
       // Attempt non-blocking local subnet discovery if on local Wi-Fi
       _probeLocalSubnet();
     } catch (e) {
-      setState(() => _error = 'Failed to load router info: $e');
+      if (mounted) setState(() => _error = 'Failed to load router info: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -190,11 +190,15 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     if (_selectedRouter == null) return;
     final routerId = _selectedRouter!['id']?.toString() ?? 'default';
 
+    var dialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    ).then((_) => dialogOpen = false);
 
     String script = '';
     try {
@@ -202,7 +206,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     } catch (e) {
       script = '# Error fetching script: $e';
     } finally {
-      if (mounted) Navigator.of(context).pop();
+      if (mounted && dialogOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     }
 
     if (!mounted) return;

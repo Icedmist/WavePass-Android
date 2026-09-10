@@ -178,3 +178,17 @@
   - Added `test/barcode_scanner_flow_test.dart`.
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 10 tests passed**.
+
+### 16. Branded Operations Manual & Architectural Blueprint (Issue #22, PR #23)
+- [x] **Publication-Grade Branded Operations Manual**:
+  - Created and compiled exhaustive 10-page operations manual at `docs/WavePass_Operations_Manual.pdf`.
+  - Styled with WavePass design tokens (Ink `#0A0A0A`, Warm Cream `#FAF5E8`, Brand Blue `#1677FF`, Emerald Green `#0A7A3A`, Sand `#FFCE8A`).
+  - Two-pass canvas with running header, chapter badges, and dynamic "Page X of Y" footers.
+- [x] **Comprehensive 6-Chapter Coverage**:
+  - **Chapter 1**: System Overview, Hybrid Edge-Cloud Model, End-to-End Packet Lifecycle.
+  - **Chapter 2**: MikroTik RouterOS Hardware Engineering, Interface Mapping, REST API Activation, `wavepass-setup.rsc`.
+  - **Chapter 3**: Operator Mobile POS Manual (`WavePass-Android`), Onboarding, Instant Pass Generation, Bluetooth Thermal Printing, Batch Cutout Cards.
+  - **Chapter 4**: Guest Captive Web Portal Playbook (`WavePass-Web`), Multi-tenant Subdomain Routing, Paystack Checkout, QR Camera Bypass.
+  - **Chapter 5**: Server Operations & Backend Administration (`WavePass-Backend`), NestJS Services, BullMQ/Redis Queue Engine, Docker Compose Runbook.
+  - **Chapter 6**: Troubleshooting Runbook & Diagnostics Matrix (8 failure modes, fast remediation, case studies).
+

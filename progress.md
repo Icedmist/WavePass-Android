@@ -168,5 +168,13 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 7 tests passed**.
 
-
-
+### 15. Barcode Scanner Router Onboarding & Real Gateway Setup (Issue #20, PR #21)
+- [x] **Eliminated Fake Tunnel Endpoint Defaults**:
+  - `BarcodeScannerScreen` and `RouterDiscoveryService.provisionWithSerial()` now register local gateway `http://192.168.88.1` with `connectionMode: 'local'` instead of registering non-existent `https://tunnel.nexawavepass.com/$serial` endpoints that mapped to web frontends.
+- [x] **Actionable Onboarding Workflow**:
+  - Updated post-scan dialog to instruct operators to connect to the router Wi-Fi network and tap "Auto-Configure" (routing to `AppRouter.routerSetup`) to perform automatic router discovery and hotspot provisioning in 1 tap.
+  - Added "Copy Script" button copying RouterOS terminal setup script directly to clipboard.
+- [x] **Verification**:
+  - Added `test/barcode_scanner_flow_test.dart`.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 10 tests passed**.

@@ -435,13 +435,14 @@ class RouterDiscoveryService {
     required String serialNumber,
     required String venueId,
     required String routerName,
+    String? localIp,
   }) async {
     try {
       final res = await WavePassApi.instance.createRouter(
         venueId: venueId,
         name: routerName.isNotEmpty ? routerName : 'MikroTik-$serialNumber',
-        endpoint: 'https://tunnel.nexawavepass.com/$serialNumber',
-        connectionMode: 'tunnel',
+        endpoint: localIp ?? 'http://192.168.88.1',
+        connectionMode: 'local',
       );
       return res['id'] != null || res['status'] == 200 || res['status'] == 201;
     } catch (_) {

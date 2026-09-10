@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
@@ -48,8 +51,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       await WavePassApi.instance.createRouter(
         venueId: venueId,
         name: 'MikroTik-$cleanSerial',
-        endpoint: 'https://tunnel.nexawavepass.com/$cleanSerial',
-        connectionMode: 'tunnel',
+        endpoint: 'http://192.168.88.1',
+        connectionMode: 'local',
       );
 
       if (!mounted) return;
@@ -64,7 +67,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             children: [
               Icon(Icons.check_circle, color: AppColors.accentGreen, size: 24),
               SizedBox(width: 8),
-              Text("Router Identified", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              Text("Router Scanned", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             ],
           ),
           content: Column(
@@ -84,21 +87,38 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w900, fontFamily: 'monospace', fontSize: 14),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               const Text(
-                "When you plug this router into your internet cable, it will automatically connect to WavePass.",
+                "Connect & Set Up:",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "1. Connect your phone to this router's Wi-Fi network.\n2. Tap 'Auto-Configure' to connect and install hotspot in 1 tap.",
                 style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
               ),
             ],
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(const ClipboardData(
+                  text: "/ip service set www disabled=no\n/ip hotspot profile add name=wavepass html-directory=flash/hotspot login-by=http-chap,http-pap",
+                ));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Setup script copied to clipboard")),
+                );
+              },
+              child: const Text("Copy Script"),
+            ),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(ctx).pop();
                 Navigator.of(context).pop();
+                context.push(AppRouter.routerSetup);
               },
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              child: const Text("Done"),
+              child: const Text("Auto-Configure"),
             ),
           ],
         ),

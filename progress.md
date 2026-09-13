@@ -228,3 +228,26 @@
   - Added 2 new tests in `test/router_dual_connection_test.dart` for captive portal and diagnostics.
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 14 tests passed**.
+
+### 19. Native MikroTik RouterOS API on Port 8728 & Micro Voucher App Parity (Issue #28, PR #29)
+- [x] **Native RouterOS Binary API Protocol Client (`lib/core/services/mikrotik_api_client.dart`)**:
+  - Implemented pure Dart client for MikroTik length-prefixed binary API protocol over TCP `Socket` on Port 8728 (`/ip service api`).
+  - Encodes word lengths across all MikroTik length ranges (1, 2, 3, 4, 5-byte headers) and parses sentence boundaries (`!re`, `!done`, `!trap`, `!fatal`).
+  - Supports `/login` with standard RouterOS authentication.
+  - Queries system resources (`/system/resource/print`) and router identity (`/system/identity/print`).
+  - Directly provisions HotSpot users/vouchers on physical router hardware via `/ip/hotspot/user/add` with fallback to `default` profile.
+- [x] **HotSpot Captive Portal Bypass (Micro Voucher / Mikhmon Parity)**:
+  - Port 8728 is a raw TCP protocol and is **never** intercepted or blocked by the MikroTik HotSpot captive portal firewall redirect (which only redirects HTTP Port 80 and HTTPS Port 443).
+  - Enables seamless router connection and diagnostics even when the phone has not authenticated on the Wi-Fi captive portal yet.
+- [x] **Dual-Protocol Router Probing in `RouterDiscoveryService`**:
+  - Automatic fallback to Port 8728 when Port 80 returns captive portal HTML, 301/302 redirects, HTTP 404, connection refused, or timeout.
+  - Supports explicit Port 8728 configurations (e.g. `192.168.88.1:8728` or `api://192.168.88.1`) across local discovery, `probeEndpoint()`, and `rebootRouter()`.
+  - Fixed upstream ISP router collision: Ensured upstream gateway web interfaces (e.g. Starlink dish modem at `192.168.1.1`) returning HTML are marked non-RouterOS and do not override the primary `192.168.88.1` MikroTik router.
+- [x] **Direct & Fallback Voucher Provisioning**:
+  - `createHotspotUserDirectly()` now attempts HTTP REST first, and if intercepted by captive portal or failing, seamlessly provisions via native Port 8728 RouterOS API.
+  - If target endpoint specifies `:8728`, provisions directly through Port 8728 socket.
+- [x] **Unit Testing & Verification**:
+  - Created test suite in `test/mikrotik_api_client_test.dart` with 9 unit and mock-server tests covering binary encoding, decoding, auth error handling, system resource parsing, identity extraction, and voucher user provisioning over local loopback sockets.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 23 tests passed**.
+

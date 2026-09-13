@@ -191,4 +191,21 @@
   - **Chapter 4**: Guest Captive Web Portal Playbook (`WavePass-Web`), Multi-tenant Subdomain Routing, Paystack Checkout, QR Camera Bypass.
   - **Chapter 5**: Server Operations & Backend Administration (`WavePass-Backend`), NestJS Services, BullMQ/Redis Queue Engine, Docker Compose Runbook.
   - **Chapter 6**: Troubleshooting Runbook & Diagnostics Matrix (8 failure modes, fast remediation, case studies).
-
+### 17. MikroTik Local Router Discovery Reliability, Self-Signed SSL, & Diagnostics Hardening (Issue #24, PR #25)
+- [x] **Self-Signed SSL & HTTPS Probing**:
+  - Implemented `createRouterClient()` using `IOClient` with `badCertificateCallback = (cert, host, port) => true` and 4s timeout across all RouterOS REST communication (`_probeRouter`, `createHotspotUserDirectly`, `rebootRouter`, `installHotspotOnRouter`, `fetchActiveHotspotUsers`, `disconnectHotspotUser`).
+  - Dual scheme probe: probes `http` then `https` sequentially to transparently support RouterOS v7 `www-ssl` (port 443) and HTTP-to-HTTPS redirects.
+- [x] **Input Normalization**:
+  - Normalized IP/host inputs in `RouterDiscoveryService._probeRouter` and `RouterSetupScreen` to strip scheme prefixes (`http://`, `https://`) and trailing slashes, preventing doubled-up URLs (`http://http://...`).
+- [x] **Actionable HTTP 401/403 Authentication Error Handling**:
+  - Replaced silent `return null` (which masqueraded auth errors as offline) with explicit `authFailed: true` and descriptive error messages (`"Login failed (HTTP 401): Invalid password for user \"$username\""`).
+  - Updated `RouterSetupScreen` to display an amber alert banner and SnackBar on auth failure rather than reporting router missing.
+- [x] **Decoupled Cloud Backend Ping in Diagnostics**:
+  - Wrapped `WavePassApi.instance.testRouter(routerId)` in an isolated inner `try/catch` block in `RouterDiagnosticsScreen._testConnection()` so cloud tunnel failures no longer abort local LAN checks.
+- [x] **Persistent Router Credentials & Diagnostics Update Modal**:
+  - Added `_loadSavedCredentials()` and `_saveCredentials()` to `RouterSetupScreen` using `SharedPreferences`.
+  - Built `_showCredentialsDialog()` in `RouterDiagnosticsScreen` allowing direct configuration and updating of router IP, username, and password with password toggle and instant re-testing.
+- [x] **Verification**:
+  - Unit tests in `test/router_dual_connection_test.dart` for `authFailed` states and dual link status.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 12 tests passed**.

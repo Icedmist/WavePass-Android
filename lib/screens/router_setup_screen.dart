@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/router_discovery_service.dart';
@@ -32,6 +33,40 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   String? _exportedScript;
 
   @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp);
+    final savedTunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+    final savedUser = prefs.getString(RouterDiscoveryService.keyRouterUsername);
+    final savedPass = prefs.getString(RouterDiscoveryService.keyRouterPassword);
+
+    if (mounted) {
+      setState(() {
+        if (savedIp != null && savedIp.isNotEmpty) _ipCtrl.text = savedIp;
+        if (savedTunnel != null && savedTunnel.isNotEmpty) _tunnelCtrl.text = savedTunnel;
+        if (savedUser != null && savedUser.isNotEmpty) _userCtrl.text = savedUser;
+        if (savedPass != null && savedPass.isNotEmpty) {
+          _passCtrl.text = savedPass;
+          _showCustomSettings = true;
+        }
+      });
+    }
+  }
+
+  Future<void> _saveCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, _ipCtrl.text.trim());
+    await prefs.setString(RouterDiscoveryService.keyRouterTunnelEndpoint, _tunnelCtrl.text.trim());
+    await prefs.setString(RouterDiscoveryService.keyRouterUsername, _userCtrl.text.trim());
+    await prefs.setString(RouterDiscoveryService.keyRouterPassword, _passCtrl.text.trim());
+  }
+
+  @override
   void dispose() {
     _ipCtrl.dispose();
     _tunnelCtrl.dispose();
@@ -51,6 +86,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     final tunnel = _tunnelCtrl.text.trim();
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
     final pass = _passCtrl.text.trim();
+
+    await _saveCredentials();
 
     // 1. Probe local router
     DiscoveredRouter? router = await RouterDiscoveryService.discoverLocalRouter(
@@ -82,6 +119,20 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
             backgroundColor: AppColors.accentRed,
           ),
         );
+      } else if (router.authFailed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(router.errorMessage ?? "Router detected at ${router.ip}, but login failed (HTTP 401). Please check the admin password."),
+            backgroundColor: AppColors.accentOrange,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("MikroTik router detected successfully at ${router.ip}!"),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
       }
     }
   }
@@ -102,6 +153,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       final pass = _passCtrl.text.trim();
       final tunnel = _tunnelCtrl.text.trim().isNotEmpty ? _tunnelCtrl.text.trim() : null;
 
+      await _saveCredentials();
+
       // 1. Configure router hardware via RouterOS REST API
       final hwResult = await RouterDiscoveryService.installHotspotOnRouter(
         ip: _foundRouter!.ip,
@@ -113,7 +166,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       );
 
       // 2. Register router with WavePass Cloud API
-      final endpoint = tunnel ?? 'http://${_foundRouter!.ip}';
+      final endpoint = tunnel ?? (_foundRouter!.ip.startsWith('http') ? _foundRouter!.ip : 'http://${_foundRouter!.ip}');
       final mode = tunnel != null ? 'tunnel' : 'local';
       await WavePassApi.instance.createRouter(
         venueId: venueId,
@@ -429,7 +482,11 @@ set name="WavePass-$slug"
                       decoration: BoxDecoration(
                         color: AppColors.white,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.accentGreen.withValues(alpha: 0.4)),
+                        border: Border.all(
+                          color: _foundRouter!.authFailed
+                              ? AppColors.accentOrange.withValues(alpha: 0.5)
+                              : AppColors.accentGreen.withValues(alpha: 0.4),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -439,8 +496,8 @@ set name="WavePass-$slug"
                               Container(
                                 width: 10,
                                 height: 10,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.accentGreen,
+                                decoration: BoxDecoration(
+                                  color: _foundRouter!.authFailed ? AppColors.accentOrange : AppColors.accentGreen,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -466,91 +523,124 @@ set name="WavePass-$slug"
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildMiniBadge("CPU", _foundRouter!.cpuLoad),
-                              _buildMiniBadge("RAM", _foundRouter!.totalMemory),
-                              _buildMiniBadge("UPTIME", _foundRouter!.uptime),
-                              _buildMiniBadge("OS", _foundRouter!.version),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-
-                          if (_successMessage == null)
-                            SizedBox(
-                              width: double.infinity,
-                              height: 44,
-                              child: ElevatedButton(
-                                onPressed: _isConfiguring ? null : _handleInstallHotspot,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.accentGreen,
-                                ),
-                                child: _isConfiguring
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        "Install HotSpot in 1 Tap",
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                              ),
-                            )
-                          else ...[
+                          if (_foundRouter!.authFailed) ...[
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.accentGreen.withValues(alpha: 0.1),
+                                color: AppColors.accentOrange.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
                               ),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.check_circle, color: AppColors.accentGreen, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _successMessage!,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.accentGreen,
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.lock_person_outlined, color: AppColors.accentOrange, size: 18),
+                                      const SizedBox(width: 8),
+                                      const Expanded(
+                                        child: Text(
+                                          "Authentication Failed",
+                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentOrange),
+                                        ),
                                       ),
-                                    ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _foundRouter!.errorMessage ?? "Router reached, but admin password was rejected. Enter the correct password in Custom Settings above and tap 'Find My Router' again.",
+                                    style: const TextStyle(fontSize: 11, color: AppColors.primary, height: 1.3),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
+                          ] else ...[
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => context.push(AppRouter.routerDiagnostics),
-                                    icon: const Icon(Icons.speed_rounded, size: 16),
-                                    label: const Text("View Diagnostics", style: TextStyle(fontSize: 12)),
-                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => context.go(AppRouter.dashboard),
-                                    style: OutlinedButton.styleFrom(
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                    ),
-                                    child: const Text("Dashboard", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                ),
+                                _buildMiniBadge("CPU", _foundRouter!.cpuLoad),
+                                _buildMiniBadge("RAM", _foundRouter!.totalMemory),
+                                _buildMiniBadge("UPTIME", _foundRouter!.uptime),
+                                _buildMiniBadge("OS", _foundRouter!.version),
                               ],
                             ),
+                            const SizedBox(height: 14),
+
+                            if (_successMessage == null)
+                              SizedBox(
+                                width: double.infinity,
+                                height: 44,
+                                child: ElevatedButton(
+                                  onPressed: _isConfiguring ? null : _handleInstallHotspot,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.accentGreen,
+                                  ),
+                                  child: _isConfiguring
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text(
+                                          "Install HotSpot in 1 Tap",
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                ),
+                              )
+                            else ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentGreen.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: AppColors.accentGreen, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _successMessage!,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.accentGreen,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => context.push(AppRouter.routerDiagnostics),
+                                      icon: const Icon(Icons.speed_rounded, size: 16),
+                                      label: const Text("View Diagnostics", style: TextStyle(fontSize: 12)),
+                                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () => context.go(AppRouter.dashboard),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      ),
+                                      child: const Text("Dashboard", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ],
                       ),

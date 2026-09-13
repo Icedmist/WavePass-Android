@@ -122,5 +122,50 @@ void main() {
       expect(RouterDiscoveryService.keyRouterUsername, equals('wavepass_router_username'));
       expect(RouterDiscoveryService.keyRouterPassword, equals('wavepass_router_password'));
     });
+
+    test('DiscoveredRouter correctly captures authFailed and errorMessage', () {
+      final authFailRouter = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik Gateway (Auth Failed)',
+        version: 'RouterOS v7',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: true,
+        authFailed: true,
+        errorMessage: 'Login failed (HTTP 401): Invalid password for user "admin"',
+      );
+
+      expect(authFailRouter.authFailed, isTrue);
+      expect(authFailRouter.errorMessage, contains('HTTP 401'));
+      expect(authFailRouter.ip, equals('http://192.168.88.1'));
+    });
+
+    test('RouterDualConnectionStatus marks offline and surfaces error if localRouter authFailed', () {
+      final authFailRouter = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik Gateway (Auth Failed)',
+        version: 'RouterOS v7',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: true,
+        authFailed: true,
+        errorMessage: 'Login failed (HTTP 401): Invalid password for user "admin"',
+      );
+
+      final status = RouterDualConnectionStatus(
+        localRouter: authFailRouter,
+        tunnelRouter: null,
+        isLocalOnline: false,
+        isTunnelOnline: false,
+        activeMode: 'offline',
+        errorMessage: authFailRouter.errorMessage,
+      );
+
+      expect(status.isAnyOnline, isFalse);
+      expect(status.isLocalOnline, isFalse);
+      expect(status.errorMessage, contains('HTTP 401'));
+    });
   });
 }

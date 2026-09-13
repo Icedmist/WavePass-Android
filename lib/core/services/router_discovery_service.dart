@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'wavepass_api.dart';
 
@@ -15,6 +17,8 @@ class DiscoveredRouter {
   final bool isReachable;
   final String connectionType; // 'LAN' or 'Tunnel'
   final int? latencyMs;
+  final bool authFailed;
+  final String? errorMessage;
 
   DiscoveredRouter({
     required this.ip,
@@ -26,6 +30,8 @@ class DiscoveredRouter {
     required this.isReachable,
     this.connectionType = 'LAN',
     this.latencyMs,
+    this.authFailed = false,
+    this.errorMessage,
   });
 }
 
@@ -37,6 +43,7 @@ class RouterDualConnectionStatus {
   final String? activeEndpoint;
   final String activeMode; // 'local', 'tunnel', or 'offline'
   final String? latencySummary;
+  final String? errorMessage;
 
   RouterDualConnectionStatus({
     this.localRouter,
@@ -46,6 +53,7 @@ class RouterDualConnectionStatus {
     this.activeEndpoint,
     required this.activeMode,
     this.latencySummary,
+    this.errorMessage,
   });
 
   bool get isAnyOnline => isLocalOnline || isTunnelOnline;
@@ -58,6 +66,15 @@ class RouterDiscoveryService {
   static const String keyRouterUsername = 'wavepass_router_username';
   static const String keyRouterPassword = 'wavepass_router_password';
 
+  /// Creates an HTTP client configured to accept self-signed certificates on local router hardware.
+  static http.Client createRouterClient() {
+    if (kIsWeb) return http.Client();
+    final ioHttpClient = HttpClient()
+      ..badCertificateCallback = ((X509Certificate cert, String host, int port) => true)
+      ..connectionTimeout = const Duration(seconds: 4);
+    return IOClient(ioHttpClient);
+  }
+
   /// Auto-discovers MikroTik router over local subnet.
   /// Uses default admin credentials (default empty password), without creating extra users.
   static Future<DiscoveredRouter?> discoverLocalRouter({
@@ -65,23 +82,28 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
-    // 1. Probe with supplied credentials (default admin:"")
+    // 1. Probe with supplied credentials
     DiscoveredRouter? router = await _probeRouter(ip, username, password, connectionType: "LAN");
     if (router != null) return router;
 
-    // If password was non-empty and failed, try empty password as fallback for default admin
+    // If password was non-empty and failed with timeout/refused, try empty password fallback
     if (password.isNotEmpty) {
       router = await _probeRouter(ip, username, "", connectionType: "LAN");
-      if (router != null) return router;
+      if (router != null && !router.authFailed) return router;
     }
 
     // 2. If default 192.168.88.1 was specified and failed, probe secondary 192.168.1.1 fallback
-    if (ip == "192.168.88.1") {
+    var clean = ip.trim();
+    if (clean.startsWith('http://')) clean = clean.substring(7);
+    if (clean.startsWith('https://')) clean = clean.substring(8);
+    if (clean.endsWith('/')) clean = clean.substring(0, clean.length - 1);
+
+    if (clean == "192.168.88.1") {
       router = await _probeRouter("192.168.1.1", username, password, connectionType: "LAN");
       if (router != null) return router;
       if (password.isNotEmpty) {
         router = await _probeRouter("192.168.1.1", username, "", connectionType: "LAN");
-        if (router != null) return router;
+        if (router != null && !router.authFailed) return router;
       }
     }
 
@@ -95,7 +117,7 @@ class RouterDiscoveryService {
     String password = "",
     String connectionType = "Endpoint",
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     try {
       var normalized = rawEndpoint.trim();
       if (normalized.isEmpty) return null;
@@ -120,17 +142,36 @@ class RouterDiscoveryService {
       sw.stop();
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final dynamic decoded = jsonDecode(response.body);
+        final Map<String, dynamic> data = decoded is List
+            ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
+            : Map<String, dynamic>.from(decoded as Map);
+
         return DiscoveredRouter(
           ip: normalized,
-          identity: data['board-name'] ?? data['platform'] ?? 'MikroTik Gateway',
-          version: data['version'] ?? 'RouterOS v7',
+          identity: data['board-name']?.toString() ?? data['platform']?.toString() ?? 'MikroTik Gateway',
+          version: data['version']?.toString() ?? 'RouterOS v7',
           cpuLoad: '${data['cpu-load'] ?? 0}%',
-          uptime: data['uptime'] ?? '0m',
+          uptime: data['uptime']?.toString() ?? '0m',
           totalMemory: '${((data['total-memory'] ?? 0) / (1024 * 1024)).toStringAsFixed(0)} MB',
           isReachable: true,
           connectionType: connectionType,
           latencyMs: sw.elapsedMilliseconds,
+          authFailed: false,
+        );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        return DiscoveredRouter(
+          ip: normalized,
+          identity: 'MikroTik Gateway (Auth Failed)',
+          version: 'RouterOS v7',
+          cpuLoad: 'N/A',
+          uptime: 'N/A',
+          totalMemory: 'N/A',
+          isReachable: true,
+          connectionType: connectionType,
+          latencyMs: sw.elapsedMilliseconds,
+          authFailed: true,
+          errorMessage: 'Login failed (HTTP ${response.statusCode}): Invalid password for user "$username"',
         );
       }
     } catch (_) {
@@ -160,15 +201,15 @@ class RouterDiscoveryService {
     final localRouter = results[0];
     final tunnelRouter = results.length > 1 ? results[1] : null;
 
-    final isLocalOnline = localRouter != null && localRouter.isReachable;
-    final isTunnelOnline = tunnelRouter != null && tunnelRouter.isReachable;
+    final isLocalOnline = localRouter != null && localRouter.isReachable && !localRouter.authFailed;
+    final isTunnelOnline = tunnelRouter != null && tunnelRouter.isReachable && !tunnelRouter.authFailed;
 
     String? activeEndpoint;
     String activeMode = 'offline';
 
     // Prioritize local LAN if available (sub-millisecond latency, no internet reliance)
     if (isLocalOnline) {
-      activeEndpoint = 'http://${localRouter.ip}';
+      activeEndpoint = localRouter.ip.startsWith('http') ? localRouter.ip : 'http://${localRouter.ip}';
       activeMode = 'local';
     } else if (isTunnelOnline) {
       activeEndpoint = tunnelRouter.ip;
@@ -184,6 +225,13 @@ class RouterDiscoveryService {
       latency = latency != null ? '$latency | $t' : t;
     }
 
+    String? error;
+    if (localRouter?.authFailed == true) {
+      error = localRouter?.errorMessage;
+    } else if (tunnelRouter?.authFailed == true) {
+      error = tunnelRouter?.errorMessage;
+    }
+
     return RouterDualConnectionStatus(
       localRouter: localRouter,
       tunnelRouter: tunnelRouter,
@@ -192,6 +240,7 @@ class RouterDiscoveryService {
       activeEndpoint: activeEndpoint,
       activeMode: activeMode,
       latencySummary: latency,
+      errorMessage: error,
     );
   }
 
@@ -201,41 +250,73 @@ class RouterDiscoveryService {
     String password, {
     String connectionType = 'LAN',
   }) async {
-    final client = http.Client();
-    try {
-      final uri = Uri.parse("http://$ip/rest/system/resource");
-      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+    var cleanHost = ip.trim();
+    if (cleanHost.startsWith('http://')) cleanHost = cleanHost.substring(7);
+    if (cleanHost.startsWith('https://')) cleanHost = cleanHost.substring(8);
+    if (cleanHost.endsWith('/')) cleanHost = cleanHost.substring(0, cleanHost.length - 1);
+    if (cleanHost.isEmpty) return null;
 
-      final sw = Stopwatch()..start();
-      final response = await client.get(
-        uri,
-        headers: {
-          'Authorization': authHeader,
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 4));
-      sw.stop();
+    final schemes = ['http', 'https'];
+    DiscoveredRouter? authFailedRouter;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return DiscoveredRouter(
-          ip: ip,
-          identity: data['board-name'] ?? data['platform'] ?? 'MikroTik Gateway',
-          version: data['version'] ?? 'RouterOS v7',
-          cpuLoad: '${data['cpu-load'] ?? 0}%',
-          uptime: data['uptime'] ?? '0m',
-          totalMemory: '${((data['total-memory'] ?? 0) / (1024 * 1024)).toStringAsFixed(0)} MB',
-          isReachable: true,
-          connectionType: connectionType,
-          latencyMs: sw.elapsedMilliseconds,
-        );
+    for (final scheme in schemes) {
+      final client = createRouterClient();
+      try {
+        final uri = Uri.parse("$scheme://$cleanHost/rest/system/resource");
+        final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+
+        final sw = Stopwatch()..start();
+        final response = await client.get(
+          uri,
+          headers: {
+            'Authorization': authHeader,
+            'Accept': 'application/json',
+          },
+        ).timeout(const Duration(seconds: 3));
+        sw.stop();
+
+        if (response.statusCode == 200) {
+          final dynamic decoded = jsonDecode(response.body);
+          final Map<String, dynamic> data = decoded is List
+              ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
+              : Map<String, dynamic>.from(decoded as Map);
+
+          return DiscoveredRouter(
+            ip: '$scheme://$cleanHost',
+            identity: data['board-name']?.toString() ?? data['platform']?.toString() ?? 'MikroTik Gateway',
+            version: data['version']?.toString() ?? 'RouterOS v7',
+            cpuLoad: '${data['cpu-load'] ?? 0}%',
+            uptime: data['uptime']?.toString() ?? '0m',
+            totalMemory: '${((data['total-memory'] ?? 0) / (1024 * 1024)).toStringAsFixed(0)} MB',
+            isReachable: true,
+            connectionType: connectionType,
+            latencyMs: sw.elapsedMilliseconds,
+            authFailed: false,
+          );
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
+          authFailedRouter = DiscoveredRouter(
+            ip: '$scheme://$cleanHost',
+            identity: 'MikroTik Gateway (Auth Failed)',
+            version: 'RouterOS v7',
+            cpuLoad: 'N/A',
+            uptime: 'N/A',
+            totalMemory: 'N/A',
+            isReachable: true,
+            connectionType: connectionType,
+            latencyMs: sw.elapsedMilliseconds,
+            authFailed: true,
+            errorMessage: 'Login failed (HTTP ${response.statusCode}): Invalid password for user "$username"',
+          );
+          return authFailedRouter;
+        }
+      } catch (_) {
+        // Continue to fallback scheme (e.g. HTTPS)
+      } finally {
+        client.close();
       }
-    } catch (_) {
-      return null;
-    } finally {
-      client.close();
     }
-    return null;
+
+    return authFailedRouter;
   }
 
   /// Synchronously provisions a HotSpot user/voucher directly onto the MikroTik router hardware
@@ -253,7 +334,7 @@ class RouterDiscoveryService {
     int? sharedUsers,
     String comment = "wavepass-provisioned",
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     try {
       var normalized = endpoint.trim();
       if (normalized.isEmpty) return false;
@@ -403,7 +484,7 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
       if (!target.startsWith('http://') && !target.startsWith('https://')) {
@@ -460,7 +541,7 @@ class RouterDiscoveryService {
     required String venueName,
     String? tunnelEndpoint,
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
     final headers = {
       'Authorization': authHeader,
@@ -641,7 +722,7 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
       if (!target.startsWith('http://') && !target.startsWith('https://')) {
@@ -683,7 +764,7 @@ class RouterDiscoveryService {
     String password = "",
     required String activeIdOrUser,
   }) async {
-    final client = http.Client();
+    final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
       if (!target.startsWith('http://') && !target.startsWith('https://')) {

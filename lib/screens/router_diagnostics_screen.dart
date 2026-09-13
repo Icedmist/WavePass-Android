@@ -91,7 +91,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-      final tunnelEndpoint = _selectedRouter?['endpoint']?.toString() ?? prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+      final configuredEndpoint = _selectedRouter?['endpoint']?.toString();
+      final tunnelEndpoint = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint) ??
+          (configuredEndpoint != null && !configuredEndpoint.contains('192.168.') ? configuredEndpoint : null);
       final username = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
       final password = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
 
@@ -117,7 +119,13 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
 
     setState(() => _testingConnection = true);
     try {
-      final updated = await WavePassApi.instance.testRouter(routerId);
+      Map<String, dynamic>? updated;
+      try {
+        updated = await WavePassApi.instance.testRouter(routerId);
+      } catch (e) {
+        debugPrint("Cloud tunnel testRouter failed: $e");
+      }
+
       // Run concurrent dual link probe (LAN & Tunnel) directly from device
       await _probeDualConnection();
       if (!mounted) return;
@@ -125,27 +133,45 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
       setState(() {
         _selectedRouter = {
           ..._selectedRouter!,
-          ...updated,
-          'status': (_dualStatus?.isAnyOnline == true) ? 'ONLINE' : (updated['status'] ?? 'OFFLINE'),
-          'lastSeen': updated['lastSeen'] ?? DateTime.now().toIso8601String(),
+          if (updated != null) ...updated,
+          'status': (_dualStatus?.isAnyOnline == true) ? 'ONLINE' : (updated?['status'] ?? 'OFFLINE'),
+          'lastSeen': updated?['lastSeen'] ?? DateTime.now().toIso8601String(),
         };
       });
 
       final isOnline = _selectedRouter!['status'] == 'ONLINE' || _dualStatus?.isAnyOnline == true;
+      final isAuthFailed = _dualStatus?.localRouter?.authFailed == true || _dualStatus?.tunnelRouter?.authFailed == true;
       final summary = _dualStatus?.latencySummary != null ? " (${_dualStatus!.latencySummary})" : "";
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isOnline
-              ? "Router is ONLINE and responding!$summary"
-              : "Router returned OFFLINE on both LAN and Cloud Tunnel."),
-          backgroundColor: isOnline ? AppColors.accentGreen : AppColors.accentRed,
-        ),
-      );
+
+      if (isOnline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Router is ONLINE and responding!$summary"),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      } else if (isAuthFailed) {
+        final err = _dualStatus?.errorMessage ?? "Router reached, but authentication failed (HTTP 401). Tap 'Update Credentials' to fix password.";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err),
+            backgroundColor: AppColors.accentOrange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Router returned OFFLINE on both LAN and Cloud Tunnel. Verify Wi-Fi or update credentials."),
+            backgroundColor: AppColors.accentRed,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Connection test failed: $e"),
+            content: Text("Connection test error: $e"),
             backgroundColor: AppColors.accentRed,
           ),
         );
@@ -306,6 +332,106 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCredentialsDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ipCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1');
+    final userCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin');
+    final passCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '');
+    bool obscurePass = true;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.vpn_key_rounded, color: AppColors.primary, size: 22),
+              SizedBox(width: 8),
+              Text(
+                "Router Credentials",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Configure direct REST API authentication used to manage this MikroTik router locally.",
+                  style: TextStyle(fontSize: 12, color: AppColors.textLight),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ipCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Gateway IP / Host",
+                    hintText: "192.168.88.1",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.router, size: 20),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: userCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Admin Username",
+                    hintText: "admin",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person, size: 20),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: obscurePass,
+                  decoration: InputDecoration(
+                    labelText: "Admin Password",
+                    hintText: "Enter router password",
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscurePass ? Icons.visibility : Icons.visibility_off, size: 20),
+                      onPressed: () => setDialogState(() => obscurePass = !obscurePass),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+              onPressed: () async {
+                await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, ipCtrl.text.trim());
+                await prefs.setString(RouterDiscoveryService.keyRouterUsername, userCtrl.text.trim());
+                await prefs.setString(RouterDiscoveryService.keyRouterPassword, passCtrl.text.trim());
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Credentials saved! Re-testing local router..."),
+                    backgroundColor: AppColors.accentGreen,
+                  ),
+                );
+                _probeDualConnection();
+              },
+              child: const Text("Save & Re-test"),
+            ),
+          ],
         ),
       ),
     );
@@ -689,8 +815,10 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
   }
 
   Widget _buildDualConnectionCard() {
-    final isLocalOnline = _dualStatus?.isLocalOnline ?? (_localDiscovered?.isReachable == true);
+    final isLocalOnline = _dualStatus?.isLocalOnline ?? (_localDiscovered?.isReachable == true && _localDiscovered?.authFailed != true);
+    final isLocalAuthFailed = _dualStatus?.localRouter?.authFailed == true || _localDiscovered?.authFailed == true;
     final isTunnelOnline = _dualStatus?.isTunnelOnline ?? false;
+    final isTunnelAuthFailed = _dualStatus?.tunnelRouter?.authFailed == true;
     final activeMode = _dualStatus?.activeMode ?? (isLocalOnline ? 'local' : 'offline');
 
     return Container(
@@ -715,17 +843,23 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 decoration: BoxDecoration(
                   color: activeMode != 'offline'
                       ? AppColors.accentGreen.withValues(alpha: 0.12)
-                      : AppColors.accentRed.withValues(alpha: 0.12),
+                      : (isLocalAuthFailed || isTunnelAuthFailed
+                          ? AppColors.accentOrange.withValues(alpha: 0.12)
+                          : AppColors.accentRed.withValues(alpha: 0.12)),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   activeMode == 'local'
                       ? 'LAN DIRECT ACTIVE'
-                      : (activeMode == 'tunnel' ? 'TUNNEL ACTIVE' : 'OFFLINE'),
+                      : (activeMode == 'tunnel'
+                          ? 'TUNNEL ACTIVE'
+                          : (isLocalAuthFailed || isTunnelAuthFailed ? 'AUTH FAILED' : 'OFFLINE')),
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
-                    color: activeMode != 'offline' ? AppColors.accentGreen : AppColors.accentRed,
+                    color: activeMode != 'offline'
+                        ? AppColors.accentGreen
+                        : (isLocalAuthFailed || isTunnelAuthFailed ? AppColors.accentOrange : AppColors.accentRed),
                   ),
                 ),
               ),
@@ -740,7 +874,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
               color: AppColors.containerBg,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isLocalOnline ? AppColors.accentGreen.withValues(alpha: 0.3) : AppColors.cardBorder,
+                color: isLocalOnline
+                    ? AppColors.accentGreen.withValues(alpha: 0.3)
+                    : (isLocalAuthFailed ? AppColors.accentOrange.withValues(alpha: 0.3) : AppColors.cardBorder),
               ),
             ),
             child: Row(
@@ -748,7 +884,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 Icon(
                   Icons.wifi_tethering_rounded,
                   size: 20,
-                  color: isLocalOnline ? AppColors.accentGreen : AppColors.textLight,
+                  color: isLocalOnline
+                      ? AppColors.accentGreen
+                      : (isLocalAuthFailed ? AppColors.accentOrange : AppColors.textLight),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -761,10 +899,16 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _dualStatus?.localRouter?.latencyMs != null
-                            ? "http://192.168.88.1 • ${_dualStatus!.localRouter!.latencyMs}ms latency"
-                            : "http://192.168.88.1 (Shop Wi-Fi Gateway)",
-                        style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace'),
+                        isLocalAuthFailed
+                            ? "${_dualStatus?.localRouter?.ip ?? '192.168.88.1'} • Auth Failed (Check Password)"
+                            : (_dualStatus?.localRouter?.latencyMs != null
+                                ? "${_dualStatus!.localRouter!.ip} • ${_dualStatus!.localRouter!.latencyMs}ms latency"
+                                : "192.168.88.1 (Shop Wi-Fi Gateway)"),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isLocalAuthFailed ? AppColors.accentOrange : AppColors.textLight,
+                          fontFamily: 'monospace',
+                        ),
                       ),
                     ],
                   ),
@@ -772,15 +916,23 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isLocalOnline ? AppColors.accentGreen.withValues(alpha: 0.12) : AppColors.containerBg,
+                    color: isLocalOnline
+                        ? AppColors.accentGreen.withValues(alpha: 0.12)
+                        : (isLocalAuthFailed
+                            ? AppColors.accentOrange.withValues(alpha: 0.12)
+                            : AppColors.containerBg),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    isLocalOnline ? "ONLINE" : "DISCONNECTED",
+                    isLocalOnline
+                        ? "ONLINE"
+                        : (isLocalAuthFailed ? "AUTH FAILED" : "DISCONNECTED"),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: isLocalOnline ? AppColors.accentGreen : AppColors.textLight,
+                      color: isLocalOnline
+                          ? AppColors.accentGreen
+                          : (isLocalAuthFailed ? AppColors.accentOrange : AppColors.textLight),
                     ),
                   ),
                 ),
@@ -796,7 +948,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
               color: AppColors.containerBg,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isTunnelOnline ? AppColors.accentGreen.withValues(alpha: 0.3) : AppColors.cardBorder,
+                color: isTunnelOnline
+                    ? AppColors.accentGreen.withValues(alpha: 0.3)
+                    : (isTunnelAuthFailed ? AppColors.accentOrange.withValues(alpha: 0.3) : AppColors.cardBorder),
               ),
             ),
             child: Row(
@@ -804,7 +958,9 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 Icon(
                   Icons.cloud_sync_rounded,
                   size: 20,
-                  color: isTunnelOnline ? AppColors.accentGreen : AppColors.textLight,
+                  color: isTunnelOnline
+                      ? AppColors.accentGreen
+                      : (isTunnelAuthFailed ? AppColors.accentOrange : AppColors.textLight),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -830,19 +986,66 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isTunnelOnline ? AppColors.accentGreen.withValues(alpha: 0.12) : AppColors.containerBg,
+                    color: isTunnelOnline
+                        ? AppColors.accentGreen.withValues(alpha: 0.12)
+                        : (isTunnelAuthFailed
+                            ? AppColors.accentOrange.withValues(alpha: 0.12)
+                            : AppColors.containerBg),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    isTunnelOnline ? "ONLINE" : "STANDBY",
+                    isTunnelOnline
+                        ? "ONLINE"
+                        : (isTunnelAuthFailed ? "AUTH FAILED" : "STANDBY"),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: isTunnelOnline ? AppColors.accentGreen : AppColors.textLight,
+                      color: isTunnelOnline
+                          ? AppColors.accentGreen
+                          : (isTunnelAuthFailed ? AppColors.accentOrange : AppColors.textLight),
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+
+          if (_dualStatus?.errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.accentOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: AppColors.accentOrange, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _dualStatus!.errorMessage!,
+                      style: const TextStyle(fontSize: 11, color: AppColors.accentOrange, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _showCredentialsDialog,
+              icon: const Icon(Icons.vpn_key_outlined, size: 16),
+              label: const Text("Update Router Credentials / IP", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.cardBorder),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
           ),
         ],

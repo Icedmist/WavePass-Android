@@ -7,6 +7,7 @@ class AppColors {
   static const Color accentRed = Color(0xFFDC2626);
   static const Color accentRedDark = Color(0xFFB91C1C);
   static const Color accentGreen = Color(0xFF0A7A3A);
+  static const Color accentOrange = Color(0xFFD97706);
   static const Color warmSand = Color(0xFFFFCE8A);
   static const Color navy = Color(0xFF0052A5);
   static const Color containerBg = Color(0xFFF0F5F6);

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'wavepass_api.dart';
+import 'mikrotik_api_client.dart';
 
 class DiscoveredRouter {
   final String ip;
@@ -145,12 +146,12 @@ class RouterDiscoveryService {
 
     if (clean == "192.168.88.1" && (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed))) {
       final fallback1 = await _probeRouter("192.168.1.1", username, password, connectionType: "LAN");
-      if (fallback1 != null && fallback1.isReachable && !fallback1.authFailed) {
+      if (fallback1 != null && fallback1.isReachable && !fallback1.authFailed && !fallback1.captivePortalIntercepted && !fallback1.identity.contains('Web Server')) {
         return fallback1;
       }
       if (password.isNotEmpty) {
         final fallback2 = await _probeRouter("192.168.1.1", username, "", connectionType: "LAN");
-        if (fallback2 != null && fallback2.isReachable && !fallback2.authFailed) {
+        if (fallback2 != null && fallback2.isReachable && !fallback2.authFailed && !fallback2.captivePortalIntercepted && !fallback2.identity.contains('Web Server')) {
           return fallback2;
         }
       }
@@ -167,10 +168,34 @@ class RouterDiscoveryService {
     String password = "",
     String connectionType = "Endpoint",
   }) async {
+    var normalized = rawEndpoint.trim();
+    if (normalized.isEmpty) return null;
+
+    // Direct Port 8728 RouterOS API endpoint handling
+    if (normalized.startsWith('api://') || normalized.contains(':8728')) {
+      var clean = normalized;
+      if (clean.startsWith('api://')) clean = clean.substring(6);
+      if (clean.startsWith('http://')) clean = clean.substring(7);
+      if (clean.startsWith('https://')) clean = clean.substring(8);
+      int port = 8728;
+      if (clean.contains(':')) {
+        final parts = clean.split(':');
+        clean = parts[0];
+        port = int.tryParse(parts[1]) ?? 8728;
+      }
+      if (clean.contains('/')) clean = clean.split('/').first;
+
+      return await _probeRouterOsApi(
+        host: clean,
+        port: port,
+        username: username,
+        password: password,
+        connectionType: connectionType == 'Endpoint' ? 'Tunnel (API :$port)' : connectionType,
+      );
+    }
+
     final client = createRouterClient(timeout: const Duration(seconds: 8));
     try {
-      var normalized = rawEndpoint.trim();
-      if (normalized.isEmpty) return null;
       if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
         normalized = 'http://$normalized';
       }
@@ -354,6 +379,124 @@ class RouterDiscoveryService {
     );
   }
 
+  /// Probes native MikroTik RouterOS binary API protocol on Port 8728.
+  /// Not intercepted by HotSpot captive portals (unlike Port 80 HTTP).
+  static Future<DiscoveredRouter?> _probeRouterOsApi({
+    required String host,
+    int port = 8728,
+    required String username,
+    required String password,
+    String connectionType = 'LAN (API :8728)',
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final client = MikrotikApiClient(
+      host: host,
+      port: port,
+      timeout: timeout,
+    );
+    final sw = Stopwatch()..start();
+    try {
+      final loginSuccess = await client.connectAndLogin(username, password);
+      sw.stop();
+      if (!loginSuccess) {
+        return DiscoveredRouter(
+          ip: '$host:$port',
+          identity: 'MikroTik Gateway (API :$port)',
+          version: 'RouterOS API',
+          cpuLoad: 'N/A',
+          uptime: 'N/A',
+          totalMemory: 'N/A',
+          isReachable: true,
+          connectionType: connectionType,
+          latencyMs: sw.elapsedMilliseconds,
+          authFailed: true,
+          errorMessage: 'Port $port responded, but authentication failed for user "$username". Check username and password.',
+        );
+      }
+
+      final resource = await client.getSystemResource();
+      final identity = await client.getSystemIdentity();
+      final board = (identity != null && identity.isNotEmpty)
+          ? identity
+          : (resource['board-name'] ?? resource['platform'] ?? 'MikroTik Gateway');
+      final version = resource['version'] ?? 'RouterOS API';
+      final cpu = resource['cpu-load'] != null ? '${resource['cpu-load']}%' : 'N/A';
+      final uptime = resource['uptime'] ?? 'N/A';
+      final totalMemBytes = int.tryParse(resource['total-memory'] ?? '');
+      final totalMem = totalMemBytes != null ? '${(totalMemBytes / (1024 * 1024)).toStringAsFixed(0)} MB' : 'N/A';
+
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: board,
+        version: version,
+        cpuLoad: cpu,
+        uptime: uptime,
+        totalMemory: totalMem,
+        isReachable: true,
+        connectionType: connectionType,
+        latencyMs: sw.elapsedMilliseconds,
+        authFailed: false,
+        statusCode: 200,
+      );
+    } on MikrotikAuthException catch (e) {
+      sw.stop();
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: 'MikroTik Gateway (Auth Failed)',
+        version: 'RouterOS API',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: true,
+        connectionType: connectionType,
+        latencyMs: sw.elapsedMilliseconds,
+        authFailed: true,
+        errorMessage: 'Login failed on port $port: ${e.message}',
+      );
+    } on SocketException catch (e) {
+      sw.stop();
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: 'Unreachable Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: 'Port $port socket error: ${e.message}',
+      );
+    } on TimeoutException {
+      sw.stop();
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: 'Unreachable Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: 'Connection timed out (${timeout.inSeconds}s) to port $port at $host',
+      );
+    } catch (e) {
+      sw.stop();
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: 'Unreachable Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: 'Port $port probe error: $e',
+      );
+    } finally {
+      await client.close();
+    }
+  }
+
   static Future<DiscoveredRouter?> _probeRouter(
     String ip,
     String username,
@@ -361,11 +504,26 @@ class RouterDiscoveryService {
     String connectionType = 'LAN',
   }) async {
     var cleanHost = ip.trim();
+    if (cleanHost.startsWith('api://')) cleanHost = cleanHost.substring(6);
     if (cleanHost.startsWith('http://')) cleanHost = cleanHost.substring(7);
     if (cleanHost.startsWith('https://')) cleanHost = cleanHost.substring(8);
     if (cleanHost.endsWith('/')) cleanHost = cleanHost.substring(0, cleanHost.length - 1);
     if (cleanHost.isEmpty) return null;
 
+    // Direct Port 8728 or api scheme handling
+    if (cleanHost.contains(':8728') || ip.trim().startsWith('api://')) {
+      final hostOnly = cleanHost.contains(':') ? cleanHost.split(':').first : cleanHost;
+      final port = cleanHost.contains(':') ? (int.tryParse(cleanHost.split(':').last) ?? 8728) : 8728;
+      return await _probeRouterOsApi(
+        host: hostOnly,
+        port: port,
+        username: username,
+        password: password,
+        connectionType: '$connectionType (API :$port)',
+      );
+    }
+
+    final hostOnly = cleanHost.contains(':') ? cleanHost.split(':').first : cleanHost;
     final schemes = ['http', 'https'];
     DiscoveredRouter? conclusiveFailureRouter;
 
@@ -393,6 +551,19 @@ class RouterDiscoveryService {
           if (rawBody.startsWith('<') ||
               rawBody.toLowerCase().contains('<!doctype') ||
               rawBody.toLowerCase().contains('<html')) {
+            // Port 80 was intercepted by HotSpot captive portal.
+            // Immediately probe native RouterOS API on Port 8728 (which is never intercepted by HotSpot).
+            final apiRouter = await _probeRouterOsApi(
+              host: hostOnly,
+              port: 8728,
+              username: username,
+              password: password,
+              connectionType: '$connectionType (API :8728)',
+            );
+            if (apiRouter != null && apiRouter.isReachable) {
+              return apiRouter;
+            }
+
             final isHotspot = rawBody.toLowerCase().contains('hotspot') ||
                 rawBody.toLowerCase().contains('login') ||
                 rawBody.toLowerCase().contains('mikrotik');
@@ -401,16 +572,16 @@ class RouterDiscoveryService {
             conclusiveFailureRouter = DiscoveredRouter(
               ip: '$scheme://$cleanHost',
               identity: isHotspot ? 'MikroTik HotSpot Portal' : 'Web Server (HTML)',
-              version: 'RouterOS (Captive Portal)',
+              version: isHotspot ? 'RouterOS (Captive Portal)' : 'N/A',
               cpuLoad: 'N/A',
               uptime: 'N/A',
               totalMemory: 'N/A',
-              isReachable: true,
+              isReachable: isHotspot,
               connectionType: connectionType,
               latencyMs: sw.elapsedMilliseconds,
               authFailed: false,
               statusCode: 200,
-              captivePortalIntercepted: true,
+              captivePortalIntercepted: isHotspot,
               rawResponseSnippet: snippet,
               errorMessage: isHotspot
                   ? 'HotSpot Captive Portal intercepted port 80. Your phone is on router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or enable HTTPS.'
@@ -571,12 +742,28 @@ class RouterDiscoveryService {
       }
     }
 
+    // If HTTP/HTTPS probes failed to connect or were captive-portal intercepted, fallback to Port 8728 RouterOS API
+    if (conclusiveFailureRouter == null ||
+        !conclusiveFailureRouter.isReachable ||
+        conclusiveFailureRouter.captivePortalIntercepted) {
+      final apiRouter = await _probeRouterOsApi(
+        host: hostOnly,
+        port: 8728,
+        username: username,
+        password: password,
+        connectionType: '$connectionType (API :8728)',
+      );
+      if (apiRouter != null && apiRouter.isReachable) {
+        return apiRouter;
+      }
+    }
+
     return conclusiveFailureRouter;
   }
 
   /// Synchronously provisions a HotSpot user/voucher directly onto the MikroTik router hardware
-  /// via RouterOS REST API (/rest/ip/hotspot/user).
-  /// Works over Local LAN (http://192.168.88.1) or Remote Tunnel.
+  /// via RouterOS REST API (/rest/ip/hotspot/user) or RouterOS binary API on Port 8728.
+  /// Works over Local LAN (http://192.168.88.1, 192.168.88.1:8728) or Remote Tunnel.
   static Future<bool> createHotspotUserDirectly({
     required String endpoint,
     String username = "admin",
@@ -589,10 +776,51 @@ class RouterDiscoveryService {
     int? sharedUsers,
     String comment = "wavepass-provisioned",
   }) async {
+    var raw = endpoint.trim();
+    if (raw.isEmpty) return false;
+
+    // 1. If endpoint is explicit Port 8728 or api scheme, provision directly via native RouterOS API
+    if (raw.contains(':8728') || raw.startsWith('api://')) {
+      var host = raw;
+      if (host.startsWith('api://')) host = host.substring(6);
+      if (host.startsWith('http://')) host = host.substring(7);
+      if (host.startsWith('https://')) host = host.substring(8);
+      int port = 8728;
+      if (host.contains(':')) {
+        final parts = host.split(':');
+        host = parts[0];
+        port = int.tryParse(parts[1]) ?? 8728;
+      }
+      if (host.contains('/')) host = host.split('/').first;
+
+      final client = MikrotikApiClient(host: host, port: port);
+      try {
+        final ok = await client.connectAndLogin(username, password);
+        if (ok) {
+          return await client.createHotspotUser(
+            code: code,
+            pass: pass,
+            profile: profile,
+            sessionTimeoutSeconds: sessionTimeoutSeconds,
+            limitBytesTotal: limitBytesTotal,
+            sharedUsers: sharedUsers,
+            comment: comment,
+          );
+        }
+        return false;
+      } catch (e) {
+        debugPrint('Port $port API user add error: $e');
+        return false;
+      } finally {
+        await client.close();
+      }
+    }
+
+    // 2. Otherwise attempt HTTP REST API first
     final client = createRouterClient();
+    bool httpSuccess = false;
     try {
-      var normalized = endpoint.trim();
-      if (normalized.isEmpty) return false;
+      var normalized = raw;
       if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
         normalized = 'http://$normalized';
       }
@@ -620,7 +848,7 @@ class RouterDiscoveryService {
         'comment': comment,
       };
 
-      // 1. First attempt RouterOS v7 standard PUT /rest/ip/hotspot/user
+      // 2a. Standard RouterOS v7 PUT /rest/ip/hotspot/user
       final putUri = Uri.parse('$normalized/rest/ip/hotspot/user');
       http.Response res;
       try {
@@ -634,11 +862,8 @@ class RouterDiscoveryService {
       }
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        return true;
-      }
-
-      // If custom profile returned 400 (e.g. profile doesn't exist yet on router), fallback to 'default'
-      if (res.statusCode == 400 && profile != 'default') {
+        httpSuccess = true;
+      } else if (res.statusCode == 400 && profile != 'default') {
         payload['profile'] = 'default';
         try {
           final retryRes = await client.put(
@@ -647,31 +872,64 @@ class RouterDiscoveryService {
             body: jsonEncode(payload),
           ).timeout(const Duration(seconds: 4));
           if (retryRes.statusCode >= 200 && retryRes.statusCode < 300) {
-            return true;
+            httpSuccess = true;
+          }
+        } catch (_) {}
+      } else if (res.statusCode == 404 || res.statusCode == 405) {
+        // 2b. Fallback to POST /rest/ip/hotspot/user/add
+        final postUri = Uri.parse('$normalized/rest/ip/hotspot/user/add');
+        try {
+          final postRes = await client.post(
+            postUri,
+            headers: headers,
+            body: jsonEncode(payload),
+          ).timeout(const Duration(seconds: 5));
+          if (postRes.statusCode >= 200 && postRes.statusCode < 300) {
+            httpSuccess = true;
           }
         } catch (_) {}
       }
-
-      // 2. Fallback to POST /rest/ip/hotspot/user/add (supported by mock-router and custom setups)
-      if (res.statusCode == 404 || res.statusCode == 405) {
-        final postUri = Uri.parse('$normalized/rest/ip/hotspot/user/add');
-        final postRes = await client.post(
-          postUri,
-          headers: headers,
-          body: jsonEncode(payload),
-        ).timeout(const Duration(seconds: 5));
-        if (postRes.statusCode >= 200 && postRes.statusCode < 300) {
-          return true;
-        }
-      }
-
-      return false;
     } catch (e) {
-      debugPrint('Direct router provisioning error: $e');
-      return false;
+      debugPrint('Direct router HTTP provisioning error: $e');
     } finally {
       client.close();
     }
+
+    if (httpSuccess) return true;
+
+    // 3. Fallback to native RouterOS API on Port 8728 if HTTP REST was intercepted by captive portal or failed
+    try {
+      var hostOnly = raw;
+      if (hostOnly.startsWith('http://')) hostOnly = hostOnly.substring(7);
+      if (hostOnly.startsWith('https://')) hostOnly = hostOnly.substring(8);
+      if (hostOnly.contains(':')) hostOnly = hostOnly.split(':').first;
+      if (hostOnly.contains('/')) hostOnly = hostOnly.split('/').first;
+
+      if (hostOnly.isNotEmpty) {
+        final apiFallbackClient = MikrotikApiClient(host: hostOnly, port: 8728);
+        try {
+          final ok = await apiFallbackClient.connectAndLogin(username, password);
+          if (ok) {
+            final added = await apiFallbackClient.createHotspotUser(
+              code: code,
+              pass: pass,
+              profile: profile,
+              sessionTimeoutSeconds: sessionTimeoutSeconds,
+              limitBytesTotal: limitBytesTotal,
+              sharedUsers: sharedUsers,
+              comment: comment,
+            );
+            if (added) return true;
+          }
+        } finally {
+          await apiFallbackClient.close();
+        }
+      }
+    } catch (e) {
+      debugPrint('Port 8728 fallback provisioning error: $e');
+    }
+
+    return false;
   }
 
   /// Orchestrates direct router provisioning using cached router credentials & endpoints.
@@ -739,6 +997,28 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
+    if (endpoint != null && (endpoint.contains(':8728') || endpoint.startsWith('api://'))) {
+      var host = endpoint.trim();
+      if (host.startsWith('api://')) host = host.substring(6);
+      int port = 8728;
+      if (host.contains(':')) {
+        final parts = host.split(':');
+        host = parts[0];
+        port = int.tryParse(parts[1]) ?? 8728;
+      }
+      final api = MikrotikApiClient(host: host, port: port);
+      try {
+        if (await api.connectAndLogin(username, password)) {
+          await api.executeSentence(['/system/reboot']);
+          return true;
+        }
+      } catch (_) {
+        return false;
+      } finally {
+        await api.close();
+      }
+    }
+
     final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';

@@ -19,6 +19,9 @@ class DiscoveredRouter {
   final int? latencyMs;
   final bool authFailed;
   final String? errorMessage;
+  final int? statusCode;
+  final bool captivePortalIntercepted;
+  final String? rawResponseSnippet;
 
   DiscoveredRouter({
     required this.ip,
@@ -32,6 +35,9 @@ class DiscoveredRouter {
     this.latencyMs,
     this.authFailed = false,
     this.errorMessage,
+    this.statusCode,
+    this.captivePortalIntercepted = false,
+    this.rawResponseSnippet,
   });
 }
 
@@ -44,6 +50,9 @@ class RouterDualConnectionStatus {
   final String activeMode; // 'local', 'tunnel', or 'offline'
   final String? latencySummary;
   final String? errorMessage;
+  final String? localDiagnosticDetail;
+  final String? tunnelDiagnosticDetail;
+  final String? deviceWifiIp;
 
   RouterDualConnectionStatus({
     this.localRouter,
@@ -54,6 +63,9 @@ class RouterDualConnectionStatus {
     required this.activeMode,
     this.latencySummary,
     this.errorMessage,
+    this.localDiagnosticDetail,
+    this.tunnelDiagnosticDetail,
+    this.deviceWifiIp,
   });
 
   bool get isAnyOnline => isLocalOnline || isTunnelOnline;
@@ -67,12 +79,41 @@ class RouterDiscoveryService {
   static const String keyRouterPassword = 'wavepass_router_password';
 
   /// Creates an HTTP client configured to accept self-signed certificates on local router hardware.
-  static http.Client createRouterClient() {
+  static http.Client createRouterClient({Duration timeout = const Duration(seconds: 8)}) {
     if (kIsWeb) return http.Client();
     final ioHttpClient = HttpClient()
       ..badCertificateCallback = ((X509Certificate cert, String host, int port) => true)
-      ..connectionTimeout = const Duration(seconds: 4);
+      ..connectionTimeout = timeout;
     return IOClient(ioHttpClient);
+  }
+
+  /// Discovers the device's local Wi-Fi / LAN IPv4 address.
+  static Future<String?> getLocalDeviceIp() async {
+    if (kIsWeb) return null;
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      for (final iface in interfaces) {
+        final name = iface.name.toLowerCase();
+        if (name.contains('wlan') || name.contains('wifi') || name.contains('en') || name.contains('eth')) {
+          for (final addr in iface.addresses) {
+            if (!addr.isLoopback && addr.address.isNotEmpty) {
+              return addr.address;
+            }
+          }
+        }
+      }
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback && addr.address.isNotEmpty) {
+            return addr.address;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Auto-discovers MikroTik router over local subnet.
@@ -84,30 +125,39 @@ class RouterDiscoveryService {
   }) async {
     // 1. Probe with supplied credentials
     DiscoveredRouter? router = await _probeRouter(ip, username, password, connectionType: "LAN");
-    if (router != null) return router;
-
-    // If password was non-empty and failed with timeout/refused, try empty password fallback
-    if (password.isNotEmpty) {
-      router = await _probeRouter(ip, username, "", connectionType: "LAN");
-      if (router != null && !router.authFailed) return router;
+    if (router != null && router.isReachable && !router.authFailed && !router.captivePortalIntercepted) {
+      return router;
     }
 
-    // 2. If default 192.168.88.1 was specified and failed, probe secondary 192.168.1.1 fallback
+    // If password was non-empty and probe returned authFailed or unreachable, try empty password fallback
+    if (password.isNotEmpty && (router == null || router.authFailed)) {
+      final emptyPassRouter = await _probeRouter(ip, username, "", connectionType: "LAN");
+      if (emptyPassRouter != null && emptyPassRouter.isReachable && !emptyPassRouter.authFailed) {
+        return emptyPassRouter;
+      }
+    }
+
+    // 2. If default 192.168.88.1 was specified and probe was unreachable, try 192.168.1.1 fallback
     var clean = ip.trim();
     if (clean.startsWith('http://')) clean = clean.substring(7);
     if (clean.startsWith('https://')) clean = clean.substring(8);
     if (clean.endsWith('/')) clean = clean.substring(0, clean.length - 1);
 
-    if (clean == "192.168.88.1") {
-      router = await _probeRouter("192.168.1.1", username, password, connectionType: "LAN");
-      if (router != null) return router;
+    if (clean == "192.168.88.1" && (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed))) {
+      final fallback1 = await _probeRouter("192.168.1.1", username, password, connectionType: "LAN");
+      if (fallback1 != null && fallback1.isReachable && !fallback1.authFailed) {
+        return fallback1;
+      }
       if (password.isNotEmpty) {
-        router = await _probeRouter("192.168.1.1", username, "", connectionType: "LAN");
-        if (router != null && !router.authFailed) return router;
+        final fallback2 = await _probeRouter("192.168.1.1", username, "", connectionType: "LAN");
+        if (fallback2 != null && fallback2.isReachable && !fallback2.authFailed) {
+          return fallback2;
+        }
       }
     }
 
-    return null;
+    // Return the router with its diagnostic state (even if auth failed, captive portal, or unreachable)
+    return router;
   }
 
   /// Probes any arbitrary HTTP/HTTPS endpoint or IP (LAN or WireGuard/Cloud tunnel).
@@ -117,7 +167,7 @@ class RouterDiscoveryService {
     String password = "",
     String connectionType = "Endpoint",
   }) async {
-    final client = createRouterClient();
+    final client = createRouterClient(timeout: const Duration(seconds: 8));
     try {
       var normalized = rawEndpoint.trim();
       if (normalized.isEmpty) return null;
@@ -138,10 +188,27 @@ class RouterDiscoveryService {
           'Authorization': authHeader,
           'Accept': 'application/json',
         },
-      ).timeout(const Duration(seconds: 4));
+      ).timeout(const Duration(seconds: 8));
       sw.stop();
 
+      final rawBody = response.body.trim();
+
       if (response.statusCode == 200) {
+        if (rawBody.startsWith('<') || rawBody.toLowerCase().contains('<!doctype') || rawBody.toLowerCase().contains('<html')) {
+          return DiscoveredRouter(
+            ip: normalized,
+            identity: 'Remote Web Endpoint',
+            version: 'N/A',
+            cpuLoad: 'N/A',
+            uptime: 'N/A',
+            totalMemory: 'N/A',
+            isReachable: false,
+            connectionType: connectionType,
+            statusCode: 200,
+            errorMessage: 'Cloud tunnel URL returned HTML instead of RouterOS REST API (WireGuard tunnel pending).',
+          );
+        }
+
         final dynamic decoded = jsonDecode(response.body);
         final Map<String, dynamic> data = decoded is List
             ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
@@ -158,6 +225,7 @@ class RouterDiscoveryService {
           connectionType: connectionType,
           latencyMs: sw.elapsedMilliseconds,
           authFailed: false,
+          statusCode: 200,
         );
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         return DiscoveredRouter(
@@ -171,15 +239,38 @@ class RouterDiscoveryService {
           connectionType: connectionType,
           latencyMs: sw.elapsedMilliseconds,
           authFailed: true,
+          statusCode: response.statusCode,
           errorMessage: 'Login failed (HTTP ${response.statusCode}): Invalid password for user "$username"',
         );
+      } else {
+        return DiscoveredRouter(
+          ip: normalized,
+          identity: 'Tunnel Endpoint',
+          version: 'N/A',
+          cpuLoad: 'N/A',
+          uptime: 'N/A',
+          totalMemory: 'N/A',
+          isReachable: false,
+          connectionType: connectionType,
+          statusCode: response.statusCode,
+          errorMessage: 'Tunnel endpoint returned HTTP ${response.statusCode}',
+        );
       }
-    } catch (_) {
-      return null;
+    } catch (e) {
+      return DiscoveredRouter(
+        ip: rawEndpoint,
+        identity: 'Tunnel Endpoint',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: 'Tunnel connection failed: $e',
+      );
     } finally {
       client.close();
     }
-    return null;
   }
 
   /// Probes both Local Subnet (LAN Direct) and Remote Cloud/WireGuard Tunnel concurrently.
@@ -189,19 +280,21 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
-    final futures = <Future<DiscoveredRouter?>>[
+    final futures = <Future<dynamic>>[
       discoverLocalRouter(ip: localIp, username: username, password: password),
       if (tunnelEndpoint != null && tunnelEndpoint.trim().isNotEmpty)
         probeEndpoint(tunnelEndpoint, username: username, password: password, connectionType: "Tunnel")
       else
         Future.value(null),
+      getLocalDeviceIp(),
     ];
 
     final results = await Future.wait(futures);
-    final localRouter = results[0];
-    final tunnelRouter = results.length > 1 ? results[1] : null;
+    final localRouter = results[0] as DiscoveredRouter?;
+    final tunnelRouter = (results.length > 1 ? results[1] : null) as DiscoveredRouter?;
+    final deviceWifiIp = (results.length > 2 ? results[2] : null) as String?;
 
-    final isLocalOnline = localRouter != null && localRouter.isReachable && !localRouter.authFailed;
+    final isLocalOnline = localRouter != null && localRouter.isReachable && !localRouter.authFailed && !localRouter.captivePortalIntercepted;
     final isTunnelOnline = tunnelRouter != null && tunnelRouter.isReachable && !tunnelRouter.authFailed;
 
     String? activeEndpoint;
@@ -226,11 +319,25 @@ class RouterDiscoveryService {
     }
 
     String? error;
-    if (localRouter?.authFailed == true) {
+    if (localRouter?.captivePortalIntercepted == true) {
+      error = localRouter?.errorMessage;
+    } else if (localRouter?.authFailed == true) {
+      error = localRouter?.errorMessage;
+    } else if (!isLocalOnline && localRouter?.errorMessage != null) {
       error = localRouter?.errorMessage;
     } else if (tunnelRouter?.authFailed == true) {
       error = tunnelRouter?.errorMessage;
+    } else if (!isTunnelOnline && tunnelRouter?.errorMessage != null) {
+      error = tunnelRouter?.errorMessage;
     }
+
+    final localDetail = isLocalOnline
+        ? '${localRouter.ip} • ${localRouter.latencyMs ?? 0}ms'
+        : (localRouter?.errorMessage ?? 'Local LAN probe failed');
+
+    final tunnelDetail = isTunnelOnline
+        ? '${tunnelRouter.ip} • ${tunnelRouter.latencyMs ?? 0}ms'
+        : (tunnelRouter?.errorMessage ?? 'Cloud tunnel offline');
 
     return RouterDualConnectionStatus(
       localRouter: localRouter,
@@ -241,6 +348,9 @@ class RouterDiscoveryService {
       activeMode: activeMode,
       latencySummary: latency,
       errorMessage: error,
+      localDiagnosticDetail: localDetail,
+      tunnelDiagnosticDetail: tunnelDetail,
+      deviceWifiIp: deviceWifiIp,
     );
   }
 
@@ -257,10 +367,10 @@ class RouterDiscoveryService {
     if (cleanHost.isEmpty) return null;
 
     final schemes = ['http', 'https'];
-    DiscoveredRouter? authFailedRouter;
+    DiscoveredRouter? conclusiveFailureRouter;
 
     for (final scheme in schemes) {
-      final client = createRouterClient();
+      final client = createRouterClient(timeout: const Duration(seconds: 8));
       try {
         final uri = Uri.parse("$scheme://$cleanHost/rest/system/resource");
         final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
@@ -272,29 +382,81 @@ class RouterDiscoveryService {
             'Authorization': authHeader,
             'Accept': 'application/json',
           },
-        ).timeout(const Duration(seconds: 3));
+        ).timeout(const Duration(seconds: 8));
         sw.stop();
 
-        if (response.statusCode == 200) {
-          final dynamic decoded = jsonDecode(response.body);
-          final Map<String, dynamic> data = decoded is List
-              ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
-              : Map<String, dynamic>.from(decoded as Map);
+        final rawBody = response.body.trim();
 
-          return DiscoveredRouter(
-            ip: '$scheme://$cleanHost',
-            identity: data['board-name']?.toString() ?? data['platform']?.toString() ?? 'MikroTik Gateway',
-            version: data['version']?.toString() ?? 'RouterOS v7',
-            cpuLoad: '${data['cpu-load'] ?? 0}%',
-            uptime: data['uptime']?.toString() ?? '0m',
-            totalMemory: '${((data['total-memory'] ?? 0) / (1024 * 1024)).toStringAsFixed(0)} MB',
-            isReachable: true,
-            connectionType: connectionType,
-            latencyMs: sw.elapsedMilliseconds,
-            authFailed: false,
-          );
+        // 1. Success (HTTP 200)
+        if (response.statusCode == 200) {
+          // Check if response is actually HTML (Hotspot captive portal redirect)
+          if (rawBody.startsWith('<') ||
+              rawBody.toLowerCase().contains('<!doctype') ||
+              rawBody.toLowerCase().contains('<html')) {
+            final isHotspot = rawBody.toLowerCase().contains('hotspot') ||
+                rawBody.toLowerCase().contains('login') ||
+                rawBody.toLowerCase().contains('mikrotik');
+            final snippet = rawBody.length > 80 ? rawBody.substring(0, 80).replaceAll('\n', ' ') : rawBody;
+
+            conclusiveFailureRouter = DiscoveredRouter(
+              ip: '$scheme://$cleanHost',
+              identity: isHotspot ? 'MikroTik HotSpot Portal' : 'Web Server (HTML)',
+              version: 'RouterOS (Captive Portal)',
+              cpuLoad: 'N/A',
+              uptime: 'N/A',
+              totalMemory: 'N/A',
+              isReachable: true,
+              connectionType: connectionType,
+              latencyMs: sw.elapsedMilliseconds,
+              authFailed: false,
+              statusCode: 200,
+              captivePortalIntercepted: true,
+              rawResponseSnippet: snippet,
+              errorMessage: isHotspot
+                  ? 'HotSpot Captive Portal intercepted port 80. Your phone is on router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or enable HTTPS.'
+                  : 'Host responded at $scheme://$cleanHost, but returned HTML instead of RouterOS REST API.',
+            );
+            continue; // Try HTTPS next in case HTTPS bypasses captive portal
+          }
+
+          try {
+            final dynamic decoded = jsonDecode(response.body);
+            final Map<String, dynamic> data = decoded is List
+                ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
+                : Map<String, dynamic>.from(decoded as Map);
+
+            return DiscoveredRouter(
+              ip: '$scheme://$cleanHost',
+              identity: data['board-name']?.toString() ?? data['platform']?.toString() ?? 'MikroTik Gateway',
+              version: data['version']?.toString() ?? 'RouterOS v7',
+              cpuLoad: '${data['cpu-load'] ?? 0}%',
+              uptime: data['uptime']?.toString() ?? '0m',
+              totalMemory: '${((data['total-memory'] ?? 0) / (1024 * 1024)).toStringAsFixed(0)} MB',
+              isReachable: true,
+              connectionType: connectionType,
+              latencyMs: sw.elapsedMilliseconds,
+              authFailed: false,
+              statusCode: 200,
+            );
+          } catch (e) {
+            conclusiveFailureRouter = DiscoveredRouter(
+              ip: '$scheme://$cleanHost',
+              identity: 'MikroTik Gateway',
+              version: 'RouterOS v7',
+              cpuLoad: 'N/A',
+              uptime: 'N/A',
+              totalMemory: 'N/A',
+              isReachable: true,
+              connectionType: connectionType,
+              latencyMs: sw.elapsedMilliseconds,
+              authFailed: false,
+              statusCode: 200,
+              errorMessage: 'Received HTTP 200 from $scheme://$cleanHost, but failed to parse JSON: $e',
+            );
+            continue;
+          }
         } else if (response.statusCode == 401 || response.statusCode == 403) {
-          authFailedRouter = DiscoveredRouter(
+          return DiscoveredRouter(
             ip: '$scheme://$cleanHost',
             identity: 'MikroTik Gateway (Auth Failed)',
             version: 'RouterOS v7',
@@ -305,18 +467,111 @@ class RouterDiscoveryService {
             connectionType: connectionType,
             latencyMs: sw.elapsedMilliseconds,
             authFailed: true,
+            statusCode: response.statusCode,
             errorMessage: 'Login failed (HTTP ${response.statusCode}): Invalid password for user "$username"',
           );
-          return authFailedRouter;
+        } else if (response.statusCode == 301 || response.statusCode == 302 || response.statusCode == 307) {
+          final loc = response.headers['location'] ?? '';
+          conclusiveFailureRouter = DiscoveredRouter(
+            ip: '$scheme://$cleanHost',
+            identity: 'MikroTik HotSpot (Redirect)',
+            version: 'RouterOS (Captive Portal)',
+            cpuLoad: 'N/A',
+            uptime: 'N/A',
+            totalMemory: 'N/A',
+            isReachable: true,
+            connectionType: connectionType,
+            latencyMs: sw.elapsedMilliseconds,
+            statusCode: response.statusCode,
+            captivePortalIntercepted: true,
+            errorMessage: 'HotSpot Captive Portal redirected HTTP to ${loc.isNotEmpty ? loc : "login page"}. Authenticate on Wi-Fi.',
+          );
+          continue;
+        } else if (response.statusCode == 404) {
+          // Check if root WebFig is reachable
+          try {
+            final webfigRes = await client.get(Uri.parse('$scheme://$cleanHost/')).timeout(const Duration(seconds: 4));
+            if (webfigRes.statusCode == 200 && (webfigRes.body.contains('RouterOS') || webfigRes.body.contains('WebFig'))) {
+              conclusiveFailureRouter = DiscoveredRouter(
+                ip: '$scheme://$cleanHost',
+                identity: 'MikroTik WebFig (REST 404)',
+                version: 'RouterOS (REST API missing)',
+                cpuLoad: 'N/A',
+                uptime: 'N/A',
+                totalMemory: 'N/A',
+                isReachable: true,
+                connectionType: connectionType,
+                latencyMs: sw.elapsedMilliseconds,
+                statusCode: 404,
+                errorMessage: 'WebFig is reachable at $scheme://$cleanHost, but REST API (/rest) returned 404. Ensure RouterOS v7.1+ is running and REST API is enabled.',
+              );
+              continue;
+            }
+          } catch (_) {}
+
+          conclusiveFailureRouter = DiscoveredRouter(
+            ip: '$scheme://$cleanHost',
+            identity: 'Endpoint (HTTP 404)',
+            version: 'N/A',
+            cpuLoad: 'N/A',
+            uptime: 'N/A',
+            totalMemory: 'N/A',
+            isReachable: false,
+            connectionType: connectionType,
+            statusCode: 404,
+            errorMessage: 'Endpoint returned HTTP 404 Not Found at $scheme://$cleanHost/rest/system/resource.',
+          );
+        } else {
+          conclusiveFailureRouter = DiscoveredRouter(
+            ip: '$scheme://$cleanHost',
+            identity: 'Gateway (HTTP ${response.statusCode})',
+            version: 'N/A',
+            cpuLoad: 'N/A',
+            uptime: 'N/A',
+            totalMemory: 'N/A',
+            isReachable: false,
+            connectionType: connectionType,
+            statusCode: response.statusCode,
+            errorMessage: 'Router returned HTTP ${response.statusCode}: ${rawBody.length > 80 ? rawBody.substring(0, 80) : rawBody}',
+          );
         }
-      } catch (_) {
-        // Continue to fallback scheme (e.g. HTTPS)
+      } catch (e) {
+        String msg;
+        if (e is TimeoutException) {
+          msg = 'Connection timed out (8s) reaching $scheme://$cleanHost. Router took too long to reply.';
+        } else if (e is SocketException) {
+          if (e.osError?.errorCode == 111 || e.message.toLowerCase().contains('connection refused')) {
+            msg = 'Connection refused at $cleanHost. Port is closed or RouterOS www service is disabled.';
+          } else if (e.osError?.errorCode == 101 ||
+              e.message.toLowerCase().contains('network is unreachable') ||
+              e.message.toLowerCase().contains('no route')) {
+            msg = 'Network unreachable to $cleanHost. Verify your phone is connected to the router Wi-Fi.';
+          } else {
+            msg = 'Network socket error to $cleanHost: ${e.message}';
+          }
+        } else if (e is HandshakeException) {
+          msg = 'TLS/SSL handshake error on $scheme://$cleanHost: ${e.message}';
+        } else {
+          msg = 'Probe error on $scheme://$cleanHost: $e';
+        }
+
+        conclusiveFailureRouter ??= DiscoveredRouter(
+          ip: '$scheme://$cleanHost',
+          identity: 'Unreachable Gateway',
+          version: 'N/A',
+          cpuLoad: 'N/A',
+          uptime: 'N/A',
+          totalMemory: 'N/A',
+          isReachable: false,
+          connectionType: connectionType,
+          errorMessage: msg,
+        );
       } finally {
         client.close();
       }
     }
 
-    return authFailedRouter;
+    return conclusiveFailureRouter;
   }
 
   /// Synchronously provisions a HotSpot user/voucher directly onto the MikroTik router hardware

@@ -167,5 +167,57 @@ void main() {
       expect(status.isLocalOnline, isFalse);
       expect(status.errorMessage, contains('HTTP 401'));
     });
+
+    test('DiscoveredRouter correctly captures captive portal interception and snippet', () {
+      final captivePortalRouter = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik HotSpot Portal',
+        version: 'RouterOS (Captive Portal)',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: true,
+        statusCode: 200,
+        captivePortalIntercepted: true,
+        rawResponseSnippet: '<!DOCTYPE html><html><title>Hotspot login</title>...',
+        errorMessage: 'HotSpot Captive Portal intercepted port 80.',
+      );
+
+      expect(captivePortalRouter.captivePortalIntercepted, isTrue);
+      expect(captivePortalRouter.isReachable, isTrue);
+      expect(captivePortalRouter.statusCode, equals(200));
+      expect(captivePortalRouter.rawResponseSnippet, contains('Hotspot login'));
+      expect(captivePortalRouter.errorMessage, contains('Captive Portal'));
+    });
+
+    test('RouterDualConnectionStatus correctly includes local/tunnel diagnostics and device IP', () {
+      final status = RouterDualConnectionStatus(
+        localRouter: DiscoveredRouter(
+          ip: 'http://192.168.88.1',
+          identity: 'Unreachable Gateway',
+          version: 'N/A',
+          cpuLoad: 'N/A',
+          uptime: 'N/A',
+          totalMemory: 'N/A',
+          isReachable: false,
+          errorMessage: 'Connection timed out (8s) reaching http://192.168.88.1',
+        ),
+        tunnelRouter: null,
+        isLocalOnline: false,
+        isTunnelOnline: false,
+        activeMode: 'offline',
+        errorMessage: 'Connection timed out (8s) reaching http://192.168.88.1',
+        localDiagnosticDetail: 'Connection timed out (8s) reaching http://192.168.88.1',
+        tunnelDiagnosticDetail: 'Cloud tunnel offline',
+        deviceWifiIp: '192.168.88.25',
+      );
+
+      expect(status.isAnyOnline, isFalse);
+      expect(status.isLocalOnline, isFalse);
+      expect(status.deviceWifiIp, equals('192.168.88.25'));
+      expect(status.localDiagnosticDetail, contains('Connection timed out'));
+      expect(status.tunnelDiagnosticDetail, equals('Cloud tunnel offline'));
+      expect(status.errorMessage, contains('timed out'));
+    });
   });
 }

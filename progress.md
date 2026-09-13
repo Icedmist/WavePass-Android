@@ -209,3 +209,22 @@
   - Unit tests in `test/router_dual_connection_test.dart` for `authFailed` states and dual link status.
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 12 tests passed**.
+
+### 18. Real-Time Network Diagnostics, Captive Portal Alert, & Extended Timeout (Issue #26, PR #27)
+- [x] **Extended Probing Timeout**:
+  - Increased router probe timeout from 3s to 8s (with 8s connection timeout) to prevent premature aborts on low-power MIPS/ARM MikroTik CPUs (such as hEX / hAP lite).
+- [x] **Captive Portal Redirection Detection**:
+  - Detected HTTP 200/302 HTML interception on port 80 when MikroTik HotSpot captive portal firewall redirect is active.
+  - Added `captivePortalIntercepted` flag and `rawResponseSnippet` to `DiscoveredRouter`.
+  - Added clear amber warning badge and banner: *"HotSpot Captive Portal intercepted port 80. Phone is on router Wi-Fi, but captive portal redirected HTTP to login page."*
+- [x] **Rich Diagnostic Error Feedback**:
+  - Preserved exact HTTP status code, timeout exception, connection refused, or socket error in `localDiagnosticDetail`, `tunnelDiagnosticDetail`, and `errorMessage`.
+  - Displayed exact error message in the Link Topology card and SnackBar, eliminating ambiguous "OFFLINE" messages.
+- [x] **Device Wi-Fi IP Discovery**:
+  - Implemented `RouterDiscoveryService.getLocalDeviceIp()` using `NetworkInterface.list()` to detect phone's actual Wi-Fi IPv4 address and display it in the Link Topology card.
+- [x] **In-Modal Quick LAN Test**:
+  - Added "Test LAN Link Now" button inside `_showCredentialsDialog` in `RouterDiagnosticsScreen` with loading spinner and instant color-coded feedback banner.
+- [x] **Verification**:
+  - Added 2 new tests in `test/router_dual_connection_test.dart` for captive portal and diagnostics.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 14 tests passed**.

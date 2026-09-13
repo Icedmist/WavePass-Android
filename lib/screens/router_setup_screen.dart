@@ -107,16 +107,26 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     }
 
     if (mounted) {
+      final isOnline = router != null && router.isReachable && !router.authFailed && !router.captivePortalIntercepted;
       setState(() {
         _isScanning = false;
-        _foundRouter = router;
+        _foundRouter = isOnline ? router : null;
       });
 
-      if (router == null) {
+      if (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi."),
+            content: Text(router?.errorMessage ?? "No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi."),
             backgroundColor: AppColors.accentRed,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else if (router.captivePortalIntercepted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(router.errorMessage ?? "HotSpot captive portal intercepted port 80. Please authenticate or enable HTTPS."),
+            backgroundColor: AppColors.accentOrange,
+            duration: const Duration(seconds: 5),
           ),
         );
       } else if (router.authFailed) {
@@ -124,6 +134,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
           SnackBar(
             content: Text(router.errorMessage ?? "Router detected at ${router.ip}, but login failed (HTTP 401). Please check the admin password."),
             backgroundColor: AppColors.accentOrange,
+            duration: const Duration(seconds: 5),
           ),
         );
       } else {

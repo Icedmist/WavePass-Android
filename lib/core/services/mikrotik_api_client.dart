@@ -440,21 +440,21 @@ class MikrotikApiClient {
       ]);
     } catch (_) {}
 
-    // 7. Anti-Tethering / Anti-Hotspot Sharing: Set TTL=1 on postrouting so tethered devices drop packets
+    // 7. Clean up any legacy postrouting TTL mangle rule that breaks WAN routing
+    // (Single-device enforcement is safely and accurately handled via shared-users=1 on profiles)
     try {
       final existingMangle = await executeSentence([
         '/ip/firewall/mangle/print',
         '?comment=WavePass Anti-Tethering',
       ]);
-      if (existingMangle.isEmpty) {
-        await executeSentence([
-          '/ip/firewall/mangle/add',
-          '=chain=postrouting',
-          '=action=change-ttl',
-          '=new-ttl=set:1',
-          '=passthrough=yes',
-          '=comment=WavePass Anti-Tethering',
-        ]);
+      for (final m in existingMangle) {
+        final id = m['.id'];
+        if (id != null) {
+          await executeSentence([
+            '/ip/firewall/mangle/remove',
+            '=.id=$id',
+          ]);
+        }
       }
       results['antiTethering'] = true;
     } catch (_) {}

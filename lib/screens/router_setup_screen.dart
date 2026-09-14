@@ -31,6 +31,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   // Export script state
   bool _exportingScript = false;
   String? _exportedScript;
+  bool _exportingPortalHtml = false;
+  String? _exportedPortalHtml;
 
   @override
   void initState() {
@@ -441,10 +443,10 @@ add name="profile_12h" rate-limit="15M/5M" shared-users=1 comment="WavePass 12h"
 add name="profile_1d" rate-limit="20M/10M" shared-users=1 comment="WavePass 24h"
 
 # --------------------------------------------------------
-# 5. Anti-Tethering / Anti-Hotspot Sharing (TTL Lock)
+# 5. Clean Legacy Mangle & Enforce Single Device (Shared Users = 1)
 # --------------------------------------------------------
 /ip firewall mangle
-add chain=postrouting action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering"
+remove [find comment="WavePass Anti-Tethering"]
 
 # --------------------------------------------------------
 # 6. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
@@ -461,7 +463,7 @@ add name="wavepass-cleanup" interval=2h on-event="wavepass-cleanup" comment="Wav
 /system identity
 set name="WavePass-$slug"
 
-# Setup complete! Router is online with Anti-Tethering active.
+# Setup complete! Hotspot online and single-device login active.
 """;
 
       setState(() {
@@ -485,6 +487,213 @@ set name="WavePass-$slug"
       }
     } finally {
       if (mounted) setState(() => _exportingScript = false);
+    }
+  }
+
+  Future<void> _handleExportPortalHtml() async {
+    setState(() => _exportingPortalHtml = true);
+    try {
+      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final slug = venue['slug']?.toString() ?? 'venue';
+      final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
+
+      final html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>$venueName | WavePass Wi-Fi</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0D1117;
+      color: #FFFFFF;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #161B22;
+      border: 1px solid #30363D;
+      border-radius: 20px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #38EF7D;
+      margin-bottom: 4px;
+      text-align: center;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #8B949E;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .btn-buy {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
+      color: #0D1117;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 12px;
+      text-align: center;
+      margin-bottom: 20px;
+      border: none;
+      cursor: pointer;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 16px 0;
+      color: #484F58;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #30363D;
+    }
+    .divider:not(:empty)::before { margin-right: .75em; }
+    .divider:not(:empty)::after { margin-left: .75em; }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #C9D1D9;
+      margin-bottom: 6px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 14px;
+      background: #0D1117;
+      border: 1.5px solid #30363D;
+      border-radius: 12px;
+      color: #FFFFFF;
+      font-size: 16px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: #38EF7D;
+    }
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: #21262D;
+      border: 1px solid #30363D;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .btn-login:hover {
+      background: #30363D;
+    }
+    .error-msg {
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid #F85149;
+      color: #FF7B72;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #484F58;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">$venueName</div>
+    <div class="subtitle">High-Speed Wi-Fi by WavePass</div>
+
+    \\\$(if error)
+    <div class="error-msg">\\\$(error)</div>
+    \\\$(endif)
+
+    <a href="https://$slug.nexawavepass.com/portal?mac=\\\$(mac)&ip=\\\$(ip)&link-orig=\\\$(link-orig-esc)&venue=$slug" class="btn-buy">
+      Buy Internet Pass Online &rarr;
+    </a>
+
+    <div class="divider">OR USE VOUCHER</div>
+
+    <form name="login" action="\\\$(link-login-only)" method="post" onsubmit="return fillCredentials()">
+      <input type="hidden" name="dst" value="\\\$(link-orig)">
+      <input type="hidden" name="popup" value="true">
+      <input type="hidden" name="password" id="passInput">
+
+      <div class="form-group">
+        <label for="username">Voucher Code</label>
+        <input type="text" id="username" name="username" placeholder="WP-XXXXX" autocomplete="off" autocorrect="off" autocapitalize="characters" required>
+      </div>
+
+      <button type="submit" class="btn-login">Connect to Internet</button>
+    </form>
+
+    <div class="footer">
+      Connected MAC: \\\$(mac)
+    </div>
+  </div>
+
+  <script>
+    function fillCredentials() {
+      var user = document.getElementById('username').value.trim();
+      document.getElementById('passInput').value = user;
+      return true;
+    }
+  </script>
+</body>
+</html>""";
+
+      setState(() {
+        _exportedPortalHtml = html;
+      });
+
+      await Clipboard.setData(ClipboardData(text: html));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("login.html copied to clipboard! Save to MikroTik Files -> hotspot/login.html."),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to generate login.html: $e"), backgroundColor: AppColors.accentRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPortalHtml = false);
     }
   }
 
@@ -1009,6 +1218,98 @@ set name="WavePass-$slug"
                       ),
                       child: Text(
                         _exportedScript!,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ─── OPTION 4: CAPTIVE PORTAL FILE (LOGIN.HTML) ───
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: AppColors.containerBg,
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text(
+                        "OPTION 04",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.accentGreen,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      Text(
+                        "Files / Hotspot Directory",
+                        style: TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Hotspot Login Page (login.html)",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    "Copy the branded login.html file. Place or drag & drop this file into your MikroTik WinBox/WebFig under Files -> hotspot/ to display online checkout & voucher activation when users connect to Wi-Fi.",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textLight,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _exportingPortalHtml ? null : _handleExportPortalHtml,
+                      icon: _exportingPortalHtml
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.copy_rounded, color: AppColors.accentGreen, size: 20),
+                      label: Text(
+                        _exportingPortalHtml ? "Generating..." : "Copy login.html",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.accentGreen,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                  if (_exportedPortalHtml != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.cardBorder),
+                      ),
+                      child: Text(
+                        _exportedPortalHtml!,
                         maxLines: 6,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textMuted),

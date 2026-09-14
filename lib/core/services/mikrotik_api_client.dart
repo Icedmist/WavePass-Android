@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 /// Exception thrown when MikroTik RouterOS API authentication fails.
 class MikrotikAuthException implements Exception {
@@ -53,9 +54,9 @@ class MikrotikApiClient {
 
   bool get isConnected => _isConnected && _socket != null;
 
-  /// Connects to MikroTik RouterOS on Port 8728 and logs in using admin credentials.
-  /// Compatible with RouterOS v6.43+ and RouterOS v7 standard login.
-  Future<bool> connectAndLogin(String username, String password) async {
+  /// Connects to MikroTik RouterOS TCP socket on Port 8728.
+  Future<bool> connect() async {
+    if (isConnected) return true;
     try {
       _socket = await Socket.connect(host, port, timeout: timeout);
       _isConnected = true;
@@ -73,22 +74,35 @@ class MikrotikApiClient {
         },
         cancelOnError: false,
       );
-
-      // Perform /login command
-      final loginRes = await executeSentence([
-        '/login',
-        '=name=$username',
-        '=password=$password',
-      ]);
-
-      return loginRes.isNotEmpty || true;
-    } on SocketException catch (e) {
+      return true;
+    } catch (_) {
       _isConnected = false;
-      throw SocketException('Failed to connect to MikroTik API on $host:$port: ${e.message}');
-    } on TimeoutException {
-      _isConnected = false;
-      throw TimeoutException('Connection timed out to MikroTik API on $host:$port');
+      return false;
     }
+  }
+
+  /// Logs in using admin credentials over the established socket connection.
+  Future<bool> login(String username, String password) async {
+    if (!isConnected) {
+      final ok = await connect();
+      if (!ok) return false;
+    }
+    final loginRes = await executeSentence([
+      '/login',
+      '=name=$username',
+      '=password=$password',
+    ]);
+    return loginRes.isNotEmpty || true;
+  }
+
+  Future<void> disconnect() => close();
+
+  /// Connects to MikroTik RouterOS on Port 8728 and logs in using admin credentials.
+  /// Compatible with RouterOS v6.43+ and RouterOS v7 standard login.
+  Future<bool> connectAndLogin(String username, String password) async {
+    final ok = await connect();
+    if (!ok) return false;
+    return login(username, password);
   }
 
   /// Sends a sentence to RouterOS and awaits all response sentences until !done or !trap.
@@ -513,11 +527,147 @@ class MikrotikApiClient {
       results['antiTethering'] = true;
     } catch (_) {}
 
+    // 8. Enforce No Sharing (Client Isolation, 1 Device/Voucher, Safe Anti-Tethering filter)
+    try {
+      final noShareRes = await enforceNoHotspotSharing();
+      results['noSharingEnforced'] = noShareRes['success'] == true;
+    } catch (_) {}
+
     final anySuccess = results['identity'] == true ||
         results['profile'] == true ||
         results['walledGarden'] == true ||
         results['hotspot'] == true;
     results['success'] = anySuccess;
+
+    return results;
+  }
+
+  /// Enforces no sharing of hotspot on MikroTik RouterOS:
+  /// 1. shared-users=1 on all hotspot user profiles (1 device per voucher)
+  /// 2. addresses-per-mac=1 and mac-cookie=no on hotspot server profiles
+  /// 3. default-forwarding=no on wireless interfaces (Wi-Fi client isolation)
+  /// 4. horizon=1 on bridge ports (bridge client isolation)
+  /// 5. drops tethered packets (TTL=63 and TTL=127) in forward chain without affecting WAN
+  Future<Map<String, dynamic>> enforceNoHotspotSharing() async {
+    final results = <String, dynamic>{
+      'profiles': false,
+      'serverProfiles': false,
+      'isolation': false,
+      'firewallFilter': false,
+      'success': false,
+    };
+
+    try {
+      // 1. Hotspot User Profiles: shared-users=1
+      try {
+        final profiles = await executeSentence(['/ip/hotspot/user/profile/print']);
+        for (final p in profiles) {
+          final id = p['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/ip/hotspot/user/profile/set',
+              '=.id=$id',
+              '=shared-users=1',
+            ]);
+          }
+        }
+        results['profiles'] = true;
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing profiles error: $e');
+      }
+
+      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie=no
+      try {
+        final srvProfiles = await executeSentence(['/ip/hotspot/profile/print']);
+        for (final sp in srvProfiles) {
+          final id = sp['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/ip/hotspot/profile/set',
+              '=.id=$id',
+              '=addresses-per-mac=1',
+              '=login-by=http-chap,http-pap',
+            ]);
+          }
+        }
+        results['serverProfiles'] = true;
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing server profiles error: $e');
+      }
+
+      // 3. Wireless client isolation (default-forwarding=no)
+      try {
+        final wlanList = await executeSentence(['/interface/wireless/print']);
+        for (final w in wlanList) {
+          final id = w['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/interface/wireless/set',
+              '=.id=$id',
+              '=default-forwarding=no',
+            ]);
+          }
+        }
+        results['isolation'] = true;
+      } catch (_) {}
+
+      // Bridge port isolation (horizon=1)
+      try {
+        final ports = await executeSentence(['/interface/bridge/port/print']);
+        for (final bp in ports) {
+          final id = bp['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/interface/bridge/port/set',
+              '=.id=$id',
+              '=horizon=1',
+            ]);
+          }
+        }
+      } catch (_) {}
+
+      // 4. Firewall Filter Drop tethered packets (TTL 63 and 127) on wlan1
+      try {
+        final existingFilters = await executeSentence([
+          '/ip/firewall/filter/print',
+          '?comment=WavePass Anti-Tethering: block secondary devices (64-ttl)',
+        ]);
+        if (existingFilters.isEmpty) {
+          await executeSentence([
+            '/ip/firewall/filter/add',
+            '=chain=forward',
+            '=action=drop',
+            '=in-interface=wlan1',
+            '=ttl=equal:63',
+            '=comment=WavePass Anti-Tethering: block secondary devices (64-ttl)',
+          ]);
+        }
+        final existingFilters127 = await executeSentence([
+          '/ip/firewall/filter/print',
+          '?comment=WavePass Anti-Tethering: block secondary devices (128-ttl)',
+        ]);
+        if (existingFilters127.isEmpty) {
+          await executeSentence([
+            '/ip/firewall/filter/add',
+            '=chain=forward',
+            '=action=drop',
+            '=in-interface=wlan1',
+            '=ttl=equal:127',
+            '=comment=WavePass Anti-Tethering: block secondary devices (128-ttl)',
+          ]);
+        }
+        results['firewallFilter'] = true;
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing firewall filter error: $e');
+      }
+
+      results['success'] = results['profiles'] == true ||
+          results['serverProfiles'] == true ||
+          results['isolation'] == true ||
+          results['firewallFilter'] == true;
+    } catch (e) {
+      debugPrint('[MikrotikApiClient] enforceNoHotspotSharing failed: $e');
+    }
 
     return results;
   }

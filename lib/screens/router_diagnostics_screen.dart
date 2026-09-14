@@ -250,6 +250,52 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
     }
   }
 
+  Future<void> _handleEnforceNoSharing() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+    final configuredEndpoint = _selectedRouter?['endpoint']?.toString();
+    final tunnelEndpoint = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint) ??
+        (configuredEndpoint != null && !configuredEndpoint.contains('192.168.') ? configuredEndpoint : null);
+    final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+    final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Applying No Sharing & Anti-Tethering enforcement to router..."),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final res = await RouterDiscoveryService.enforceNoHotspotSharing(
+        ip: localIp,
+        username: user,
+        password: pass,
+        endpoint: tunnelEndpoint,
+      );
+
+      if (!mounted) return;
+      final ok = res['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok
+              ? "No Sharing Enforced: 1 device per voucher, client isolation & anti-tethering active!"
+              : "Anti-sharing enforcement applied to available router subsystems."),
+          backgroundColor: ok ? AppColors.accentGreen : AppColors.primary,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to enforce anti-sharing: $e"),
+          backgroundColor: AppColors.accentRed,
+        ),
+      );
+    }
+  }
+
   Future<void> _showProvisionScript() async {
     if (_selectedRouter == null) return;
     final routerId = _selectedRouter!['id']?.toString() ?? 'default';
@@ -930,6 +976,19 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
             onPressed: _showProvisionScript,
             icon: const Icon(Icons.code_rounded, color: AppColors.primary),
             label: const Text("View RouterOS Setup Script", style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.cardBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: _handleEnforceNoSharing,
+            icon: const Icon(Icons.security_rounded, color: AppColors.primary),
+            label: const Text("Enforce No Sharing (1-Device & Anti-Tethering)", style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.cardBorder),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

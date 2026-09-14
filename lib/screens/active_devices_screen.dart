@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
@@ -38,28 +40,133 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
     _isRefreshing = true;
     if (!silent && mounted) setState(() => _loading = true);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+      String? tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+
       final venue = await SupabaseService.instance.getPrimaryVenue();
-      if (venue != null) {
-        final sessions = await SupabaseService.instance.getActiveSessions(venue['id']);
-        if (!mounted) return;
-        setState(() {
-          _devices = sessions.map((s) {
-            final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
-            final remaining = expiresAt != null ? expiresAt.difference(DateTime.now()).inMinutes : 0;
-            final prog = expiresAt != null ? (remaining / 1440).clamp(0.0, 1.0) : 0.5;
-            return {
-              'id': s['id'],
-              'name': s['deviceId'] ?? s['mac'] ?? 'Unknown Device',
-              'mac': s['mac'] ?? '—',
-              'ip': s['ip'] ?? '—',
-              'plan': s['plan'] ?? s['voucherId'] ?? 'Pass',
-              'timeLeft': remaining > 60 ? '${remaining ~/ 60}h ${remaining % 60}m left' : '${remaining}m left',
-              'progress': prog,
-              'sessionId': s['id'],
-            };
-          }).toList();
+      final venueId = venue?['id']?.toString();
+
+      // If tunnel endpoint is empty, look up router endpoint from DB
+      if ((tunnel == null || tunnel.isEmpty) && venueId != null) {
+        try {
+          final rList = await SupabaseService.instance.client
+              .from('Router')
+              .select('endpoint')
+              .eq('venueId', venueId)
+              .limit(1);
+          if (rList.isNotEmpty) {
+            final ep = rList.first['endpoint']?.toString();
+            if (ep != null && ep.isNotEmpty) tunnel = ep;
+          }
+        } catch (_) {}
+      }
+
+      // 1. Fetch Supabase active sessions
+      List<dynamic> dbSessions = [];
+      if (venueId != null) {
+        try {
+          dbSessions = await SupabaseService.instance.getActiveSessions(venueId);
+        } catch (_) {}
+      }
+
+      // 2. Fetch live RouterOS active sessions from hardware
+      List<Map<String, dynamic>> hwUsers = [];
+      try {
+        hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
+          ip: localIp,
+          username: user,
+          password: pass,
+          endpoint: tunnel,
+        );
+      } catch (_) {}
+
+      // 3. Merge both sources
+      final merged = <Map<String, dynamic>>[];
+      final matchedHwIds = <String>{};
+
+      for (final s in dbSessions) {
+        final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
+        final remaining = expiresAt != null ? expiresAt.difference(DateTime.now()).inMinutes : 0;
+        final prog = expiresAt != null ? (remaining / 1440).clamp(0.0, 1.0) : 0.5;
+        final sMac = (s['mac']?.toString() ?? '').toLowerCase().trim();
+        final sIp = s['ip']?.toString().trim() ?? '';
+        final sUser = (s['voucherId']?.toString() ?? s['deviceId']?.toString() ?? '').trim();
+
+        // Check if matching hardware user
+        Map<String, dynamic>? matchHw;
+        for (final hw in hwUsers) {
+          final hwMac = (hw['mac-address']?.toString() ?? hw['mac']?.toString() ?? '').toLowerCase().trim();
+          final hwIp = (hw['address']?.toString() ?? hw['ip']?.toString() ?? '').trim();
+          final hwUser = (hw['user']?.toString() ?? '').trim();
+
+          if ((sMac.isNotEmpty && sMac == hwMac) ||
+              (sIp.isNotEmpty && sIp == hwIp) ||
+              (sUser.isNotEmpty && sUser == hwUser)) {
+            matchHw = hw;
+            if (hw['.id'] != null) matchedHwIds.add(hw['.id'].toString());
+            if (hw['user'] != null) matchedHwIds.add(hw['user'].toString());
+            break;
+          }
+        }
+
+        final timeLeft = matchHw?['session-time-left'] != null && matchHw!['session-time-left'].toString().isNotEmpty
+            ? matchHw['session-time-left'].toString()
+            : (remaining > 60 ? '${remaining ~/ 60}h ${remaining % 60}m left' : '${remaining}m left');
+
+        merged.add({
+          'id': s['id'],
+          'name': s['deviceId'] ?? s['mac'] ?? matchHw?['user'] ?? 'Unknown Device',
+          'mac': s['mac'] ?? matchHw?['mac-address'] ?? '—',
+          'ip': s['ip'] ?? matchHw?['address'] ?? '—',
+          'plan': s['plan'] ?? s['voucherId'] ?? (matchHw?['user'] != null ? 'Voucher (${matchHw!['user']})' : 'Pass'),
+          'timeLeft': timeLeft,
+          'progress': prog,
+          'sessionId': s['id'],
+          'hardwareId': matchHw?['.id'],
+          'hardwareUser': matchHw?['user'],
+          'uptime': matchHw?['uptime'],
+          'fromRouter': matchHw != null,
         });
       }
+
+      // Add any router hardware users not already matched
+      for (final hw in hwUsers) {
+        final id = hw['.id']?.toString() ?? '';
+        final u = hw['user']?.toString() ?? '';
+        if (matchedHwIds.contains(id) || (u.isNotEmpty && matchedHwIds.contains(u))) {
+          continue;
+        }
+
+        final userCode = hw['user']?.toString() ?? 'Guest';
+        final timeLeft = hw['session-time-left']?.toString();
+        final uptime = hw['uptime']?.toString();
+        final displayTime = (timeLeft != null && timeLeft.isNotEmpty)
+            ? '$timeLeft left'
+            : (uptime != null ? 'Online: $uptime' : 'Active');
+
+        merged.add({
+          'id': hw['.id'] ?? hw['user'] ?? hw['mac-address'] ?? hw['address'],
+          'name': hw['user'] != null && hw['user'].toString().isNotEmpty ? 'Voucher ${hw['user']}' : (hw['mac-address'] ?? 'Connected Device'),
+          'mac': hw['mac-address'] ?? '—',
+          'ip': hw['address'] ?? '—',
+          'plan': 'Active Pass ($userCode)',
+          'timeLeft': displayTime,
+          'progress': 0.8,
+          'sessionId': hw['.id'] ?? hw['user'],
+          'hardwareId': hw['.id'],
+          'hardwareUser': hw['user'],
+          'uptime': uptime,
+          'fromRouter': true,
+        });
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _devices = merged;
+      });
     } finally {
       _isRefreshing = false;
       if (!silent && mounted) {
@@ -71,13 +178,33 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
   Future<void> _disconnectDevice(int index) async {
     final dev = _devices[index];
     final sessionId = dev['sessionId'] ?? dev['id'];
+    final hardwareIdOrUser = dev['hardwareId']?.toString() ?? dev['hardwareUser']?.toString() ?? dev['name'];
 
-    // 1. Disconnect on RouterOS hardware via Cloud/Local API
+    final prefs = await SharedPreferences.getInstance();
+    final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+    final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+    final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+    final tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+
+    // 1. Disconnect on RouterOS hardware directly
+    if (hardwareIdOrUser != null && hardwareIdOrUser.toString().isNotEmpty) {
+      try {
+        await RouterDiscoveryService.disconnectHotspotUser(
+          ip: localIp,
+          username: user,
+          password: pass,
+          endpoint: tunnel,
+          activeIdOrUser: hardwareIdOrUser.toString(),
+        );
+      } catch (_) {}
+    }
+
+    // 2. Disconnect on Cloud / Local API
     try {
       await WavePassApi.instance.post('/api/v1/sessions/$sessionId/disconnect', {});
     } catch (_) {}
 
-    // 2. Terminate session in database
+    // 3. Terminate session in database if it exists
     try {
       await SupabaseService.instance.client.from('Session').update({
         'status': 'ENDED',

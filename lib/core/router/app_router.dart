@@ -80,6 +80,7 @@ class AppRouter {
           StatefulShellBranch(routes: [GoRoute(path: dashboard, pageBuilder: (c, s) => _slideFade(const HomeDashboardScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: activeDevices, pageBuilder: (c, s) => _slideFade(const ActiveDevicesScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: sellPass, pageBuilder: (c, s) => _slideFade(const SellPassScreen(), s))]),
+          StatefulShellBranch(routes: [GoRoute(path: batchVouchers, pageBuilder: (c, s) => _slideFade(const BatchVouchersScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: wallet, pageBuilder: (c, s) => _slideFade(const WalletScreen(), s))]),
           StatefulShellBranch(routes: [GoRoute(path: admin, pageBuilder: (c, s) => _slideFade(const AdminManagementScreen(), s))]),
         ],
@@ -91,7 +92,6 @@ class AppRouter {
       GoRoute(path: terms, pageBuilder: (c, s) => _slideFade(const TermsScreen(), s)),
       GoRoute(path: privacy, pageBuilder: (c, s) => _slideFade(const PrivacyScreen(), s)),
       GoRoute(path: barcodeScanner, pageBuilder: (c, s) => _slideFade(const BarcodeScannerScreen(), s)),
-      GoRoute(path: batchVouchers, pageBuilder: (c, s) => _slideFade(const BatchVouchersScreen(), s)),
     ],
   );
 }

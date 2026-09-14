@@ -262,6 +262,8 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       final pdf = pw.Document();
       final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
+      final slug = venue['slug']?.toString() ?? 'venue';
+      final portalUrl = 'https://$slug.nexawavepass.com';
 
       final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
       final planName = plan['name']?.toString() ?? 'Pass';
@@ -292,7 +294,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         final code = item['code']?.toString() ?? '';
         final pass = item['password']?.toString() ?? '';
         final isDual = _userMode == 'Username & Password' && pass != code;
-        final loginUrl = 'http://192.168.88.1/login?username=$code&password=${pass.isNotEmpty ? pass : code}';
 
         return pw.Container(
           width: 260,
@@ -350,7 +351,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     ),
                     child: pw.BarcodeWidget(
                       barcode: pw.Barcode.qrCode(),
-                      data: loginUrl,
+                      data: portalUrl,
                       width: 50,
                       height: 50,
                     ),
@@ -415,7 +416,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
               ),
               pw.Spacer(),
               pw.Text(
-                'Connect to Wi-Fi • Scan QR or enter code on login page',
+                'Connect to Wi-Fi • Scan QR or visit $slug.nexawavepass.com to pay or enter code',
                 style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
                 textAlign: pw.TextAlign.center,
               ),

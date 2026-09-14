@@ -253,6 +253,7 @@ class MikrotikApiClient {
       'hotspot': false,
       'userProfiles': false,
       'cleanupScheduler': false,
+      'antiTethering': false,
       'errors': <String>[],
     };
 
@@ -303,12 +304,14 @@ class MikrotikApiClient {
       }
     }
 
-    // 3. Walled Garden Domains
+    // 3. Walled Garden Domains (Captive Portal & Payment Checkout)
     final domains = [
       'api.nexawavepass.com',
       '*.nexawavepass.com',
       '*.paystack.co',
       'api.paystack.co',
+      'checkout.paystack.com',
+      'standard.paystack.co',
       '*.supabase.co',
     ];
     int wgSuccess = 0;
@@ -387,6 +390,23 @@ class MikrotikApiClient {
         } catch (_) {}
       }
     }
+    // Enforce shared-users=1 on 'default' user profile as well
+    try {
+      final defProfiles = await executeSentence([
+        '/ip/hotspot/user/profile/print',
+        '?name=default',
+      ]);
+      if (defProfiles.isNotEmpty) {
+        final defId = defProfiles.first['.id'];
+        if (defId != null) {
+          await executeSentence([
+            '/ip/hotspot/user/profile/set',
+            '=.id=$defId',
+            '=shared-users=1',
+          ]);
+        }
+      }
+    } catch (_) {}
     results['userProfiles'] = tierSuccess > 0;
 
     // 6. Expired user auto-cleanup script & scheduler
@@ -409,6 +429,25 @@ class MikrotikApiClient {
         '=on-event=wavepass-cleanup',
         '=comment=WavePass 2-hour user cleanup',
       ]);
+    } catch (_) {}
+
+    // 7. Anti-Tethering / Anti-Hotspot Sharing: Set TTL=1 on postrouting so tethered devices drop packets
+    try {
+      final existingMangle = await executeSentence([
+        '/ip/firewall/mangle/print',
+        '?comment=WavePass Anti-Tethering',
+      ]);
+      if (existingMangle.isEmpty) {
+        await executeSentence([
+          '/ip/firewall/mangle/add',
+          '=chain=postrouting',
+          '=action=change-ttl',
+          '=new-ttl=set:1',
+          '=passthrough=yes',
+          '=comment=WavePass Anti-Tethering',
+        ]);
+      }
+      results['antiTethering'] = true;
     } catch (_) {}
 
     final anySuccess = results['identity'] == true ||

@@ -268,12 +268,12 @@ class MikrotikApiClient {
       (results['errors'] as List<String>).add('Identity: $e');
     }
 
-    // 2. Hotspot Profile: wavepass-profile
+    // 2. Hotspot Profile: wavepass-profile (local DNS hostname to prevent SSL warnings and allow cloud portal access)
     try {
       await executeSentence([
         '/ip/hotspot/profile/add',
         '=name=wavepass-profile',
-        '=dns-name=$slug.nexawavepass.com',
+        '=dns-name=wavepass.local',
         '=html-directory=hotspot',
         '=login-by=http-chap,http-pap,mac-cookie',
         if (localIp != null && localIp.isNotEmpty)
@@ -293,7 +293,7 @@ class MikrotikApiClient {
             await executeSentence([
               '/ip/hotspot/profile/set',
               '=.id=$id',
-              '=dns-name=$slug.nexawavepass.com',
+              '=dns-name=wavepass.local',
               '=html-directory=hotspot',
             ]);
             results['profile'] = true;
@@ -306,8 +306,9 @@ class MikrotikApiClient {
 
     // 3. Walled Garden Domains (Captive Portal & Payment Checkout)
     final domains = [
-      'api.nexawavepass.com',
+      'nexawavepass.com',
       '*.nexawavepass.com',
+      'api.nexawavepass.com',
       '*.paystack.co',
       'api.paystack.co',
       'checkout.paystack.com',

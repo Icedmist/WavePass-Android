@@ -214,7 +214,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         setState(() {
           _isConfiguring = false;
           _successMessage = hwSuccess
-              ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS '$slug.nexawavepass.com'."
+              ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS 'wavepass.local'."
               : "Router '${_foundRouter!.identity}' bound to venue. Ready for sales!";
         });
 
@@ -316,7 +316,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Captive Portal", style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                      Text("$slug.nexawavepass.com", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                      const Text("wavepass.local (192.168.88.1)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
                     ],
                   ),
                 ],
@@ -387,7 +387,7 @@ set www-ssl disabled=no port=443
 # 2. Hotspot Profile & Interface
 # --------------------------------------------------------
 /ip hotspot profile
-add dns-name="$slug.nexawavepass.com" \\
+add dns-name="wavepass.local" \\
     hotspot-address=192.168.88.1 \\
     html-directory=hotspot \\
     login-by=http-chap,http-pap,mac-cookie \\
@@ -404,6 +404,7 @@ add address-pool=default-dhcp \\
 # 3. Walled Garden Domains (Captive Portal & Checkout)
 # --------------------------------------------------------
 /ip hotspot walled-garden
+add comment="WavePass Root Portal" dst-host="nexawavepass.com"
 add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
 add comment="Paystack Checkout" dst-host="*.paystack.co"

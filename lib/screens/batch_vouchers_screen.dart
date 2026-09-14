@@ -31,7 +31,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
   String _userMode = 'Voucher Code'; // 'Voucher Code', 'Username & Password'
 
   String? _selectedVenueId;
-  String? _selectedVenueSlug;
   String? _selectedPlanId;
   List<Map<String, dynamic>> _venues = [];
   List<Map<String, dynamic>> _plans = [];
@@ -72,7 +71,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       setState(() {
         _venues = [{'id': vId, 'name': vName, 'slug': vSlug}];
         _selectedVenueId = vId;
-        _selectedVenueSlug = vSlug;
       });
     }
   }
@@ -108,7 +106,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         setState(() {
           _venues = [vMap];
           _selectedVenueId = vId;
-          _selectedVenueSlug = vSlug;
         });
         await VenueStateService.instance.refreshPlans();
       }
@@ -265,7 +262,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       final pdf = pw.Document();
       final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
-      final slug = venue['slug']?.toString() ?? _selectedVenueSlug ?? 'venue';
 
       final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
       final planName = plan['name']?.toString() ?? 'Pass';
@@ -296,7 +292,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         final code = item['code']?.toString() ?? '';
         final pass = item['password']?.toString() ?? '';
         final isDual = _userMode == 'Username & Password' && pass != code;
-        final loginUrl = 'http://$slug.nexawavepass.com/login?code=$code';
+        final loginUrl = 'http://192.168.88.1/login?username=$code&password=${pass.isNotEmpty ? pass : code}';
 
         return pw.Container(
           width: 260,

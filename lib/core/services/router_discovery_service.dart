@@ -1176,7 +1176,7 @@ class RouterDiscoveryService {
           headers: headers,
           body: jsonEncode({
             'name': 'wavepass-profile',
-            'dns-name': '$slug.nexawavepass.com',
+            'dns-name': 'wavepass.local',
             'hotspot-address': hostOnly,
             'login-by': 'http-chap,http-pap,mac-cookie',
             'html-directory': 'hotspot',
@@ -1191,10 +1191,13 @@ class RouterDiscoveryService {
       try {
         final wgUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/walled-garden");
         final domains = [
-          'api.nexawavepass.com',
+          'nexawavepass.com',
           '*.nexawavepass.com',
+          'api.nexawavepass.com',
           '*.paystack.co',
           'api.paystack.co',
+          'checkout.paystack.com',
+          'standard.paystack.co',
           '*.supabase.co',
         ];
         int wgSuccess = 0;

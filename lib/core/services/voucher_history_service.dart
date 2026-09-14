@@ -141,6 +141,42 @@ class VoucherHistoryService {
     await prefs.setString(_keyHistory, jsonEncode(jsonList));
   }
 
+  /// Parses RouterOS uptime string (e.g. "01:15:30", "1d02:30:00", "1h30m", "45s") into seconds
+  static int parseRouterOsUptimeSeconds(String raw) {
+  if (raw.isEmpty) return 0;
+  raw = raw.trim();
+  if (raw.contains(':')) {
+    var days = 0;
+    if (raw.contains('d')) {
+      final parts = raw.split('d');
+      days = int.tryParse(parts[0]) ?? 0;
+      raw = parts.length > 1 ? parts[1].trim() : '';
+    }
+    final colons = raw.split(':');
+    if (colons.length == 3) {
+      final h = int.tryParse(colons[0]) ?? 0;
+      final m = int.tryParse(colons[1]) ?? 0;
+      final s = int.tryParse(colons[2]) ?? 0;
+      return days * 86400 + h * 3600 + m * 60 + s;
+    } else if (colons.length == 2) {
+      final m = int.tryParse(colons[0]) ?? 0;
+      final s = int.tryParse(colons[1]) ?? 0;
+      return days * 86400 + m * 60 + s;
+    }
+  }
+
+  int total = 0;
+  final dMatch = RegExp(r'(\d+)d').firstMatch(raw);
+  if (dMatch != null) total += (int.tryParse(dMatch.group(1)!) ?? 0) * 86400;
+  final hMatch = RegExp(r'(\d+)h').firstMatch(raw);
+  if (hMatch != null) total += (int.tryParse(hMatch.group(1)!) ?? 0) * 3600;
+  final mMatch = RegExp(r'(\d+)m').firstMatch(raw);
+  if (mMatch != null) total += (int.tryParse(mMatch.group(1)!) ?? 0) * 60;
+  final sMatch = RegExp(r'(\d+)s').firstMatch(raw);
+  if (sMatch != null) total += int.tryParse(sMatch.group(1)!) ?? 0;
+  return total > 0 ? total : (int.tryParse(raw) ?? 0);
+}
+
   /// Checks the router hardware for active vouchers, marks them in use,
   /// detects expirations, sends notifications, and removes expired accounts.
   Future<void> checkVoucherLifecycle([BuildContext? context]) async {
@@ -151,7 +187,7 @@ class VoucherHistoryService {
       final history = await getHistory();
       if (history.isEmpty) return;
 
-      // 1. Fetch active users currently connected to MikroTik
+      // 1. Fetch active users & configured accounts on MikroTik
       final prefs = await SharedPreferences.getInstance();
       final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
       final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
@@ -159,31 +195,36 @@ class VoucherHistoryService {
 
       final client = MikrotikApiClient(host: localIp);
       List<Map<String, String>> activeUsers = [];
+      List<Map<String, String>> hotspotUsers = [];
       bool routerConnected = false;
 
       try {
         if (await client.connectAndLogin(user, pass)) {
           routerConnected = true;
           activeUsers = await client.getHotspotActiveUsers();
+          hotspotUsers = await client.getHotspotUsers();
         }
       } catch (_) {}
 
       bool stateChanged = false;
       final now = DateTime.now();
 
-      // 2. Cross-reference active users with history
+      // 2. Cross-reference active users with history (accurately backdating usedAt)
       if (routerConnected) {
         for (final active in activeUsers) {
           final activeCode = active['user']?.toString().toUpperCase();
           final mac = active['mac-address']?.toString() ?? '—';
           final ip = active['address']?.toString() ?? '—';
+          final uptimeStr = active['uptime']?.toString() ?? '';
+          final uptimeSec = parseRouterOsUptimeSeconds(uptimeStr);
 
           if (activeCode == null || activeCode.isEmpty) continue;
 
           for (final record in history) {
             if (record.code.toUpperCase() == activeCode && record.status == 'unused') {
               record.status = 'in_use';
-              record.usedAt = now;
+              // Backdate usedAt based on actual router elapsed uptime
+              record.usedAt = now.subtract(Duration(seconds: uptimeSec));
               record.mac = mac;
               record.ip = ip;
               stateChanged = true;
@@ -202,7 +243,7 @@ class VoucherHistoryService {
         }
       }
 
-      // 3. Detect expired vouchers and periodically delete them from hardware
+      // 3. Detect expired vouchers from elapsed duration and delete from hardware
       for (final record in history) {
         if (record.status == 'in_use' && record.usedAt != null) {
           final elapsed = now.difference(record.usedAt!).inSeconds;
@@ -227,6 +268,47 @@ class VoucherHistoryService {
                 await client.removeHotspotUser(record.code);
               } catch (_) {}
             }
+          }
+        }
+      }
+
+      // 4. Proactively check router user accounts that reached limit-uptime
+      if (routerConnected && hotspotUsers.isNotEmpty) {
+        for (final u in hotspotUsers) {
+          final uName = u['name']?.toString();
+          if (uName == null || uName.isEmpty || uName.toLowerCase() == 'admin') continue;
+
+          final limitUptime = u['limit-uptime']?.toString() ?? '';
+          final currentUptime = u['uptime']?.toString() ?? '';
+
+          if (limitUptime.isNotEmpty && limitUptime != '0s') {
+            final limitSec = parseRouterOsUptimeSeconds(limitUptime);
+            final currentSec = parseRouterOsUptimeSeconds(currentUptime);
+
+            if (limitSec > 0 && currentSec >= limitSec) {
+              try {
+                await client.disconnectActiveUser(uName);
+                await client.removeHotspotUser(uName);
+              } catch (_) {}
+
+              for (final record in history) {
+                if (record.code.toUpperCase() == uName.toUpperCase() && record.status != 'expired') {
+                  record.status = 'expired';
+                  stateChanged = true;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 5. Purge any remaining expired vouchers in history from router
+      if (routerConnected) {
+        for (final record in history) {
+          if (record.status == 'expired') {
+            try {
+              await client.removeHotspotUser(record.code);
+            } catch (_) {}
           }
         }
       }

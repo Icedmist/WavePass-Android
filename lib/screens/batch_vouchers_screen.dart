@@ -212,6 +212,16 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         });
       }
 
+      // Retrieve selected plan duration and rate profile
+      final selectedPlan = _plans.firstWhere(
+        (p) => p['id']?.toString() == _selectedPlanId?.toString(),
+        orElse: () => {'name': 'Pass', 'priceMinor': 0, 'durationSeconds': 3600},
+      );
+      final planName = selectedPlan['name']?.toString() ?? 'Pass';
+      final price = '₦${((selectedPlan['priceMinor'] as num?)?.toInt() ?? 0) ~/ 100}';
+      final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
+      final profileName = RouterDiscoveryService.profileForDuration(durationSec);
+
       // Synchronously provision batch vouchers to router hardware (LAN Direct / Cloud Tunnel)
       int routerPushed = 0;
       String? routerMode;
@@ -220,7 +230,8 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           final res = await RouterDiscoveryService.provisionVoucherDualRoute(
             code: item['code'] as String,
             pass: item['password'] as String?,
-            profile: 'default',
+            profile: profileName,
+            sessionTimeoutSeconds: durationSec,
           );
           if (res['success'] == true) {
             routerPushed++;
@@ -230,11 +241,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       }
 
       // Record batch vouchers in local history
-      final selectedPlan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass', 'priceMinor': 0, 'durationSeconds': 3600});
-      final planName = selectedPlan['name']?.toString() ?? 'Pass';
-      final price = '₦${((selectedPlan['priceMinor'] as num?)?.toInt() ?? 0) ~/ 100}';
-      final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
-
       for (final item in compiled) {
         final code = item['code'] as String;
         VoucherHistoryService.instance.recordVoucher(

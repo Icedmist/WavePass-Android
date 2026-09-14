@@ -187,9 +187,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
         code: code,
         pass: code,
-        profile: durationSec <= 3600
-            ? 'profile_1h'
-            : (durationSec <= 43200 ? 'profile_12h' : 'profile_1d'),
+        profile: RouterDiscoveryService.profileForDuration(durationSec),
         sessionTimeoutSeconds: durationSec,
       );
       if (directRes['success'] == true) {

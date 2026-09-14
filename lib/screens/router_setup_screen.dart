@@ -488,13 +488,19 @@ add comment="Paystack Standard (HTTPS)" dst-host="standard.paystack.co" action=a
 add comment="Supabase Auth (HTTPS)" dst-host="*.supabase.co" action=accept
 
 # --------------------------------------------------------
-# 4. Standard Rate-Limit User Profiles & Single Device Enforce
+# 4. Standard Rate-Limit User Profiles & Hard Timeouts
 # --------------------------------------------------------
 /ip hotspot user profile
-set [find default=yes] shared-users=1
-add name="profile_1h" rate-limit="10M/5M" shared-users=1 comment="WavePass 1h"
-add name="profile_12h" rate-limit="15M/5M" shared-users=1 comment="WavePass 12h"
-add name="profile_1d" rate-limit="20M/10M" shared-users=1 comment="WavePass 24h"
+set [find default=yes] shared-users=1 keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m
+add name="profile_30m" rate-limit="10M/5M" shared-users=1 session-timeout=30m keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30m"
+add name="profile_1h" rate-limit="10M/5M" shared-users=1 session-timeout=1h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 1h"
+add name="profile_2h" rate-limit="10M/5M" shared-users=1 session-timeout=2h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 2h"
+add name="profile_3h" rate-limit="15M/5M" shared-users=1 session-timeout=3h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 3h"
+add name="profile_6h" rate-limit="15M/5M" shared-users=1 session-timeout=6h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 6h"
+add name="profile_12h" rate-limit="15M/5M" shared-users=1 session-timeout=12h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 12h"
+add name="profile_1d" rate-limit="20M/10M" shared-users=1 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
+add name="profile_7d" rate-limit="20M/10M" shared-users=1 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
+add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
 
 # --------------------------------------------------------
 # 5. Enforce No Hotspot Sharing (1 Device/Voucher & Anti-Tethering)
@@ -512,13 +518,15 @@ add chain=forward action=drop in-interface=wlan1 ttl=equal:63 comment="WavePass 
 add chain=forward action=drop in-interface=wlan1 ttl=equal:127 comment="WavePass Anti-Tethering: block secondary devices (128-ttl)"
 
 # --------------------------------------------------------
-# 6. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
+# 6. Active Session Expiry & 1-Minute User Limit Enforcer
 # --------------------------------------------------------
 /system script
-add name="wavepass-cleanup" source="/ip hotspot user remove [find comment=\\"expired\\"]" comment="WavePass low-RAM expired user cleanup"
+remove [find name="wavepass-cleanup"]
+add name="wavepass-cleanup" source=":foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \\\$a session-time-left]; :if ([:len \\\$stl] > 0 && \\\$stl = 0s) do={ /ip hotspot active remove \\\$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \\\$u limit-uptime]; :local upt [/ip hotspot user get \\\$u uptime]; :if ([:len \\\$lup] > 0 && \\\$lup != 0s && \$upt >= \\\$lup) do={ :local un [/ip hotspot user get \\\$u name]; /ip hotspot active remove [find user=\\\$un]; /ip hotspot user remove \\\$u; } }; /ip hotspot user remove [find comment~\\"expired\\"]" comment="WavePass user limit enforcer"
 
 /system scheduler
-add name="wavepass-cleanup" interval=2h on-event="wavepass-cleanup" comment="WavePass 2-hour user cleanup"
+remove [find name="wavepass-cleanup"]
+add name="wavepass-cleanup" interval=1m on-event="wavepass-cleanup" comment="WavePass 1-minute user limit enforcer"
 
 # --------------------------------------------------------
 # 7. System Identity

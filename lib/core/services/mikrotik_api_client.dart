@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'router_discovery_service.dart';
 
 /// Exception thrown when MikroTik RouterOS API authentication fails.
 class MikrotikAuthException implements Exception {
@@ -191,13 +192,17 @@ class MikrotikApiClient {
     int? sharedUsers,
     String comment = 'wavepass-provisioned',
   }) async {
+    final uptimeStr = sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0
+        ? RouterDiscoveryService.formatRouterOsDuration(sessionTimeoutSeconds)
+        : null;
+
     final words = <String>[
       '/ip/hotspot/user/add',
       '=name=$code',
       '=password=${pass ?? code}',
       '=profile=$profile',
-      if (sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0)
-        '=limit-uptime=${sessionTimeoutSeconds}s',
+      if (uptimeStr != null)
+        '=limit-uptime=$uptimeStr',
       if (limitBytesTotal != null && limitBytesTotal > 0)
         '=limit-bytes-total=$limitBytesTotal',
       if (sharedUsers != null && sharedUsers > 0)
@@ -210,7 +215,7 @@ class MikrotikApiClient {
       return true;
     } on MikrotikCommandException catch (e) {
       final msg = e.message.toLowerCase();
-      // If user already exists, update credentials and limits gracefully
+      // If user already exists, update credentials and limits gracefully & reset uptime
       if (msg.contains('already have') || msg.contains('duplicate')) {
         try {
           final existing = await executeSentence([
@@ -225,8 +230,9 @@ class MikrotikApiClient {
                 '=.id=$id',
                 '=password=${pass ?? code}',
                 '=profile=$profile',
-                if (sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0)
-                  '=limit-uptime=${sessionTimeoutSeconds}s',
+                if (uptimeStr != null)
+                  '=limit-uptime=$uptimeStr',
+                '=uptime=0s', // Reset spent uptime for re-provisioned pass
                 if (limitBytesTotal != null && limitBytesTotal > 0)
                   '=limit-bytes-total=$limitBytesTotal',
                 if (sharedUsers != null && sharedUsers > 0)
@@ -257,6 +263,16 @@ class MikrotikApiClient {
   Future<List<Map<String, String>>> getHotspotActiveUsers() async {
     try {
       final sentences = await executeSentence(['/ip/hotspot/active/print']);
+      return sentences;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Returns all hotspot user accounts provisioned on the router.
+  Future<List<Map<String, String>>> getHotspotUsers() async {
+    try {
+      final sentences = await executeSentence(['/ip/hotspot/user/print']);
       return sentences;
     } catch (_) {
       return [];
@@ -428,25 +444,24 @@ class MikrotikApiClient {
       }
     }
 
-    // 5. User Profiles (1h, 12h, 1d)
-    final tiers = [
-      {'name': 'profile_1h', 'rate-limit': '10M/5M', 'shared-users': '1', 'comment': 'WavePass 1h'},
-      {'name': 'profile_12h', 'rate-limit': '15M/5M', 'shared-users': '1', 'comment': 'WavePass 12h'},
-      {'name': 'profile_1d', 'rate-limit': '20M/10M', 'shared-users': '1', 'comment': 'WavePass 24h'},
-    ];
+    // 5. Standard Duration User Profiles (with hard session-timeout & keepalives)
     int tierSuccess = 0;
-    for (final tier in tiers) {
+    for (final tier in RouterDiscoveryService.standardDurationProfiles) {
       try {
         await executeSentence([
           '/ip/hotspot/user/profile/add',
           '=name=${tier['name']}',
           '=rate-limit=${tier['rate-limit']}',
           '=shared-users=${tier['shared-users']}',
+          '=session-timeout=${tier['session-timeout']}',
+          '=keepalive-timeout=${tier['keepalive-timeout']}',
+          '=idle-timeout=${tier['idle-timeout']}',
+          '=status-autorefresh=${tier['status-autorefresh']}',
           '=comment=${tier['comment']}',
         ]);
         tierSuccess++;
       } catch (e) {
-        // Fallback: If profile already exists, update it to ensure correct rate-limits
+        // Fallback: If profile already exists, update it to ensure correct rate-limits and timeouts
         try {
           final existing = await executeSentence([
             '/ip/hotspot/user/profile/print',
@@ -460,6 +475,10 @@ class MikrotikApiClient {
                 '=.id=$id',
                 '=rate-limit=${tier['rate-limit']}',
                 '=shared-users=${tier['shared-users']}',
+                '=session-timeout=${tier['session-timeout']}',
+                '=keepalive-timeout=${tier['keepalive-timeout']}',
+                '=idle-timeout=${tier['idle-timeout']}',
+                '=status-autorefresh=${tier['status-autorefresh']}',
               ]);
               tierSuccess++;
             }
@@ -467,7 +486,7 @@ class MikrotikApiClient {
         } catch (_) {}
       }
     }
-    // Enforce shared-users=1 on 'default' user profile as well
+    // Enforce shared-users=1, keepalives, and idle timeout on 'default' user profile as well
     try {
       final defProfiles = await executeSentence([
         '/ip/hotspot/user/profile/print',
@@ -480,33 +499,75 @@ class MikrotikApiClient {
             '/ip/hotspot/user/profile/set',
             '=.id=$defId',
             '=shared-users=1',
+            '=keepalive-timeout=2m',
+            '=idle-timeout=5m',
+            '=status-autorefresh=1m',
           ]);
         }
       }
     } catch (_) {}
     results['userProfiles'] = tierSuccess > 0;
 
-    // 6. Expired user auto-cleanup script & scheduler
+    // 6. User limit enforcer & auto-cleanup script & scheduler (1m interval)
+    const cleanupSource = ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; } }; /ip hotspot user remove [find comment~"expired"]';
+
     try {
       await executeSentence([
         '/system/script/add',
         '=name=wavepass-cleanup',
-        '=source=/ip hotspot user remove [find comment="expired"]',
-        '=comment=WavePass low-RAM expired user cleanup',
+        '=source=$cleanupSource',
+        '=comment=WavePass user limit enforcer',
       ]);
       results['cleanupScheduler'] = true;
     } catch (_) {
+      // If already exists, update source
+      try {
+        final existingScript = await executeSentence([
+          '/system/script/print',
+          '?name=wavepass-cleanup',
+        ]);
+        if (existingScript.isNotEmpty) {
+          final sId = existingScript.first['.id'];
+          if (sId != null) {
+            await executeSentence([
+              '/system/script/set',
+              '=.id=$sId',
+              '=source=$cleanupSource',
+            ]);
+          }
+        }
+      } catch (_) {}
       results['cleanupScheduler'] = true;
     }
+
     try {
       await executeSentence([
         '/system/scheduler/add',
         '=name=wavepass-cleanup',
-        '=interval=2h',
+        '=interval=1m',
         '=on-event=wavepass-cleanup',
-        '=comment=WavePass 2-hour user cleanup',
+        '=comment=WavePass 1-minute user limit enforcer',
       ]);
-    } catch (_) {}
+    } catch (_) {
+      // If scheduler already exists, ensure interval is 1m
+      try {
+        final existingSched = await executeSentence([
+          '/system/scheduler/print',
+          '?name=wavepass-cleanup',
+        ]);
+        if (existingSched.isNotEmpty) {
+          final scId = existingSched.first['.id'];
+          if (scId != null) {
+            await executeSentence([
+              '/system/scheduler/set',
+              '=.id=$scId',
+              '=interval=1m',
+              '=on-event=wavepass-cleanup',
+            ]);
+          }
+        }
+      } catch (_) {}
+    }
 
     // 7. Clean up any legacy postrouting TTL mangle rule that breaks WAN routing
     // (Single-device enforcement is safely and accurately handled via shared-users=1 on profiles)

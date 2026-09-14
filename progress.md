@@ -287,3 +287,16 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 27 tests passed**.
 
+### 22. HotSpot wproxy 404 Resolution & Native Port 8728 Fallback (Issue #34)
+- [x] **Router Telemetry & Configuration Audit from Live Hardware**:
+  - Confirmed hardware: MikroTik RB951Ui-2HnD running RouterOS v7.23.5 (long-term) on MIPS 74Kc.
+  - Confirmed services: `www` (80), `winbox` (8291), and `api` (8728) are active. `www-ssl` (443) is disabled (`X`).
+  - Confirmed dynamic services: `hotspot` (64873) and `wproxy` (64874, 64875) actively intercept all unauthenticated Port 80 HTTP traffic and return 404 for `/rest/system/resource`.
+- [x] **Automatic Native Port 8728 Fallback**:
+  - In `_probeRouter()`, if Port 80 returns 404 (HotSpot wproxy interception) and HTTPS Port 443 fails, the probe automatically checks native RouterOS API on Port 8728 (`/ip service api`).
+  - In `createHotspotUserDirectly()`, added automated Port 8728 fallback if HTTP/HTTPS provisioning fails or returns 404.
+  - Users can configure `192.168.88.1:8728` directly or leave `192.168.88.1` and connect automatically.
+- [x] **Verification**:
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 27 tests passed**.
+

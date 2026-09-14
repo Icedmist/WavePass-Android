@@ -745,6 +745,27 @@ class RouterDiscoveryService {
       }
     }
 
+    if (conclusiveFailureRouter != null && (conclusiveFailureRouter.statusCode == 404 || !conclusiveFailureRouter.isReachable)) {
+      // If HTTP Port 80 returned 404 (HotSpot captive portal / wproxy interception) and HTTPS failed,
+      // probe native RouterOS API on Port 8728 (Micro Voucher / Mikhmon parity).
+      try {
+        final apiRouter = await _probeRouterOsApi(
+          host: hostOnly,
+          port: 8728,
+          username: username,
+          password: password,
+          connectionType: '$connectionType (API :8728)',
+          timeout: const Duration(seconds: 4),
+        );
+        if (apiRouter != null && apiRouter.isReachable && !apiRouter.authFailed) {
+          return apiRouter;
+        } else if (apiRouter != null && apiRouter.authFailed) {
+          // If port 8728 is open but password failed, surface the auth failed router
+          return apiRouter;
+        }
+      } catch (_) {}
+    }
+
     return conclusiveFailureRouter;
   }
 
@@ -899,6 +920,35 @@ class RouterDiscoveryService {
       debugPrint('Direct router HTTP provisioning error: $e');
     } finally {
       client.close();
+    }
+
+    // 3. Fallback to native RouterOS API on Port 8728 (Micro Voucher parity when HotSpot intercepts Port 80)
+    if (!httpSuccess) {
+      var host = raw;
+      if (host.startsWith('http://')) host = host.substring(7);
+      if (host.startsWith('https://')) host = host.substring(8);
+      if (host.contains(':')) host = host.split(':').first;
+      if (host.contains('/')) host = host.split('/').first;
+
+      final client8728 = MikrotikApiClient(host: host, port: 8728, timeout: const Duration(seconds: 5));
+      try {
+        final ok = await client8728.connectAndLogin(username, password);
+        if (ok) {
+          return await client8728.createHotspotUser(
+            code: code,
+            pass: pass,
+            profile: profile,
+            sessionTimeoutSeconds: sessionTimeoutSeconds,
+            limitBytesTotal: limitBytesTotal,
+            sharedUsers: sharedUsers,
+            comment: comment,
+          );
+        }
+      } catch (e) {
+        debugPrint('Fallback Port 8728 provisioning error: $e');
+      } finally {
+        await client8728.close();
+      }
     }
 
     return httpSuccess;

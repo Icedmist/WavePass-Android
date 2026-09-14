@@ -304,7 +304,7 @@ class MikrotikApiClient {
       }
     }
 
-    // 3. Walled Garden Domains (Captive Portal & Payment Checkout)
+    // 3. Walled Garden Domains (Captive Portal & Payment Checkout: HTTP & IP/HTTPS)
     final domains = [
       'nexawavepass.com',
       '*.nexawavepass.com',
@@ -324,6 +324,14 @@ class MikrotikApiClient {
           '=comment=WavePass Walled Garden',
         ]);
         wgSuccess++;
+      } catch (_) {}
+      try {
+        await executeSentence([
+          '/ip/hotspot/walled-garden/ip/add',
+          '=dst-host=$domain',
+          '=action=accept',
+          '=comment=WavePass Walled Garden IP',
+        ]);
       } catch (_) {}
     }
     results['walledGarden'] = wgSuccess > 0;

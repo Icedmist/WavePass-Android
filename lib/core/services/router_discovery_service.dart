@@ -1187,9 +1187,10 @@ class RouterDiscoveryService {
         (results['errors'] as List<String>).add('Profile: $e');
       }
 
-      // 3. Add Walled Garden Domains
+      // 3. Add Walled Garden Domains (HTTP & IP/HTTPS)
       try {
         final wgUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/walled-garden");
+        final wgIpUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/walled-garden/ip");
         final domains = [
           'nexawavepass.com',
           '*.nexawavepass.com',
@@ -1209,6 +1210,13 @@ class RouterDiscoveryService {
               body: jsonEncode({'dst-host': domain, 'comment': 'WavePass Walled Garden'}),
             ).timeout(const Duration(seconds: 3));
             if (res.statusCode >= 200 && res.statusCode < 300) wgSuccess++;
+          } catch (_) {}
+          try {
+            await client.put(
+              wgIpUri,
+              headers: headers,
+              body: jsonEncode({'dst-host': domain, 'action': 'accept', 'comment': 'WavePass Walled Garden IP'}),
+            ).timeout(const Duration(seconds: 3));
           } catch (_) {}
         }
         results['walledGarden'] = wgSuccess > 0;

@@ -239,6 +239,60 @@ class MikrotikApiClient {
     }
   }
 
+  /// Returns all currently logged-in active HotSpot users on the router.
+  Future<List<Map<String, String>>> getHotspotActiveUsers() async {
+    try {
+      final sentences = await executeSentence(['/ip/hotspot/active/print']);
+      return sentences;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Removes a hotspot user account (voucher) from RouterOS.
+  Future<bool> removeHotspotUser(String username) async {
+    try {
+      final existing = await executeSentence([
+        '/ip/hotspot/user/print',
+        '?name=$username',
+      ]);
+      for (final u in existing) {
+        final id = u['.id'];
+        if (id != null) {
+          await executeSentence([
+            '/ip/hotspot/user/remove',
+            '=.id=$id',
+          ]);
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Disconnects an active hotspot session on RouterOS.
+  Future<bool> disconnectActiveUser(String username) async {
+    try {
+      final active = await executeSentence([
+        '/ip/hotspot/active/print',
+        '?user=$username',
+      ]);
+      for (final a in active) {
+        final id = a['.id'];
+        if (id != null) {
+          await executeSentence([
+            '/ip/hotspot/active/remove',
+            '=.id=$id',
+          ]);
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Configures HotSpot profile, captive portal DNS, walled garden, and user profiles
   /// directly over RouterOS API on Port 8728 (Mikhmon / Micro Voucher parity).
   Future<Map<String, dynamic>> installHotspotConfig({

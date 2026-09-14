@@ -420,7 +420,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text(
-                            "+18% from yesterday",
+                            "Live Revenue",
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -431,7 +431,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            "${_recentSales.isNotEmpty ? _recentSales.length : 24} paid passes sold",
+                            "${_recentSales.length} passes recorded",
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.textLight,

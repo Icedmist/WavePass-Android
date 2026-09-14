@@ -412,10 +412,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 OutlinedButton.icon(
                                   onPressed: () {
                                     HapticFeedback.lightImpact();
-                                    showDialog(context: context, builder: (c) => AlertDialog(title: const Text('Demo Scan'), content: const Text('Camera would open here — demo captured serial WP-SCAN-1234'), actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Got it'))]));
+                                    context.push(AppRouter.barcodeScanner);
                                   },
                                   icon: const Icon(Icons.camera_alt_rounded, size: 16),
-                                  label: const Text('Try scan demo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                  label: const Text('Scan Router Serial', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                                 ),
                               if (index == 6)
                                 Container(
@@ -426,8 +426,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     const Icon(Icons.trending_up_rounded, size: 18, color: AppColors.accentGreen),
                                     const SizedBox(width: 8),
                                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      Text('Venues like your $_venueType earn ₦24k/day', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                                      const Text('Live counter • 1,240 venues', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                                      Text('Automated Wi-Fi billing for your $_venueType', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                                      const Text('Instant payouts & real-time analytics', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
                                     ])),
                                   ]),
                                 ),

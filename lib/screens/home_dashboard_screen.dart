@@ -30,6 +30,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   bool _loadingStats = true;
   String? _venueId;
   List<Map<String, dynamic>> _recentSales = [];
+  bool _hideBalance = true; // Hidden by default
 
   @override
   void initState() {
@@ -47,6 +48,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     super.dispose();
   }
 
+  Future<void> _toggleHideBalance() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _hideBalance = !_hideBalance);
+    await prefs.setBool('hide_balance_preference', _hideBalance);
+  }
+
   void _onVenueChanged() {
     final v = VenueStateService.instance.currentVenue;
     if (v != null && mounted) {
@@ -59,6 +66,13 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
   Future<void> _loadDashboard() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _hideBalance = prefs.getBool('hide_balance_preference') ?? true;
+        });
+      }
+
       var venue = VenueStateService.instance.currentVenue;
       venue ??= await VenueStateService.instance.refreshVenue();
       String? vid = venue?['id']?.toString();
@@ -123,6 +137,20 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
         final isHardwareOnline = localProbe != null && localProbe.isReachable && !localProbe.authFailed;
         final lp = isHardwareOnline ? localProbe : null;
+
+        if (isHardwareOnline) {
+          try {
+            final hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
+              ip: localIp,
+              username: user,
+              password: pass,
+              endpoint: lp?.ip,
+            );
+            if (mounted && (hwUsers.isNotEmpty || _activeUsers == 0)) {
+              setState(() => _activeUsers = hwUsers.length);
+            }
+          } catch (_) {}
+        }
 
         // 3. Database synchronization
         final venueForRouter = venue ?? await SupabaseService.instance.getPrimaryVenue();
@@ -396,14 +424,30 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          "TODAY'S WI-FI EARNINGS",
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textLight,
-                            letterSpacing: 0.8,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              "TODAY'S WI-FI EARNINGS",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textLight,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _toggleHideBalance,
+                              child: Icon(
+                                _hideBalance
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 16,
+                                color: AppColors.textLight,
+                              ),
+                            ),
+                          ],
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -434,13 +478,21 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Text(
-                          "₦${_todaySales.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
-                          style: const TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
-                            letterSpacing: -1.0,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              _hideBalance
+                                  ? "₦ • • • • • •"
+                                  : "₦${_todaySales.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
+                              style: const TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.primary,
+                                letterSpacing: -1.0,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -497,47 +549,51 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               children: [
                 // STAT 1: ACTIVE USERS
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppColors.cardBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "PEOPLE ONLINE",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textLight,
-                            letterSpacing: 0.5,
+                  child: InkWell(
+                    onTap: () => context.push(AppRouter.activeDevices),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: AppColors.cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "$_activeUsers",
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.accentGreen,
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "PEOPLE ONLINE",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textLight,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          "Using Wi-Fi now",
-                          style: TextStyle(fontSize: 11, color: AppColors.textLight),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            "$_activeUsers",
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.accentGreen,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            "Using Wi-Fi now",
+                            style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

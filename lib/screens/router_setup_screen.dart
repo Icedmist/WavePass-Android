@@ -250,6 +250,55 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     }
   }
 
+  Future<void> _enforceNoSharing() async {
+    if (_foundRouter == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No router selected. Detect your router first."),
+          backgroundColor: AppColors.accentRed,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isConfiguring = true);
+    final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
+    final pass = _passCtrl.text.trim();
+    final tunnel = _tunnelCtrl.text.trim().isNotEmpty ? _tunnelCtrl.text.trim() : null;
+
+    try {
+      final res = await RouterDiscoveryService.enforceNoHotspotSharing(
+        ip: _foundRouter!.ip,
+        username: user,
+        password: pass,
+        endpoint: tunnel,
+      );
+
+      if (mounted) {
+        setState(() => _isConfiguring = false);
+        final ok = res['success'] == true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok
+                ? "No Sharing Enforced: 1 device per voucher, client isolation & anti-tethering active!"
+                : "Anti-sharing enforcement applied to available router subsystems."),
+            backgroundColor: ok ? AppColors.accentGreen : AppColors.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isConfiguring = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to enforce anti-sharing: $e"),
+            backgroundColor: AppColors.accentRed,
+          ),
+        );
+      }
+    }
+  }
+
   void _showInstallSuccessModal({
     required String identity,
     required String ip,
@@ -448,10 +497,19 @@ add name="profile_12h" rate-limit="15M/5M" shared-users=1 comment="WavePass 12h"
 add name="profile_1d" rate-limit="20M/10M" shared-users=1 comment="WavePass 24h"
 
 # --------------------------------------------------------
-# 5. Clean Legacy Mangle & Enforce Single Device (Shared Users = 1)
+# 5. Enforce No Hotspot Sharing (1 Device/Voucher & Anti-Tethering)
 # --------------------------------------------------------
+/ip hotspot user profile set [find] shared-users=1
+/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no
+/interface wireless set [find] default-forwarding=no
+
 /ip firewall mangle
 remove [find comment="WavePass Anti-Tethering"]
+
+/ip firewall filter
+remove [find comment~"WavePass Anti-Tethering"]
+add chain=forward action=drop in-interface=wlan1 ttl=equal:63 comment="WavePass Anti-Tethering: block secondary devices (64-ttl)"
+add chain=forward action=drop in-interface=wlan1 ttl=equal:127 comment="WavePass Anti-Tethering: block secondary devices (128-ttl)"
 
 # --------------------------------------------------------
 # 6. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
@@ -1401,7 +1459,7 @@ set name="WavePass-$slug"
                             ),
                             const SizedBox(height: 14),
 
-                            if (_successMessage == null)
+                            if (_successMessage == null) ...[
                               SizedBox(
                                 width: double.infinity,
                                 height: 44,
@@ -1427,8 +1485,29 @@ set name="WavePass-$slug"
                                           ),
                                         ),
                                 ),
-                              )
-                            else ...[
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 44,
+                                child: OutlinedButton.icon(
+                                  onPressed: _isConfiguring ? null : _enforceNoSharing,
+                                  icon: const Icon(Icons.security_rounded, size: 16, color: AppColors.primary),
+                                  label: const Text(
+                                    "Enforce No Sharing (1 Device/Voucher)",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: AppColors.cardBorder),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(

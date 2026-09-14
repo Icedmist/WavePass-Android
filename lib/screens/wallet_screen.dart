@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
@@ -27,6 +28,7 @@ class _WalletScreenState extends State<WalletScreen> {
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+  bool _hideBalance = true; // Hidden by default
 
   Map<String, dynamic>? _virtualAccount;
   Map<String, dynamic>? _balance;
@@ -51,9 +53,21 @@ class _WalletScreenState extends State<WalletScreen> {
     super.dispose();
   }
 
+  Future<void> _toggleHideBalance() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _hideBalance = !_hideBalance);
+    await prefs.setBool('hide_balance_preference', _hideBalance);
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _hideBalance = prefs.getBool('hide_balance_preference') ?? true;
+        });
+      }
       var venueId = widget.venueId;
       if (venueId == 'default') {
         venueId = VenueStateService.instance.currentVenueId ?? 'default';
@@ -452,9 +466,29 @@ class _WalletScreenState extends State<WalletScreen> {
                       padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.cardBorder)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('AVAILABLE BALANCE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+                        Row(
+                          children: [
+                            const Text('AVAILABLE BALANCE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.8)),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _toggleHideBalance,
+                              child: Icon(
+                                _hideBalance ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                size: 16,
+                                color: AppColors.textLight,
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 8),
-                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text('₦${_availableNgn.toStringAsFixed(2)}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.primary))),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _hideBalance ? '₦ • • • • • •' : '₦${_availableNgn.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.primary),
+                          ),
+                        ),
                         const SizedBox(height: 14),
                         Wrap(spacing: 12, runSpacing: 12, children: [
                           SizedBox(

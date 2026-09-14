@@ -48,6 +48,11 @@ class ScaffoldWithNav extends StatelessWidget {
                   label: 'Sell',
                 ),
                 NavigationDestination(
+                  icon: const Icon(Icons.layers_rounded, color: AppColors.textLight),
+                  selectedIcon: Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.layers_rounded, color: Colors.white, size: 20)),
+                  label: 'Batch',
+                ),
+                NavigationDestination(
                   icon: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.textLight),
                   selectedIcon: Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 20)),
                   label: 'Wallet',

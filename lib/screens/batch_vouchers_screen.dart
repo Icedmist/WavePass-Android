@@ -577,11 +577,12 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       backgroundColor: AppColors.white,
       appBar: AppBar(
         backgroundColor: AppColors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: Navigator.of(context).canPop()
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
         title: const Text('Batch Vouchers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)),
         actions: [
           IconButton(

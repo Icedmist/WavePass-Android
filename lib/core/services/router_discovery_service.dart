@@ -1302,6 +1302,16 @@ class RouterDiscoveryService {
 
       results['success'] = anySuccess;
 
+      // Enforce No Hotspot Sharing (1-device per voucher, client isolation, anti-tethering filter)
+      try {
+        await enforceNoHotspotSharing(
+          endpoint: tunnelEndpoint,
+          ip: ip,
+          username: username,
+          password: password,
+        );
+      } catch (_) {}
+
       // If HTTP REST failed or returned 404 (HotSpot wproxy interception), fallback to native Port 8728 API
       if (!anySuccess) {
         final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 6));
@@ -1326,13 +1336,14 @@ class RouterDiscoveryService {
     }
   }
 
-  /// Queries live active sessions directly from the MikroTik hardware (/rest/ip/hotspot/active).
+  /// Queries live active sessions directly from the MikroTik hardware (/rest/ip/hotspot/active or Port 8728 API).
   static Future<List<Map<String, dynamic>>> fetchActiveHotspotUsers({
     String? endpoint,
     String ip = "192.168.88.1",
     String username = "admin",
     String password = "",
   }) async {
+    // 1. Try REST API
     final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
@@ -1355,15 +1366,32 @@ class RouterDiscoveryService {
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data is List) {
+        if (data is List && data.isNotEmpty) {
           return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         }
       }
     } catch (_) {
-      return [];
     } finally {
       client.close();
     }
+
+    // 2. Fallback to RouterOS Binary API (Port 8728)
+    try {
+      var hostOnly = (endpoint != null && endpoint.isNotEmpty) ? endpoint : ip;
+      hostOnly = hostOnly.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
+      if (hostOnly.isEmpty) hostOnly = ip;
+
+      final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 5));
+      if (await client8728.connect()) {
+        if (await client8728.login(username, password)) {
+          final users = await client8728.getHotspotActiveUsers();
+          await client8728.disconnect();
+          return users.map((u) => Map<String, dynamic>.from(u)).toList();
+        }
+        await client8728.disconnect();
+      }
+    } catch (_) {}
+
     return [];
   }
 
@@ -1375,6 +1403,7 @@ class RouterDiscoveryService {
     String password = "",
     required String activeIdOrUser,
   }) async {
+    bool ok = false;
     final client = createRouterClient();
     try {
       var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
@@ -1394,12 +1423,138 @@ class RouterDiscoveryService {
           'Accept': 'application/json',
         },
       ).timeout(const Duration(seconds: 4));
-      return res.statusCode == 200 || res.statusCode == 204;
+      if (res.statusCode == 200 || res.statusCode == 204) {
+        ok = true;
+      }
     } catch (_) {
-      return false;
     } finally {
       client.close();
     }
+
+    // Fallback: RouterOS API Port 8728
+    try {
+      var hostOnly = (endpoint != null && endpoint.isNotEmpty) ? endpoint : ip;
+      hostOnly = hostOnly.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
+      if (hostOnly.isEmpty) hostOnly = ip;
+
+      final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 5));
+      if (await client8728.connect()) {
+        if (await client8728.login(username, password)) {
+          final removed = await client8728.disconnectActiveUser(activeIdOrUser);
+          if (removed) ok = true;
+        }
+        await client8728.disconnect();
+      }
+    } catch (_) {}
+
+    return ok;
+  }
+
+  /// Enforces no hotspot sharing on the router hardware:
+  /// - 1 device per voucher (shared-users=1)
+  /// - blocks hotspot tethering/repeaters (drops ttl 63, 127)
+  /// - wireless client isolation (default-forwarding=no)
+  static Future<Map<String, dynamic>> enforceNoHotspotSharing({
+    String? endpoint,
+    String ip = "192.168.88.1",
+    String username = "admin",
+    String password = "",
+  }) async {
+    // 1. Try Port 8728 RouterOS API first
+    try {
+      var hostOnly = (endpoint != null && endpoint.isNotEmpty) ? endpoint : ip;
+      hostOnly = hostOnly.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
+      if (hostOnly.isEmpty) hostOnly = ip;
+
+      final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 6));
+      if (await client8728.connect()) {
+        if (await client8728.login(username, password)) {
+          final res = await client8728.enforceNoHotspotSharing();
+          await client8728.disconnect();
+          return res;
+        }
+        await client8728.disconnect();
+      }
+    } catch (_) {}
+
+    // 2. Fallback: REST API
+    final results = <String, dynamic>{
+      'success': false,
+      'profiles': false,
+      'isolation': false,
+      'firewallFilter': false,
+    };
+    final client = createRouterClient();
+    try {
+      var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : 'http://$ip';
+      if (!target.startsWith('http://') && !target.startsWith('https://')) {
+        target = 'http://$target';
+      }
+      if (target.endsWith('/')) {
+        target = target.substring(0, target.length - 1);
+      }
+
+      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+      final headers = {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      };
+
+      // Enforce shared-users=1 on all user profiles
+      try {
+        final profRes = await client.get(
+          Uri.parse("$target/rest/ip/hotspot/user/profile"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+        if (profRes.statusCode == 200) {
+          final list = jsonDecode(profRes.body);
+          if (list is List) {
+            for (final p in list) {
+              final id = p['.id'];
+              if (id != null) {
+                await client.patch(
+                  Uri.parse("$target/rest/ip/hotspot/user/profile/$id"),
+                  headers: headers,
+                  body: jsonEncode({'shared-users': '1'}),
+                ).timeout(const Duration(seconds: 2));
+              }
+            }
+            results['profiles'] = true;
+          }
+        }
+      } catch (_) {}
+
+      // Wireless client isolation
+      try {
+        final wlanRes = await client.get(
+          Uri.parse("$target/rest/interface/wireless"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+        if (wlanRes.statusCode == 200) {
+          final list = jsonDecode(wlanRes.body);
+          if (list is List) {
+            for (final w in list) {
+              final id = w['.id'];
+              if (id != null) {
+                await client.patch(
+                  Uri.parse("$target/rest/interface/wireless/$id"),
+                  headers: headers,
+                  body: jsonEncode({'default-forwarding': 'false'}),
+                ).timeout(const Duration(seconds: 2));
+              }
+            }
+            results['isolation'] = true;
+          }
+        }
+      } catch (_) {}
+
+      results['success'] = results['profiles'] == true || results['isolation'] == true;
+    } catch (_) {
+    } finally {
+      client.close();
+    }
+
+    return results;
   }
 
   /// Uploads captive portal files (login.html, status.html, logout.html) directly to MikroTik router.

@@ -224,7 +224,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final width = prefs.getInt('wavepass_printer_paper_width') ?? 58;
       final format = width == 80 ? PdfPageFormat.roll80 : PdfPageFormat.roll57;
 
-      final loginUrl = 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode';
+      final portalUrl = 'https://${_venueSlug ?? 'venue'}.nexawavepass.com';
 
       final doc = pw.Document();
       doc.addPage(
@@ -246,19 +246,19 @@ class _SellPassScreenState extends State<SellPassScreen> {
               pw.SizedBox(height: 6),
               pw.BarcodeWidget(
                 barcode: pw.Barcode.qrCode(),
-                data: loginUrl,
+                data: portalUrl,
                 width: width == 80 ? 75 : 60,
                 height: width == 80 ? 75 : 60,
               ),
               pw.SizedBox(height: 3),
-              pw.Text('Scan QR to Connect & Login', style: const pw.TextStyle(fontSize: 7)),
+              pw.Text('Scan QR to Pay or Enter Voucher', style: const pw.TextStyle(fontSize: 7)),
               pw.SizedBox(height: 4),
               pw.Text('Plan: ${selectedPlan['title']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
               pw.Text('Duration: ${selectedPlan['duration']} • Data: ${selectedPlan['data']}', style: const pw.TextStyle(fontSize: 8)),
               pw.Text('Price: ${selectedPlan['price']}', style: const pw.TextStyle(fontSize: 9)),
               pw.Divider(thickness: 0.5),
               pw.SizedBox(height: 4),
-              pw.Text('Connect to Wi-Fi and enter code on captive portal.', style: const pw.TextStyle(fontSize: 7), textAlign: pw.TextAlign.center),
+              pw.Text('Connect to Wi-Fi • Scan QR or open ${_venueSlug ?? 'venue'}.nexawavepass.com', style: const pw.TextStyle(fontSize: 7), textAlign: pw.TextAlign.center),
               pw.Text(DateTime.now().toString().split('.')[0], style: const pw.TextStyle(fontSize: 7)),
             ],
           ),
@@ -659,24 +659,24 @@ class _SellPassScreenState extends State<SellPassScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Direct on-screen QR code for customer scan-to-login
+                        // Direct on-screen QR code for customer to open venue portal
                         Center(
                           child: QrCodeWidget(
-                            data: 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode',
+                            data: 'https://${_venueSlug ?? 'venue'}.nexawavepass.com',
                             size: 130,
                           ),
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          "Scan QR with camera to connect & log in instantly",
+                          "Scan QR to open venue portal to pay or enter voucher",
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          "Or customer connects to venue Wi-Fi and enters code manually.",
+                        Text(
+                          "Or customer connects to venue Wi-Fi and enters code at ${_venueSlug ?? 'venue'}.nexawavepass.com.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, color: AppColors.textLight, height: 1.3),
+                          style: const TextStyle(fontSize: 11, color: AppColors.textLight, height: 1.3),
                         ),
                       ],
                     ),

@@ -186,5 +186,52 @@ void main() {
       expect(executedCommand, contains('TEST-VOUCHER-1'));
       await client.close();
     });
+
+    test('createHotspotUser updates user via fallback when user already exists', () async {
+      bool setExecuted = false;
+      server.listen((socket) {
+        socket.listen((data) {
+          final str = utf8.decode(data, allowMalformed: true);
+          if (str.contains('/login')) {
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]); // !done
+          } else if (str.contains('/ip/hotspot/user/add')) {
+            // Return !trap: already have user with this name
+            socket.add([
+              5, 0x21, 0x74, 0x72, 0x61, 0x70, // !trap
+              ...MikrotikApiClient.encodeWord('=message=already have user with this name'),
+              0,
+              5, 0x21, 0x64, 0x6F, 0x6E, 0x65,
+              0,
+            ]);
+          } else if (str.contains('/ip/hotspot/user/print')) {
+            // Return !re with .id=*1
+            socket.add([
+              3, 0x21, 0x72, 0x65, // !re
+              ...MikrotikApiClient.encodeWord('=.id=*1'),
+              ...MikrotikApiClient.encodeWord('=name=EXISTING-USER'),
+              0,
+              5, 0x21, 0x64, 0x6F, 0x6E, 0x65,
+              0,
+            ]);
+          } else if (str.contains('/ip/hotspot/user/set')) {
+            setExecuted = true;
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]); // !done
+          }
+        });
+      });
+
+      final client = MikrotikApiClient(host: '127.0.0.1', port: port);
+      await client.connectAndLogin('admin', 'pass123');
+      final success = await client.createHotspotUser(
+        code: 'EXISTING-USER',
+        pass: 'NEW-PASS',
+        profile: 'default',
+        sessionTimeoutSeconds: 3600,
+      );
+
+      expect(success, isTrue);
+      expect(setExecuted, isTrue);
+      await client.close();
+    });
   });
 }

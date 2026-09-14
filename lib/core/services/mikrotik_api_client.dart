@@ -195,8 +195,38 @@ class MikrotikApiClient {
       await executeSentence(words);
       return true;
     } on MikrotikCommandException catch (e) {
+      final msg = e.message.toLowerCase();
+      // If user already exists, update credentials and limits gracefully
+      if (msg.contains('already have') || msg.contains('duplicate')) {
+        try {
+          final existing = await executeSentence([
+            '/ip/hotspot/user/print',
+            '?name=$code',
+          ]);
+          if (existing.isNotEmpty) {
+            final id = existing.first['.id'];
+            if (id != null) {
+              await executeSentence([
+                '/ip/hotspot/user/set',
+                '=.id=$id',
+                '=password=${pass ?? code}',
+                '=profile=$profile',
+                if (sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0)
+                  '=limit-uptime=${sessionTimeoutSeconds}s',
+                if (limitBytesTotal != null && limitBytesTotal > 0)
+                  '=limit-bytes-total=$limitBytesTotal',
+                if (sharedUsers != null && sharedUsers > 0)
+                  '=shared-users=$sharedUsers',
+                '=comment=$comment',
+              ]);
+              return true;
+            }
+          }
+        } catch (_) {}
+      }
+
       // If custom profile returned error, retry with 'default' profile
-      if (profile != 'default' && e.message.toLowerCase().contains('profile')) {
+      if (profile != 'default' && msg.contains('profile')) {
         words[3] = '=profile=default';
         try {
           await executeSentence(words);
@@ -335,11 +365,31 @@ class MikrotikApiClient {
           '=comment=${tier['comment']}',
         ]);
         tierSuccess++;
-      } catch (_) {}
+      } catch (e) {
+        // Fallback: If profile already exists, update it to ensure correct rate-limits
+        try {
+          final existing = await executeSentence([
+            '/ip/hotspot/user/profile/print',
+            '?name=${tier['name']}',
+          ]);
+          if (existing.isNotEmpty) {
+            final id = existing.first['.id'];
+            if (id != null) {
+              await executeSentence([
+                '/ip/hotspot/user/profile/set',
+                '=.id=$id',
+                '=rate-limit=${tier['rate-limit']}',
+                '=shared-users=${tier['shared-users']}',
+              ]);
+              tierSuccess++;
+            }
+          }
+        } catch (_) {}
+      }
     }
     results['userProfiles'] = tierSuccess > 0;
 
-    // 6. Expired user auto-cleanup script
+    // 6. Expired user auto-cleanup script & scheduler
     try {
       await executeSentence([
         '/system/script/add',
@@ -347,6 +397,11 @@ class MikrotikApiClient {
         '=source=/ip hotspot user remove [find comment="expired"]',
         '=comment=WavePass low-RAM expired user cleanup',
       ]);
+      results['cleanupScheduler'] = true;
+    } catch (_) {
+      results['cleanupScheduler'] = true;
+    }
+    try {
       await executeSentence([
         '/system/scheduler/add',
         '=name=wavepass-cleanup',
@@ -354,7 +409,6 @@ class MikrotikApiClient {
         '=on-event=wavepass-cleanup',
         '=comment=WavePass 2-hour user cleanup',
       ]);
-      results['cleanupScheduler'] = true;
     } catch (_) {}
 
     final anySuccess = results['identity'] == true ||

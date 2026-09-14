@@ -114,11 +114,22 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
       });
 
       if (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed)) {
+        final errorMsg = router?.errorMessage ?? "No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi.";
+        final is404 = router?.statusCode == 404 || errorMsg.contains('rest-plain') || errorMsg.contains('404');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(router?.errorMessage ?? "No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi."),
+            content: Text(errorMsg),
             backgroundColor: AppColors.accentRed,
-            duration: const Duration(seconds: 5),
+            duration: Duration(seconds: is404 ? 8 : 5),
+            action: is404
+                ? SnackBarAction(
+                    label: 'COPY CMD',
+                    textColor: Colors.amber,
+                    onPressed: () {
+                      Clipboard.setData(const ClipboardData(text: '/ip/service/webserver/set rest-plain=yes'));
+                    },
+                  )
+                : null,
           ),
         );
       } else if (router.captivePortalIntercepted) {

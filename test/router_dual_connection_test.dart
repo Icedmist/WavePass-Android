@@ -254,5 +254,51 @@ void main() {
       expect(port80ErrorRouter.errorMessage, isNot(contains('8728')));
       expect(port80ErrorRouter.errorMessage, isNot(contains('192.168.1.1')));
     });
+
+    test('DiscoveredRouter handles RouterOS v7 rest-plain 404 with actionable CLI command', () {
+      final router404 = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik Gateway (REST 404)',
+        version: 'RouterOS v7 (REST Disabled)',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        statusCode: 404,
+        errorMessage: 'RouterOS v7 REST API is disabled on Port 80 (HTTP 404). Run in MikroTik Terminal: /ip/service/webserver/set rest-plain=yes',
+      );
+
+      expect(router404.statusCode, equals(404));
+      expect(router404.identity, contains('REST 404'));
+      expect(router404.errorMessage, contains('rest-plain=yes'));
+      expect(router404.errorMessage, contains('/ip/service/webserver/set'));
+    });
+
+    test('RouterDualConnectionStatus surfaces rest-plain CLI command when 404 occurs', () {
+      final router404 = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik Gateway (REST 404)',
+        version: 'RouterOS v7 (REST Disabled)',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        statusCode: 404,
+        errorMessage: 'RouterOS v7 REST API is disabled on Port 80 (HTTP 404). Run in MikroTik Terminal: /ip/service/webserver/set rest-plain=yes',
+      );
+
+      final status = RouterDualConnectionStatus(
+        localRouter: router404,
+        tunnelRouter: null,
+        isLocalOnline: false,
+        isTunnelOnline: false,
+        activeMode: 'offline',
+        errorMessage: router404.errorMessage,
+      );
+
+      expect(status.isAnyOnline, isFalse);
+      expect(status.errorMessage, contains('rest-plain=yes'));
+      expect(status.errorMessage, contains('HTTP 404'));
+    });
   });
 }

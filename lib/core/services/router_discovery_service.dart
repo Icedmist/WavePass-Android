@@ -504,17 +504,20 @@ class RouterDiscoveryService {
       );
     }
 
+    final hostOnly = cleanHost.contains(':') ? cleanHost.split(':').first : cleanHost;
+    final explicitPort = cleanHost.contains(':') ? cleanHost.split(':').last : null;
     final isExplicitHttps = cleanHost.contains(':443') || ip.trim().startsWith('https://');
-    final isExplicitHttp = cleanHost.contains(':80') || ip.trim().startsWith('http://');
-    final schemes = isExplicitHttps
-        ? ['https']
-        : (isExplicitHttp ? ['http'] : ['http', 'https']);
+    // Always permit https fallback when probing http (e.g. when rest-plain is disabled by default on RouterOS v7)
+    final schemes = isExplicitHttps ? ['https'] : ['http', 'https'];
     DiscoveredRouter? conclusiveFailureRouter;
 
     for (final scheme in schemes) {
       final client = createRouterClient(timeout: const Duration(seconds: 6));
       try {
-        final uri = Uri.parse("$scheme://$cleanHost/rest/system/resource");
+        final targetHost = scheme == 'https'
+            ? ((explicitPort != null && explicitPort != '80') ? '$hostOnly:$explicitPort' : hostOnly)
+            : cleanHost;
+        final uri = Uri.parse("$scheme://$targetHost/rest/system/resource");
         final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
 
         final sw = Stopwatch()..start();
@@ -542,13 +545,13 @@ class RouterDiscoveryService {
             final snippet = rawBody.length > 80 ? rawBody.substring(0, 80).replaceAll('\n', ' ') : rawBody;
 
             final errorDesc = isHotspot
-                ? 'HotSpot Captive Portal intercepted port 80 at $scheme://$cleanHost. Your phone is on the router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or set your phone IP as Bypassed in IP > HotSpot > IP Bindings.'
+                ? 'HotSpot Captive Portal intercepted port 80 at $scheme://$targetHost. Your phone is on the router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or set your phone IP as Bypassed in IP > HotSpot > IP Bindings.'
                 : (isWebfig
-                    ? 'MikroTik WebFig responded on Port 80 at $scheme://$cleanHost, but REST API (/rest) returned HTML. Check that RouterOS v7.1+ REST API is enabled.'
-                    : 'Host responded at $scheme://$cleanHost on Port 80, but returned HTML instead of RouterOS REST API.');
+                    ? 'MikroTik WebFig responded on Port 80 at $scheme://$targetHost, but REST API (/rest) returned HTML. Run in MikroTik Terminal: /ip/service/webserver/set rest-plain=yes'
+                    : 'Host responded at $scheme://$targetHost on Port 80, but returned HTML instead of RouterOS REST API.');
 
             return DiscoveredRouter(
-              ip: '$scheme://$cleanHost',
+              ip: '$scheme://$targetHost',
               identity: isHotspot
                   ? 'MikroTik HotSpot Portal'
                   : (isWebfig ? 'MikroTik WebFig' : 'Web Server (HTML)'),
@@ -574,7 +577,7 @@ class RouterDiscoveryService {
                 : Map<String, dynamic>.from(decoded as Map);
 
             return DiscoveredRouter(
-              ip: '$scheme://$cleanHost',
+              ip: '$scheme://$targetHost',
               identity: data['board-name']?.toString() ?? data['platform']?.toString() ?? 'MikroTik Gateway',
               version: data['version']?.toString() ?? 'RouterOS v7',
               cpuLoad: '${data['cpu-load'] ?? 0}%',
@@ -588,7 +591,7 @@ class RouterDiscoveryService {
             );
           } catch (e) {
             return DiscoveredRouter(
-              ip: '$scheme://$cleanHost',
+              ip: '$scheme://$targetHost',
               identity: 'MikroTik Gateway',
               version: 'RouterOS v7',
               cpuLoad: 'N/A',
@@ -599,12 +602,12 @@ class RouterDiscoveryService {
               latencyMs: sw.elapsedMilliseconds,
               authFailed: false,
               statusCode: 200,
-              errorMessage: 'Received HTTP 200 from $scheme://$cleanHost on Port 80, but failed to parse JSON: $e',
+              errorMessage: 'Received HTTP 200 from $scheme://$targetHost on Port 80, but failed to parse JSON: $e',
             );
           }
         } else if (response.statusCode == 401 || response.statusCode == 403) {
           return DiscoveredRouter(
-            ip: '$scheme://$cleanHost',
+            ip: '$scheme://$targetHost',
             identity: 'MikroTik Gateway (Auth Failed)',
             version: 'RouterOS v7',
             cpuLoad: 'N/A',
@@ -620,7 +623,7 @@ class RouterDiscoveryService {
         } else if (response.statusCode == 301 || response.statusCode == 302 || response.statusCode == 307) {
           final loc = response.headers['location'] ?? '';
           return DiscoveredRouter(
-            ip: '$scheme://$cleanHost',
+            ip: '$scheme://$targetHost',
             identity: 'MikroTik HotSpot (Redirect)',
             version: 'RouterOS (Captive Portal)',
             cpuLoad: 'N/A',
@@ -637,7 +640,7 @@ class RouterDiscoveryService {
           // Check if system identity or root WebFig is reachable
           try {
             final idRes = await client.get(
-              Uri.parse("$scheme://$cleanHost/rest/system/identity"),
+              Uri.parse("$scheme://$targetHost/rest/system/identity"),
               headers: {
                 'Authorization': authHeader,
                 'Accept': 'application/json',
@@ -647,7 +650,7 @@ class RouterDiscoveryService {
               final dynamic idDecoded = jsonDecode(idRes.body);
               final name = (idDecoded is Map) ? (idDecoded['name']?.toString() ?? 'MikroTik Gateway') : 'MikroTik Gateway';
               return DiscoveredRouter(
-                ip: '$scheme://$cleanHost',
+                ip: '$scheme://$targetHost',
                 identity: name,
                 version: 'RouterOS v7',
                 cpuLoad: 'N/A',
@@ -662,40 +665,39 @@ class RouterDiscoveryService {
             }
           } catch (_) {}
 
+          bool webfigFound = false;
           try {
-            final webfigRes = await client.get(Uri.parse('$scheme://$cleanHost/')).timeout(const Duration(seconds: 3));
+            final webfigRes = await client.get(Uri.parse('$scheme://$targetHost/')).timeout(const Duration(seconds: 3));
             if (webfigRes.statusCode == 200 && (webfigRes.body.contains('RouterOS') || webfigRes.body.contains('WebFig'))) {
-              return DiscoveredRouter(
-                ip: '$scheme://$cleanHost',
-                identity: 'MikroTik WebFig (REST 404)',
-                version: 'RouterOS (REST API missing)',
-                cpuLoad: 'N/A',
-                uptime: 'N/A',
-                totalMemory: 'N/A',
-                isReachable: true,
-                connectionType: connectionType,
-                latencyMs: sw.elapsedMilliseconds,
-                statusCode: 404,
-                errorMessage: 'WebFig is reachable on Port 80 at $scheme://$cleanHost, but REST API (/rest) returned 404. Ensure RouterOS v7.1+ is running and REST API is enabled.',
-              );
+              webfigFound = true;
             }
           } catch (_) {}
 
-          return DiscoveredRouter(
-            ip: '$scheme://$cleanHost',
-            identity: 'Endpoint (HTTP 404)',
-            version: 'N/A',
+          final failure404 = DiscoveredRouter(
+            ip: '$scheme://$targetHost',
+            identity: webfigFound ? 'MikroTik WebFig (REST 404)' : 'MikroTik Gateway (REST 404)',
+            version: 'RouterOS v7 (REST Disabled)',
             cpuLoad: 'N/A',
             uptime: 'N/A',
             totalMemory: 'N/A',
-            isReachable: false,
+            isReachable: webfigFound,
             connectionType: connectionType,
+            latencyMs: sw.elapsedMilliseconds,
             statusCode: 404,
-            errorMessage: 'Endpoint returned HTTP 404 Not Found at $scheme://$cleanHost/rest/system/resource.',
+            errorMessage: 'RouterOS v7 REST API is disabled on Port 80 (HTTP 404). Run in MikroTik Terminal: /ip/service/webserver/set rest-plain=yes',
           );
+
+          conclusiveFailureRouter = failure404;
+
+          // If scheme is HTTP, continue to HTTPS (rest-secure on port 443) before returning failure
+          if (scheme == 'http' && schemes.contains('https')) {
+            continue;
+          }
+
+          return failure404;
         } else {
           return DiscoveredRouter(
-            ip: '$scheme://$cleanHost',
+            ip: '$scheme://$targetHost',
             identity: 'Gateway (HTTP ${response.statusCode})',
             version: 'N/A',
             cpuLoad: 'N/A',
@@ -873,6 +875,25 @@ class RouterDiscoveryService {
             httpSuccess = true;
           }
         } catch (_) {}
+
+        // 2c. Fallback to HTTPS /rest/ip/hotspot/user if HTTP returned 404 (rest-secure parity)
+        if (!httpSuccess && normalized.startsWith('http://')) {
+          var httpsHost = normalized.substring(7);
+          if (httpsHost.endsWith(':80')) {
+            httpsHost = httpsHost.substring(0, httpsHost.length - 3);
+          }
+          final httpsPutUri = Uri.parse('https://$httpsHost/rest/ip/hotspot/user');
+          try {
+            final httpsRes = await client.put(
+              httpsPutUri,
+              headers: headers,
+              body: jsonEncode(payload),
+            ).timeout(const Duration(seconds: 5));
+            if (httpsRes.statusCode >= 200 && httpsRes.statusCode < 300) {
+              httpSuccess = true;
+            }
+          } catch (_) {}
+        }
       }
     } catch (e) {
       debugPrint('Direct router HTTP provisioning error: $e');

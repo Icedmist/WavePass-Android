@@ -482,25 +482,67 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                             : AppColors.accentRed.withValues(alpha: 0.3),
                       ),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Icon(
-                          testSuccess == true ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-                          color: testSuccess == true ? AppColors.accentGreen : AppColors.accentRed,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            testResult!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              testSuccess == true ? Icons.check_circle_rounded : Icons.error_outline_rounded,
                               color: testSuccess == true ? AppColors.accentGreen : AppColors.accentRed,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                testResult!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: testSuccess == true ? AppColors.accentGreen : AppColors.accentRed,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (testResult!.contains('rest-plain') || testResult!.contains('404')) ...[
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(const ClipboardData(text: '/ip/service/webserver/set rest-plain=yes'));
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Copied terminal command: /ip/service/webserver/set rest-plain=yes"),
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F172A),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      "/ip/service/webserver/set rest-plain=yes",
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 10,
+                                        color: Color(0xFF38BDF8),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 6),
+                                  Icon(Icons.copy_rounded, color: Colors.white70, size: 14),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -1152,25 +1194,63 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                       : const Color(0xFFFECACA),
                 ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: isCaptivePortal || isLocalAuthFailed ? AppColors.accentOrange : AppColors.accentRed,
-                    size: 18,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: isCaptivePortal || isLocalAuthFailed ? AppColors.accentOrange : AppColors.accentRed,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _dualStatus!.errorMessage!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isCaptivePortal || isLocalAuthFailed ? AppColors.accentOrange : const Color(0xFF991B1B),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _dualStatus!.errorMessage!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isCaptivePortal || isLocalAuthFailed ? AppColors.accentOrange : const Color(0xFF991B1B),
-                        fontWeight: FontWeight.w600,
+                  if (_dualStatus!.errorMessage!.contains('rest-plain') || _dualStatus!.errorMessage!.contains('404')) ...[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () {
+                        Clipboard.setData(const ClipboardData(text: '/ip/service/webserver/set rest-plain=yes'));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Copied terminal command: /ip/service/webserver/set rest-plain=yes"),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                "/ip/service/webserver/set rest-plain=yes",
+                                style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: Color(0xFF38BDF8)),
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Icon(Icons.copy_rounded, color: Colors.white70, size: 14),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

@@ -269,3 +269,21 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 25 tests passed**.
 
+### 21. RouterOS v7 rest-plain 404 Resolution & Automatic HTTPS Fallback (Issue #32)
+- [x] **RouterOS v7 `rest-plain` 404 Root Cause Resolution**:
+  - RouterOS v7 introduces granular `/ip/service/webserver` controls. By default, `rest-plain` (plain HTTP REST API on Port 80) is set to `no`, while `webfig-plain` and `rest-secure` (HTTPS Port 443) are enabled.
+  - When `rest-plain=no`, queries to `/rest/system/resource` on Port 80 return HTTP 404 Not Found.
+- [x] **Automatic HTTPS Fallback**:
+  - In `_probeRouter()`, if HTTP Port 80 returns HTTP 404, the probe no longer aborts; it automatically probes HTTPS on port 443 (`rest-secure`), using `createRouterClient()` with self-signed certificate acceptance.
+  - If `rest-secure` is active on port 443, WavePass connects seamlessly without requiring router reconfiguration.
+  - In `createHotspotUserDirectly()`, if HTTP PUT/POST returns 404, it automatically attempts HTTPS provisioning to ensure uninterrupted voucher creation.
+- [x] **Actionable Diagnostic Guidance & 1-Tap Copy CLI Command**:
+  - If both HTTP and HTTPS return 404 or fail, `DiscoveredRouter.errorMessage` explicitly instructs:
+    `RouterOS v7 REST API is disabled on Port 80 (HTTP 404). Run in MikroTik Terminal: /ip/service/webserver/set rest-plain=yes`
+  - In `RouterDiagnosticsScreen` (both in the credentials tester dialog and the Link Topology card), added a styled terminal code container with 1-tap clipboard copy for `/ip/service/webserver/set rest-plain=yes`.
+  - In `RouterSetupScreen`, added a `COPY CMD` action to the SnackBar upon 404 detection.
+- [x] **Verification**:
+  - Added unit tests in `test/router_dual_connection_test.dart` for 404 rest-plain error guidance and status reporting.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 27 tests passed**.
+

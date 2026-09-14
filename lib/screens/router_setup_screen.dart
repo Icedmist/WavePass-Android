@@ -187,18 +187,24 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         tunnelEndpoint: tunnel,
       );
 
-      // 2. Register router with WavePass Cloud API
+      // 2. Register router with WavePass Cloud API (if network/WAN is available)
       final endpoint = tunnel ?? (_foundRouter!.ip.startsWith('http') ? _foundRouter!.ip : 'http://${_foundRouter!.ip}');
       final mode = tunnel != null ? 'tunnel' : 'local';
-      await WavePassApi.instance.createRouter(
-        venueId: venueId,
-        name: _foundRouter!.identity.isNotEmpty ? _foundRouter!.identity : 'MikroTik HotSpot',
-        endpoint: endpoint,
-        connectionMode: mode,
-        rosVersion: _foundRouter!.version,
-      );
+      bool cloudSynced = false;
+      try {
+        await WavePassApi.instance.createRouter(
+          venueId: venueId,
+          name: _foundRouter!.identity.isNotEmpty ? _foundRouter!.identity : 'MikroTik HotSpot',
+          endpoint: endpoint,
+          connectionMode: mode,
+          rosVersion: _foundRouter!.version,
+        );
+        cloudSynced = true;
+      } catch (e) {
+        debugPrint('WavePass Cloud sync deferred (LAN mode active): $e');
+      }
 
-      // 3. Mark router as ONLINE in Supabase immediately
+      // 3. Mark router as ONLINE in Supabase immediately if network available
       try {
         await SupabaseService.instance.client
             .from('Router')
@@ -214,7 +220,9 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         setState(() {
           _isConfiguring = false;
           _successMessage = hwSuccess
-              ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS 'wavepass.local'."
+              ? (cloudSynced
+                  ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS 'wavepass.local'."
+                  : "HotSpot installed & active on LAN! Router '${_foundRouter!.identity}' is ready for sales.")
               : "Router '${_foundRouter!.identity}' bound to venue. Ready for sales!";
         });
 
@@ -401,7 +409,7 @@ add address-pool=default-dhcp \\
     profile="wavepass-profile"
 
 # --------------------------------------------------------
-# 3. Walled Garden Domains (Captive Portal & Checkout)
+# 3. Walled Garden Domains (Captive Portal & Checkout: HTTP & IP/HTTPS)
 # --------------------------------------------------------
 /ip hotspot walled-garden
 add comment="WavePass Root Portal" dst-host="nexawavepass.com"
@@ -412,6 +420,16 @@ add comment="Paystack API" dst-host="api.paystack.co"
 add comment="Paystack Checkout UI" dst-host="checkout.paystack.com"
 add comment="Paystack Standard" dst-host="standard.paystack.co"
 add comment="Supabase Auth" dst-host="*.supabase.co"
+
+/ip hotspot walled-garden ip
+add comment="WavePass Root Portal (HTTPS)" dst-host="nexawavepass.com" action=accept
+add comment="WavePass API (HTTPS)" dst-host="api.nexawavepass.com" action=accept
+add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
+add comment="Paystack Checkout (HTTPS)" dst-host="*.paystack.co" action=accept
+add comment="Paystack API (HTTPS)" dst-host="api.paystack.co" action=accept
+add comment="Paystack Checkout UI (HTTPS)" dst-host="checkout.paystack.com" action=accept
+add comment="Paystack Standard (HTTPS)" dst-host="standard.paystack.co" action=accept
+add comment="Supabase Auth (HTTPS)" dst-host="*.supabase.co" action=accept
 
 # --------------------------------------------------------
 # 4. Standard Rate-Limit User Profiles & Single Device Enforce

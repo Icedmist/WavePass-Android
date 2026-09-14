@@ -251,3 +251,21 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 23 tests passed**.
 
+### 20. Strict Port 80 HTTP MikroTik Connection & Fallback Elimination (Issue #30)
+- [x] **Eliminated Legacy 192.168.1.1 Fallback in `discoverLocalRouter`**:
+  - Removed the automated fallback to `192.168.1.1` that was inadvertently hitting the upstream Starlink dish on the WAN port and returning web HTML.
+  - Discovery now strictly targets the user-configured router IP (`192.168.88.1` by default).
+- [x] **Eliminated Automatic Port 8728 Fallback in `_probeRouter` & Voucher Provisioning**:
+  - Probing Port 80 HTTP no longer falls back to Port 8728 when Port 80 returns HTML, 302, 404, or fails.
+  - Native Port 8728 binary API is now strictly reserved for endpoints where the user explicitly specifies `:8728` or `api://`.
+  - Removed Port 8728 fallback in `createHotspotUserDirectly()`, ensuring voucher provisioning respects the Port 80 HTTP path.
+- [x] **Optimized Port 80 HTTP Probing & Diagnostic Feedback**:
+  - Shortened probe timeout to 6 seconds for swift feedback.
+  - Immediate resolution on HTTP status code receipt (200, 301, 302, 401, 403, 404), avoiding redundant 8-second HTTPS probe timeouts.
+  - Added detection of WebFig presence on Port 80 if `/rest` is absent or returns 404.
+  - Added clear diagnostic error reporting indicating exact Port 80 status code, captive portal redirection, or authentication failure in the in-modal credentials tester.
+- [x] **Unit Testing & Verification**:
+  - Added 2 new tests in `test/router_dual_connection_test.dart` covering WebFig on Port 80 and ensuring no Port 8728 or 192.168.1.1 error contamination.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 25 tests passed**.
+

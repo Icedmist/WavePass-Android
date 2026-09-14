@@ -388,7 +388,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                 TextField(
                   controller: ipCtrl,
                   decoration: const InputDecoration(
-                    labelText: "Gateway IP / Host",
+                    labelText: "Gateway IP / Host (Port 80)",
                     hintText: "192.168.88.1",
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.router, size: 20),
@@ -434,7 +434,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.bolt_rounded, size: 16),
-                    label: Text(isTesting ? "Testing LAN link (8s)..." : "Test LAN Link Now"),
+                    label: Text(isTesting ? "Testing Port 80 link (6s)..." : "Test Port 80 HTTP Link Now"),
                     onPressed: isTesting
                         ? null
                         : () async {
@@ -452,16 +452,16 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                               isTesting = false;
                               if (res != null && res.isReachable && !res.authFailed && !res.captivePortalIntercepted) {
                                 testSuccess = true;
-                                testResult = "ONLINE (${res.latencyMs ?? 0}ms): Reached ${res.identity}";
+                                testResult = "ONLINE (${res.latencyMs ?? 0}ms): Reached ${res.identity} on Port 80";
                               } else if (res?.captivePortalIntercepted == true) {
                                 testSuccess = false;
-                                testResult = res?.errorMessage ?? "Captive portal intercepted port 80";
+                                testResult = res?.errorMessage ?? "Captive portal intercepted Port 80";
                               } else if (res?.authFailed == true) {
                                 testSuccess = false;
-                                testResult = res?.errorMessage ?? "Auth failed (HTTP 401). Invalid password.";
+                                testResult = res?.errorMessage ?? "Auth failed (HTTP 401) on Port 80. Invalid password.";
                               } else {
                                 testSuccess = false;
-                                testResult = res?.errorMessage ?? "Router unreachable at ${ipCtrl.text.trim()}";
+                                testResult = res?.errorMessage ?? "Router unreachable on Port 80 at ${ipCtrl.text.trim()}";
                               }
                             });
                           },

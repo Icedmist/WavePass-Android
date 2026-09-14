@@ -130,30 +130,11 @@ class RouterDiscoveryService {
       return router;
     }
 
-    // If password was non-empty and probe returned authFailed or unreachable, try empty password fallback
+    // If password was non-empty and probe returned authFailed or unreachable, try empty password fallback on same IP
     if (password.isNotEmpty && (router == null || router.authFailed)) {
       final emptyPassRouter = await _probeRouter(ip, username, "", connectionType: "LAN");
       if (emptyPassRouter != null && emptyPassRouter.isReachable && !emptyPassRouter.authFailed) {
         return emptyPassRouter;
-      }
-    }
-
-    // 2. If default 192.168.88.1 was specified and probe was unreachable, try 192.168.1.1 fallback
-    var clean = ip.trim();
-    if (clean.startsWith('http://')) clean = clean.substring(7);
-    if (clean.startsWith('https://')) clean = clean.substring(8);
-    if (clean.endsWith('/')) clean = clean.substring(0, clean.length - 1);
-
-    if (clean == "192.168.88.1" && (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed))) {
-      final fallback1 = await _probeRouter("192.168.1.1", username, password, connectionType: "LAN");
-      if (fallback1 != null && fallback1.isReachable && !fallback1.authFailed && !fallback1.captivePortalIntercepted && !fallback1.identity.contains('Web Server')) {
-        return fallback1;
-      }
-      if (password.isNotEmpty) {
-        final fallback2 = await _probeRouter("192.168.1.1", username, "", connectionType: "LAN");
-        if (fallback2 != null && fallback2.isReachable && !fallback2.authFailed && !fallback2.captivePortalIntercepted && !fallback2.identity.contains('Web Server')) {
-          return fallback2;
-        }
       }
     }
 
@@ -523,12 +504,15 @@ class RouterDiscoveryService {
       );
     }
 
-    final hostOnly = cleanHost.contains(':') ? cleanHost.split(':').first : cleanHost;
-    final schemes = ['http', 'https'];
+    final isExplicitHttps = cleanHost.contains(':443') || ip.trim().startsWith('https://');
+    final isExplicitHttp = cleanHost.contains(':80') || ip.trim().startsWith('http://');
+    final schemes = isExplicitHttps
+        ? ['https']
+        : (isExplicitHttp ? ['http'] : ['http', 'https']);
     DiscoveredRouter? conclusiveFailureRouter;
 
     for (final scheme in schemes) {
-      final client = createRouterClient(timeout: const Duration(seconds: 8));
+      final client = createRouterClient(timeout: const Duration(seconds: 6));
       try {
         final uri = Uri.parse("$scheme://$cleanHost/rest/system/resource");
         final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
@@ -540,54 +524,47 @@ class RouterDiscoveryService {
             'Authorization': authHeader,
             'Accept': 'application/json',
           },
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(const Duration(seconds: 6));
         sw.stop();
 
         final rawBody = response.body.trim();
 
         // 1. Success (HTTP 200)
         if (response.statusCode == 200) {
-          // Check if response is actually HTML (Hotspot captive portal redirect)
+          // Check if response is actually HTML (Hotspot captive portal redirect or WebFig)
           if (rawBody.startsWith('<') ||
               rawBody.toLowerCase().contains('<!doctype') ||
               rawBody.toLowerCase().contains('<html')) {
-            // Port 80 was intercepted by HotSpot captive portal.
-            // Immediately probe native RouterOS API on Port 8728 (which is never intercepted by HotSpot).
-            final apiRouter = await _probeRouterOsApi(
-              host: hostOnly,
-              port: 8728,
-              username: username,
-              password: password,
-              connectionType: '$connectionType (API :8728)',
-            );
-            if (apiRouter != null && apiRouter.isReachable) {
-              return apiRouter;
-            }
-
             final isHotspot = rawBody.toLowerCase().contains('hotspot') ||
-                rawBody.toLowerCase().contains('login') ||
-                rawBody.toLowerCase().contains('mikrotik');
+                rawBody.toLowerCase().contains('login');
+            final isWebfig = rawBody.toLowerCase().contains('webfig') ||
+                rawBody.toLowerCase().contains('routeros');
             final snippet = rawBody.length > 80 ? rawBody.substring(0, 80).replaceAll('\n', ' ') : rawBody;
 
-            conclusiveFailureRouter = DiscoveredRouter(
+            final errorDesc = isHotspot
+                ? 'HotSpot Captive Portal intercepted port 80 at $scheme://$cleanHost. Your phone is on the router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or set your phone IP as Bypassed in IP > HotSpot > IP Bindings.'
+                : (isWebfig
+                    ? 'MikroTik WebFig responded on Port 80 at $scheme://$cleanHost, but REST API (/rest) returned HTML. Check that RouterOS v7.1+ REST API is enabled.'
+                    : 'Host responded at $scheme://$cleanHost on Port 80, but returned HTML instead of RouterOS REST API.');
+
+            return DiscoveredRouter(
               ip: '$scheme://$cleanHost',
-              identity: isHotspot ? 'MikroTik HotSpot Portal' : 'Web Server (HTML)',
-              version: isHotspot ? 'RouterOS (Captive Portal)' : 'N/A',
+              identity: isHotspot
+                  ? 'MikroTik HotSpot Portal'
+                  : (isWebfig ? 'MikroTik WebFig' : 'Web Server (HTML)'),
+              version: isHotspot ? 'RouterOS (Captive Portal)' : (isWebfig ? 'RouterOS WebFig' : 'N/A'),
               cpuLoad: 'N/A',
               uptime: 'N/A',
               totalMemory: 'N/A',
-              isReachable: isHotspot,
+              isReachable: isHotspot || isWebfig,
               connectionType: connectionType,
               latencyMs: sw.elapsedMilliseconds,
               authFailed: false,
               statusCode: 200,
               captivePortalIntercepted: isHotspot,
               rawResponseSnippet: snippet,
-              errorMessage: isHotspot
-                  ? 'HotSpot Captive Portal intercepted port 80. Your phone is on router Wi-Fi, but captive portal redirected HTTP to login page. Log in to Wi-Fi HotSpot or enable HTTPS.'
-                  : 'Host responded at $scheme://$cleanHost, but returned HTML instead of RouterOS REST API.',
+              errorMessage: errorDesc,
             );
-            continue; // Try HTTPS next in case HTTPS bypasses captive portal
           }
 
           try {
@@ -610,7 +587,7 @@ class RouterDiscoveryService {
               statusCode: 200,
             );
           } catch (e) {
-            conclusiveFailureRouter = DiscoveredRouter(
+            return DiscoveredRouter(
               ip: '$scheme://$cleanHost',
               identity: 'MikroTik Gateway',
               version: 'RouterOS v7',
@@ -622,9 +599,8 @@ class RouterDiscoveryService {
               latencyMs: sw.elapsedMilliseconds,
               authFailed: false,
               statusCode: 200,
-              errorMessage: 'Received HTTP 200 from $scheme://$cleanHost, but failed to parse JSON: $e',
+              errorMessage: 'Received HTTP 200 from $scheme://$cleanHost on Port 80, but failed to parse JSON: $e',
             );
-            continue;
           }
         } else if (response.statusCode == 401 || response.statusCode == 403) {
           return DiscoveredRouter(
@@ -639,11 +615,11 @@ class RouterDiscoveryService {
             latencyMs: sw.elapsedMilliseconds,
             authFailed: true,
             statusCode: response.statusCode,
-            errorMessage: 'Login failed (HTTP ${response.statusCode}): Invalid password for user "$username"',
+            errorMessage: 'Login failed (HTTP ${response.statusCode}) on Port 80: Invalid password for user "$username". Check admin password in Router LAN Settings.',
           );
         } else if (response.statusCode == 301 || response.statusCode == 302 || response.statusCode == 307) {
           final loc = response.headers['location'] ?? '';
-          conclusiveFailureRouter = DiscoveredRouter(
+          return DiscoveredRouter(
             ip: '$scheme://$cleanHost',
             identity: 'MikroTik HotSpot (Redirect)',
             version: 'RouterOS (Captive Portal)',
@@ -655,15 +631,41 @@ class RouterDiscoveryService {
             latencyMs: sw.elapsedMilliseconds,
             statusCode: response.statusCode,
             captivePortalIntercepted: true,
-            errorMessage: 'HotSpot Captive Portal redirected HTTP to ${loc.isNotEmpty ? loc : "login page"}. Authenticate on Wi-Fi.',
+            errorMessage: 'HotSpot Captive Portal redirected HTTP to ${loc.isNotEmpty ? loc : "login page"}. Log in to Wi-Fi HotSpot or set phone IP as Bypassed in IP > HotSpot > IP Bindings.',
           );
-          continue;
         } else if (response.statusCode == 404) {
-          // Check if root WebFig is reachable
+          // Check if system identity or root WebFig is reachable
           try {
-            final webfigRes = await client.get(Uri.parse('$scheme://$cleanHost/')).timeout(const Duration(seconds: 4));
+            final idRes = await client.get(
+              Uri.parse("$scheme://$cleanHost/rest/system/identity"),
+              headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+              },
+            ).timeout(const Duration(seconds: 3));
+            if (idRes.statusCode == 200) {
+              final dynamic idDecoded = jsonDecode(idRes.body);
+              final name = (idDecoded is Map) ? (idDecoded['name']?.toString() ?? 'MikroTik Gateway') : 'MikroTik Gateway';
+              return DiscoveredRouter(
+                ip: '$scheme://$cleanHost',
+                identity: name,
+                version: 'RouterOS v7',
+                cpuLoad: 'N/A',
+                uptime: 'N/A',
+                totalMemory: 'N/A',
+                isReachable: true,
+                connectionType: connectionType,
+                latencyMs: sw.elapsedMilliseconds,
+                authFailed: false,
+                statusCode: 200,
+              );
+            }
+          } catch (_) {}
+
+          try {
+            final webfigRes = await client.get(Uri.parse('$scheme://$cleanHost/')).timeout(const Duration(seconds: 3));
             if (webfigRes.statusCode == 200 && (webfigRes.body.contains('RouterOS') || webfigRes.body.contains('WebFig'))) {
-              conclusiveFailureRouter = DiscoveredRouter(
+              return DiscoveredRouter(
                 ip: '$scheme://$cleanHost',
                 identity: 'MikroTik WebFig (REST 404)',
                 version: 'RouterOS (REST API missing)',
@@ -674,13 +676,12 @@ class RouterDiscoveryService {
                 connectionType: connectionType,
                 latencyMs: sw.elapsedMilliseconds,
                 statusCode: 404,
-                errorMessage: 'WebFig is reachable at $scheme://$cleanHost, but REST API (/rest) returned 404. Ensure RouterOS v7.1+ is running and REST API is enabled.',
+                errorMessage: 'WebFig is reachable on Port 80 at $scheme://$cleanHost, but REST API (/rest) returned 404. Ensure RouterOS v7.1+ is running and REST API is enabled.',
               );
-              continue;
             }
           } catch (_) {}
 
-          conclusiveFailureRouter = DiscoveredRouter(
+          return DiscoveredRouter(
             ip: '$scheme://$cleanHost',
             identity: 'Endpoint (HTTP 404)',
             version: 'N/A',
@@ -693,7 +694,7 @@ class RouterDiscoveryService {
             errorMessage: 'Endpoint returned HTTP 404 Not Found at $scheme://$cleanHost/rest/system/resource.',
           );
         } else {
-          conclusiveFailureRouter = DiscoveredRouter(
+          return DiscoveredRouter(
             ip: '$scheme://$cleanHost',
             identity: 'Gateway (HTTP ${response.statusCode})',
             version: 'N/A',
@@ -703,16 +704,16 @@ class RouterDiscoveryService {
             isReachable: false,
             connectionType: connectionType,
             statusCode: response.statusCode,
-            errorMessage: 'Router returned HTTP ${response.statusCode}: ${rawBody.length > 80 ? rawBody.substring(0, 80) : rawBody}',
+            errorMessage: 'Router returned HTTP ${response.statusCode} on Port 80: ${rawBody.length > 80 ? rawBody.substring(0, 80) : rawBody}',
           );
         }
       } catch (e) {
         String msg;
         if (e is TimeoutException) {
-          msg = 'Connection timed out (8s) reaching $scheme://$cleanHost. Router took too long to reply.';
+          msg = 'Connection timed out (6s) reaching $scheme://$cleanHost on Port 80. Router took too long to reply.';
         } else if (e is SocketException) {
           if (e.osError?.errorCode == 111 || e.message.toLowerCase().contains('connection refused')) {
-            msg = 'Connection refused at $cleanHost. Port is closed or RouterOS www service is disabled.';
+            msg = 'Connection refused at $cleanHost:80. Port is closed or RouterOS www service is disabled.';
           } else if (e.osError?.errorCode == 101 ||
               e.message.toLowerCase().contains('network is unreachable') ||
               e.message.toLowerCase().contains('no route')) {
@@ -739,22 +740,6 @@ class RouterDiscoveryService {
         );
       } finally {
         client.close();
-      }
-    }
-
-    // If HTTP/HTTPS probes failed to connect or were captive-portal intercepted, fallback to Port 8728 RouterOS API
-    if (conclusiveFailureRouter == null ||
-        !conclusiveFailureRouter.isReachable ||
-        conclusiveFailureRouter.captivePortalIntercepted) {
-      final apiRouter = await _probeRouterOsApi(
-        host: hostOnly,
-        port: 8728,
-        username: username,
-        password: password,
-        connectionType: '$connectionType (API :8728)',
-      );
-      if (apiRouter != null && apiRouter.isReachable) {
-        return apiRouter;
       }
     }
 
@@ -895,41 +880,7 @@ class RouterDiscoveryService {
       client.close();
     }
 
-    if (httpSuccess) return true;
-
-    // 3. Fallback to native RouterOS API on Port 8728 if HTTP REST was intercepted by captive portal or failed
-    try {
-      var hostOnly = raw;
-      if (hostOnly.startsWith('http://')) hostOnly = hostOnly.substring(7);
-      if (hostOnly.startsWith('https://')) hostOnly = hostOnly.substring(8);
-      if (hostOnly.contains(':')) hostOnly = hostOnly.split(':').first;
-      if (hostOnly.contains('/')) hostOnly = hostOnly.split('/').first;
-
-      if (hostOnly.isNotEmpty) {
-        final apiFallbackClient = MikrotikApiClient(host: hostOnly, port: 8728);
-        try {
-          final ok = await apiFallbackClient.connectAndLogin(username, password);
-          if (ok) {
-            final added = await apiFallbackClient.createHotspotUser(
-              code: code,
-              pass: pass,
-              profile: profile,
-              sessionTimeoutSeconds: sessionTimeoutSeconds,
-              limitBytesTotal: limitBytesTotal,
-              sharedUsers: sharedUsers,
-              comment: comment,
-            );
-            if (added) return true;
-          }
-        } finally {
-          await apiFallbackClient.close();
-        }
-      }
-    } catch (e) {
-      debugPrint('Port 8728 fallback provisioning error: $e');
-    }
-
-    return false;
+    return httpSuccess;
   }
 
   /// Orchestrates direct router provisioning using cached router credentials & endpoints.

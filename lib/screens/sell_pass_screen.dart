@@ -224,8 +224,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final width = prefs.getInt('wavepass_printer_paper_width') ?? 58;
       final format = width == 80 ? PdfPageFormat.roll80 : PdfPageFormat.roll57;
 
-      final slug = _venueSlug ?? 'venue';
-      final loginUrl = 'http://$slug.nexawavepass.com/login?code=$_generatedCode';
+      final loginUrl = 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode';
 
       final doc = pw.Document();
       doc.addPage(
@@ -663,7 +662,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                         // Direct on-screen QR code for customer scan-to-login
                         Center(
                           child: QrCodeWidget(
-                            data: 'http://${_venueSlug ?? 'venue'}.nexawavepass.com/login?code=$_generatedCode',
+                            data: 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode',
                             size: 130,
                           ),
                         ),

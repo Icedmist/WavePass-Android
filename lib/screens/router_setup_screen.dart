@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
@@ -32,7 +35,9 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingScript = false;
   String? _exportedScript;
   bool _exportingPortalHtml = false;
-  String? _exportedPortalHtml;
+  bool _uploadingPortalFiles = false;
+  int _selectedPortalTabIndex = 0;
+  Map<String, String>? _portalSuite;
 
   @override
   void initState() {
@@ -490,14 +495,8 @@ set name="WavePass-$slug"
     }
   }
 
-  Future<void> _handleExportPortalHtml() async {
-    setState(() => _exportingPortalHtml = true);
-    try {
-      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
-      final slug = venue['slug']?.toString() ?? 'venue';
-      final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
-
-      final html = """<!DOCTYPE html>
+  String _generateLoginHtml(String venueName, String slug) {
+    return """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -525,11 +524,25 @@ set name="WavePass-$slug"
       max-width: 400px;
       box-shadow: 0 12px 32px rgba(0,0,0,0.5);
     }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(56, 239, 125, 0.15);
+      border: 1px solid #38EF7D;
+      border-radius: 20px;
+      color: #38EF7D;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
     .logo {
       font-size: 24px;
       font-weight: 800;
       letter-spacing: -0.5px;
-      color: #38EF7D;
+      color: #FFFFFF;
       margin-bottom: 4px;
       text-align: center;
     }
@@ -550,7 +563,7 @@ set name="WavePass-$slug"
       font-weight: 700;
       border-radius: 12px;
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       border: none;
       cursor: pointer;
     }
@@ -632,21 +645,22 @@ set name="WavePass-$slug"
 </head>
 <body>
   <div class="card">
+    <div style="text-align:center;"><span class="badge">Hotspot Portal</span></div>
     <div class="logo">$venueName</div>
     <div class="subtitle">High-Speed Wi-Fi by WavePass</div>
 
-    \\\$(if error)
-    <div class="error-msg">\\\$(error)</div>
-    \\\$(endif)
+    \$(if error)
+    <div class="error-msg">\$(error)</div>
+    \$(endif)
 
-    <a href="https://$slug.nexawavepass.com/portal?mac=\\\$(mac)&ip=\\\$(ip)&link-orig=\\\$(link-orig-esc)&venue=$slug" class="btn-buy">
+    <a href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&venue=$slug" class="btn-buy">
       Buy Internet Pass Online &rarr;
     </a>
 
     <div class="divider">OR USE VOUCHER</div>
 
-    <form name="login" action="\\\$(link-login-only)" method="post" onsubmit="return fillCredentials()">
-      <input type="hidden" name="dst" value="\\\$(link-orig)">
+    <form name="login" action="\$(link-login-only)" method="post" onsubmit="return fillCredentials()">
+      <input type="hidden" name="dst" value="\$(link-orig)">
       <input type="hidden" name="popup" value="true">
       <input type="hidden" name="password" id="passInput">
 
@@ -659,7 +673,7 @@ set name="WavePass-$slug"
     </form>
 
     <div class="footer">
-      Connected MAC: \\\$(mac)
+      Device MAC: \$(mac) &bull; IP: \$(ip)
     </div>
   </div>
 
@@ -672,16 +686,351 @@ set name="WavePass-$slug"
   </script>
 </body>
 </html>""";
+  }
 
-      setState(() {
-        _exportedPortalHtml = html;
-      });
+  String _generateStatusHtml(String venueName, String slug) {
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Connected | $venueName Wi-Fi</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0D1117;
+      color: #FFFFFF;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #161B22;
+      border: 1px solid #30363D;
+      border-radius: 20px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(56, 239, 125, 0.15);
+      border: 1px solid #38EF7D;
+      border-radius: 20px;
+      color: #38EF7D;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #38EF7D;
+      box-shadow: 0 0 8px #38EF7D;
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #8B949E;
+      margin-bottom: 20px;
+    }
+    .stats-table {
+      width: 100%;
+      background: #0D1117;
+      border: 1px solid #30363D;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #21262D;
+      font-size: 13px;
+    }
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+    .stat-label {
+      color: #8B949E;
+    }
+    .stat-value {
+      color: #FFFFFF;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .btn-logout {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid #F85149;
+      color: #FF7B72;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      border: none;
+    }
+    .btn-refresh {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #21262D;
+      border: 1px solid #30363D;
+      color: #C9D1D9;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .footer {
+      margin-top: 16px;
+      font-size: 11px;
+      color: #484F58;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="status-badge">
+      <span class="pulse-dot"></span>
+      Connected to Internet
+    </div>
+    <div class="logo">$venueName</div>
+    <div class="subtitle">Session Active &bull; WavePass</div>
 
-      await Clipboard.setData(ClipboardData(text: html));
+    <div class="stats-table">
+      <div class="stat-row">
+        <span class="stat-label">User / Voucher</span>
+        <span class="stat-value">\$(username)</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">IP Address</span>
+        <span class="stat-value">\$(ip)</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Connected Time</span>
+        <span class="stat-value">\$(uptime)</span>
+      </div>
+      \$(if session-time-left)
+      <div class="stat-row">
+        <span class="stat-label">Time Remaining</span>
+        <span class="stat-value">\$(session-time-left)</span>
+      </div>
+      \$(endif)
+      <div class="stat-row">
+        <span class="stat-label">Data Transferred</span>
+        <span class="stat-value">\$(bytes-in-nice) &darr; / \$(bytes-out-nice) &uarr;</span>
+      </div>
+      \$(if remain-bytes-total-nice)
+      <div class="stat-row">
+        <span class="stat-label">Data Remaining</span>
+        <span class="stat-value">\$(remain-bytes-total-nice)</span>
+      </div>
+      \$(endif)
+    </div>
+
+    <form action="\$(link-logout)" name="logout">
+      <input type="hidden" name="erase-cookie" value="on">
+      <button type="submit" class="btn-logout">Disconnect Device</button>
+    </form>
+
+    <a href="\$(link-status)" class="btn-refresh">Refresh Status</a>
+
+    <div class="footer">
+      Device MAC: \$(mac)
+    </div>
+  </div>
+</body>
+</html>""";
+  }
+
+  String _generateLogoutHtml(String venueName, String slug) {
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Disconnected | $venueName Wi-Fi</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0D1117;
+      color: #FFFFFF;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #161B22;
+      border: 1px solid #30363D;
+      border-radius: 20px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    .icon-box {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid #F85149;
+      color: #FF7B72;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin: 0 auto 16px;
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #8B949E;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .stats-table {
+      width: 100%;
+      background: #0D1117;
+      border: 1px solid #30363D;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #21262D;
+      font-size: 13px;
+    }
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+    .stat-label {
+      color: #8B949E;
+    }
+    .stat-value {
+      color: #FFFFFF;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .btn-login {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
+      color: #0D1117;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 12px;
+      text-align: center;
+      border: none;
+      cursor: pointer;
+    }
+    .footer {
+      margin-top: 16px;
+      font-size: 11px;
+      color: #484F58;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-box">&#x2715;</div>
+    <div class="logo">You Are Logged Out</div>
+    <div class="subtitle">Thank you for visiting $venueName.<br>Your Wi-Fi session has ended.</div>
+
+    <div class="stats-table">
+      <div class="stat-row">
+        <span class="stat-label">User</span>
+        <span class="stat-value">\$(username)</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Session Duration</span>
+        <span class="stat-value">\$(uptime)</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Data</span>
+        <span class="stat-value">\$(bytes-in-nice) &darr; / \$(bytes-out-nice) &uarr;</span>
+      </div>
+    </div>
+
+    <form action="\$(link-login)" name="login">
+      <button type="submit" class="btn-login">Log In Again</button>
+    </form>
+
+    <div class="footer">
+      Device MAC: \$(mac) &bull; IP: \$(ip)
+    </div>
+  </div>
+</body>
+</html>""";
+  }
+
+  Future<Map<String, String>> _ensurePortalSuite() async {
+    if (_portalSuite != null) return _portalSuite!;
+    final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+    final slug = venue['slug']?.toString() ?? 'venue';
+    final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
+    final suite = {
+      'login.html': _generateLoginHtml(venueName, slug),
+      'status.html': _generateStatusHtml(venueName, slug),
+      'logout.html': _generateLogoutHtml(venueName, slug),
+    };
+    if (mounted) setState(() => _portalSuite = suite);
+    return suite;
+  }
+
+  Future<void> _handleCopyCurrentPortalFile() async {
+    setState(() => _exportingPortalHtml = true);
+    try {
+      final suite = await _ensurePortalSuite();
+      final keys = ['login.html', 'status.html', 'logout.html'];
+      final currentKey = keys[_selectedPortalTabIndex];
+      final content = suite[currentKey] ?? '';
+
+      await Clipboard.setData(ClipboardData(text: content));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("login.html copied to clipboard! Save to MikroTik Files -> hotspot/login.html."),
+          SnackBar(
+            content: Text("$currentKey copied to clipboard! Save to MikroTik Files -> hotspot/$currentKey."),
             backgroundColor: AppColors.accentGreen,
           ),
         );
@@ -689,11 +1038,93 @@ set name="WavePass-$slug"
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to generate login.html: $e"), backgroundColor: AppColors.accentRed),
+          SnackBar(content: Text("Failed to copy file: $e"), backgroundColor: AppColors.accentRed),
         );
       }
     } finally {
       if (mounted) setState(() => _exportingPortalHtml = false);
+    }
+  }
+
+  Future<void> _handleShareAllPortalFiles() async {
+    setState(() => _exportingPortalHtml = true);
+    try {
+      final suite = await _ensurePortalSuite();
+      final tempDir = await getTemporaryDirectory();
+      final portalDir = Directory('${tempDir.path}/hotspot_suite');
+      if (!await portalDir.exists()) {
+        await portalDir.create(recursive: true);
+      }
+
+      final filesToShare = <XFile>[];
+      for (final entry in suite.entries) {
+        final f = File('${portalDir.path}/${entry.key}');
+        await f.writeAsString(entry.value);
+        filesToShare.add(XFile(f.path, mimeType: 'text/html', name: entry.key));
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: filesToShare,
+          text: 'WavePass MikroTik HotSpot Portal Suite (login.html, status.html, logout.html)',
+          subject: 'WavePass Portal Files',
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to share portal files: $e"), backgroundColor: AppColors.accentRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPortalHtml = false);
+    }
+  }
+
+  Future<void> _handleAutoUploadPortalFiles() async {
+    setState(() => _uploadingPortalFiles = true);
+    try {
+      final suite = await _ensurePortalSuite();
+      final ip = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
+      final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
+      final pass = _passCtrl.text.trim();
+      final tunnel = _tunnelCtrl.text.trim();
+
+      final res = await RouterDiscoveryService.uploadPortalFiles(
+        ip: ip,
+        username: user,
+        password: pass,
+        files: suite,
+        endpoint: tunnel.isNotEmpty ? tunnel : null,
+      );
+
+      final uploadedCount = res.values.where((v) => v).length;
+      if (mounted) {
+        if (uploadedCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Successfully uploaded $uploadedCount/3 portal files to router hotspot/ directory!"),
+              backgroundColor: AppColors.accentGreen,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Could not write files via REST API. Use 'Share All 3' or drag to WinBox Files -> hotspot/."),
+              backgroundColor: AppColors.accentOrange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Upload error: $e"), backgroundColor: AppColors.accentRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPortalFiles = false);
     }
   }
 
@@ -1229,7 +1660,7 @@ set name="WavePass-$slug"
             ),
             const SizedBox(height: 16),
 
-            // ─── OPTION 4: CAPTIVE PORTAL FILE (LOGIN.HTML) ───
+            // ─── OPTION 4: COMPLETE HOTSPOT PORTAL SUITE ───
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
@@ -1253,14 +1684,14 @@ set name="WavePass-$slug"
                         ),
                       ),
                       Text(
-                        "Files / Hotspot Directory",
+                        "Complete Portal Suite",
                         style: TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    "Hotspot Login Page (login.html)",
+                    "Hotspot Portal Suite (login, status, logout)",
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
@@ -1269,7 +1700,7 @@ set name="WavePass-$slug"
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    "Copy the branded login.html file. Place or drag & drop this file into your MikroTik WinBox/WebFig under Files -> hotspot/ to display online checkout & voucher activation when users connect to Wi-Fi.",
+                    "Replaces MikroTik's default blue screen with your custom branded captive portal suite. Files are placed in MikroTik Files -> hotspot/ directory.",
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textLight,
@@ -1277,49 +1708,174 @@ set name="WavePass-$slug"
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Segmented Tabs: login.html | status.html | logout.html
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        _buildPortalTab(0, "login.html", "Login & Pay"),
+                        _buildPortalTab(1, "status.html", "Success"),
+                        _buildPortalTab(2, "logout.html", "Logout"),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // File Content Preview Box
+                  FutureBuilder<Map<String, String>>(
+                    future: _ensurePortalSuite(),
+                    builder: (context, snapshot) {
+                      final suite = snapshot.data;
+                      final keys = ['login.html', 'status.html', 'logout.html'];
+                      final currentKey = keys[_selectedPortalTabIndex];
+                      final content = suite?[currentKey] ?? 'Generating template...';
+
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.cardBorder),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  currentKey,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                ),
+                                Text(
+                                  "${content.length} chars",
+                                  style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 12, thickness: 0.5),
+                            Text(
+                              content,
+                              maxLines: 5,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Action Buttons: Copy Current File & Share All 3 Files
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton.icon(
+                            onPressed: _exportingPortalHtml ? null : _handleCopyCurrentPortalFile,
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.primary),
+                            label: Text(
+                              _exportingPortalHtml ? "Copying..." : "Copy Tab File",
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton.icon(
+                            onPressed: _exportingPortalHtml ? null : _handleShareAllPortalFiles,
+                            icon: const Icon(Icons.share_rounded, size: 16, color: AppColors.primary),
+                            label: const Text(
+                              "Share All 3",
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Auto-Upload to Router Button
                   SizedBox(
                     width: double.infinity,
                     height: 48,
-                    child: OutlinedButton.icon(
-                      onPressed: _exportingPortalHtml ? null : _handleExportPortalHtml,
-                      icon: _exportingPortalHtml
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.copy_rounded, color: AppColors.accentGreen, size: 20),
+                    child: ElevatedButton.icon(
+                      onPressed: _uploadingPortalFiles ? null : _handleAutoUploadPortalFiles,
+                      icon: _uploadingPortalFiles
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                          : const Icon(Icons.cloud_upload_rounded, color: AppColors.white, size: 18),
                       label: Text(
-                        _exportingPortalHtml ? "Generating..." : "Copy login.html",
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.accentGreen,
-                        ),
+                        _uploadingPortalFiles ? "Uploading to Router..." : "Auto-Upload Suite to Router (hotspot/)",
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.white),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accentGreen,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
-                  if (_exportedPortalHtml != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.cardBorder),
-                      ),
-                      child: Text(
-                        _exportedPortalHtml!,
-                        maxLines: 6,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textMuted),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortalTab(int index, String title, String subtitle) {
+    final isSelected = _selectedPortalTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedPortalTabIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.containerBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? AppColors.accentGreen : AppColors.textLight,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
+                  color: isSelected ? AppColors.primary : AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

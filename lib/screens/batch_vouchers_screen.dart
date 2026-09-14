@@ -13,7 +13,9 @@ import '../core/constants/api_constants.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/theme/app_theme.dart';
+import 'voucher_history_sheet.dart';
 
 class BatchVouchersScreen extends StatefulWidget {
   const BatchVouchersScreen({super.key});
@@ -227,6 +229,23 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         } catch (_) {}
       }
 
+      // Record batch vouchers in local history
+      final selectedPlan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass', 'priceMinor': 0, 'durationSeconds': 3600});
+      final planName = selectedPlan['name']?.toString() ?? 'Pass';
+      final price = '₦${((selectedPlan['priceMinor'] as num?)?.toInt() ?? 0) ~/ 100}';
+      final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
+
+      for (final item in compiled) {
+        final code = item['code'] as String;
+        VoucherHistoryService.instance.recordVoucher(
+          code: code,
+          planTitle: planName,
+          price: price,
+          durationSeconds: durationSec,
+          directMode: routerMode,
+        );
+      }
+
       if (!mounted) return;
       setState(() {
         _generated = compiled;
@@ -263,7 +282,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
       final slug = venue['slug']?.toString() ?? 'venue';
-      final portalUrl = 'https://$slug.nexawavepass.com';
 
       final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
       final planName = plan['name']?.toString() ?? 'Pass';
@@ -351,7 +369,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     ),
                     child: pw.BarcodeWidget(
                       barcode: pw.Barcode.qrCode(),
-                      data: portalUrl,
+                      data: 'http://192.168.88.1/login?username=${item['code']}&password=${item['password'] ?? item['code']}',
                       width: 50,
                       height: 50,
                     ),
@@ -566,6 +584,11 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         ),
         title: const Text('Batch Vouchers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history_rounded, color: AppColors.primary),
+            tooltip: 'Voucher History',
+            onPressed: () => VoucherHistorySheet.show(context),
+          ),
           if (_generated.isNotEmpty)
             PopupMenuButton<String>(
               icon: const Icon(Icons.print_rounded, color: AppColors.primary),

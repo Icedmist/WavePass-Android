@@ -1401,4 +1401,74 @@ class RouterDiscoveryService {
       client.close();
     }
   }
+
+  /// Uploads captive portal files (login.html, status.html, logout.html) directly to MikroTik router.
+  /// Supports both standard `hotspot/` and `flash/hotspot/` directory layouts.
+  static Future<Map<String, bool>> uploadPortalFiles({
+    required String ip,
+    required String username,
+    required String password,
+    required Map<String, String> files,
+    String? endpoint,
+  }) async {
+    final results = <String, bool>{};
+    var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : ip.trim();
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+      target = 'http://$target';
+    }
+    if (target.endsWith('/')) {
+      target = target.substring(0, target.length - 1);
+    }
+
+    final client = createRouterClient();
+    final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+
+    for (final entry in files.entries) {
+      final fileName = entry.key;
+      final content = entry.value;
+      bool success = false;
+
+      for (final folder in ['hotspot', 'flash/hotspot']) {
+        if (success) break;
+        try {
+          final uri = Uri.parse('$target/rest/file/$folder/$fileName');
+          final res = await client.put(
+            uri,
+            headers: {
+              'Authorization': authHeader,
+              'Content-Type': 'text/html; charset=utf-8',
+            },
+            body: content,
+          ).timeout(const Duration(seconds: 5));
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            success = true;
+          }
+        } catch (_) {}
+
+        if (!success) {
+          try {
+            final uri = Uri.parse('$target/rest/file');
+            final res = await client.post(
+              uri,
+              headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'name': '$folder/$fileName',
+                'contents': content,
+              }),
+            ).timeout(const Duration(seconds: 5));
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              success = true;
+            }
+          } catch (_) {}
+        }
+      }
+
+      results[fileName] = success;
+    }
+    client.close();
+    return results;
+  }
 }

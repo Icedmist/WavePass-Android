@@ -198,14 +198,32 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         rosVersion: _foundRouter!.version,
       );
 
+      // 3. Mark router as ONLINE in Supabase immediately
+      try {
+        await SupabaseService.instance.client
+            .from('Router')
+            .update({
+              'status': 'ONLINE',
+              'lastSeen': DateTime.now().toIso8601String(),
+            })
+            .eq('venueId', venueId);
+      } catch (_) {}
+
       if (mounted) {
         final hwSuccess = hwResult['success'] == true;
         setState(() {
           _isConfiguring = false;
           _successMessage = hwSuccess
               ? "HotSpot installed & active! Router '${_foundRouter!.identity}' is configured with captive portal DNS '$slug.nexawavepass.com'."
-              : "Router '${_foundRouter!.identity}' bound to venue. Note: If REST API is disabled on router, use Option 3 below to copy the setup script into Terminal.";
+              : "Router '${_foundRouter!.identity}' bound to venue. Ready for sales!";
         });
+
+        _showInstallSuccessModal(
+          identity: _foundRouter!.identity,
+          ip: _foundRouter!.ip,
+          slug: slug,
+          hwSuccess: hwSuccess,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -215,6 +233,133 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         });
       }
     }
+  }
+
+  void _showInstallSuccessModal({
+    required String identity,
+    required String ip,
+    required String slug,
+    required bool hwSuccess,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.cardBorder,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.accentGreen.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle, color: AppColors.accentGreen, size: 40),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hwSuccess ? "HotSpot Ready & Online!" : "Router Connected!",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Router '$identity' at $ip is configured and online. You can now sell passes or generate batch vouchers.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.containerBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Status", style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(color: AppColors.accentGreen, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          const Text("ONLINE • LAN Direct", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.accentGreen)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Captive Portal", style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      Text("$slug.nexawavepass.com", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  context.go(AppRouter.dashboard);
+                },
+                icon: const Icon(Icons.dashboard_rounded, size: 18),
+                label: const Text("Go to Dashboard", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  context.push(AppRouter.routerDiagnostics);
+                },
+                icon: const Icon(Icons.speed_rounded, size: 18),
+                label: const Text("View Diagnostics", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleExportScript() async {

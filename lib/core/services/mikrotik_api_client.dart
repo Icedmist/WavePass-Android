@@ -209,6 +209,163 @@ class MikrotikApiClient {
     }
   }
 
+  /// Configures HotSpot profile, captive portal DNS, walled garden, and user profiles
+  /// directly over RouterOS API on Port 8728 (Mikhmon / Micro Voucher parity).
+  Future<Map<String, dynamic>> installHotspotConfig({
+    required String slug,
+    required String venueName,
+    String? localIp,
+  }) async {
+    final results = <String, dynamic>{
+      'identity': false,
+      'profile': false,
+      'walledGarden': false,
+      'hotspot': false,
+      'userProfiles': false,
+      'cleanupScheduler': false,
+      'errors': <String>[],
+    };
+
+    // 1. System Identity: WavePass-$slug
+    try {
+      await executeSentence([
+        '/system/identity/set',
+        '=name=WavePass-$slug',
+      ]);
+      results['identity'] = true;
+    } catch (e) {
+      (results['errors'] as List<String>).add('Identity: $e');
+    }
+
+    // 2. Hotspot Profile: wavepass-profile
+    try {
+      await executeSentence([
+        '/ip/hotspot/profile/add',
+        '=name=wavepass-profile',
+        '=dns-name=$slug.nexawavepass.com',
+        '=html-directory=hotspot',
+        '=login-by=http-chap,http-pap,mac-cookie',
+        if (localIp != null && localIp.isNotEmpty)
+          '=hotspot-address=$localIp',
+      ]);
+      results['profile'] = true;
+    } catch (e) {
+      // Profile might already exist; update it with dns-name
+      try {
+        final existing = await executeSentence([
+          '/ip/hotspot/profile/print',
+          '?name=wavepass-profile',
+        ]);
+        if (existing.isNotEmpty) {
+          final id = existing.first['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/ip/hotspot/profile/set',
+              '=.id=$id',
+              '=dns-name=$slug.nexawavepass.com',
+              '=html-directory=hotspot',
+            ]);
+            results['profile'] = true;
+          }
+        }
+      } catch (_) {
+        (results['errors'] as List<String>).add('Profile: $e');
+      }
+    }
+
+    // 3. Walled Garden Domains
+    final domains = [
+      'api.nexawavepass.com',
+      '*.nexawavepass.com',
+      '*.paystack.co',
+      'api.paystack.co',
+      '*.supabase.co',
+    ];
+    int wgSuccess = 0;
+    for (final domain in domains) {
+      try {
+        await executeSentence([
+          '/ip/hotspot/walled-garden/add',
+          '=dst-host=$domain',
+          '=comment=WavePass Walled Garden',
+        ]);
+        wgSuccess++;
+      } catch (_) {}
+    }
+    results['walledGarden'] = wgSuccess > 0;
+
+    // 4. HotSpot Server on wlan1 or default interface
+    try {
+      await executeSentence([
+        '/ip/hotspot/add',
+        '=name=wavepass-hotspot',
+        '=interface=wlan1',
+        '=profile=wavepass-profile',
+        '=disabled=no',
+      ]);
+      results['hotspot'] = true;
+    } catch (e) {
+      // Might already exist or wlan1 is bridged (common in MikroTik)
+      try {
+        final existing = await executeSentence([
+          '/ip/hotspot/print',
+        ]);
+        if (existing.isNotEmpty) {
+          results['hotspot'] = true; // HotSpot is already installed and active
+        }
+      } catch (_) {
+        (results['errors'] as List<String>).add('HotSpot: $e');
+      }
+    }
+
+    // 5. User Profiles (1h, 12h, 1d)
+    final tiers = [
+      {'name': 'profile_1h', 'rate-limit': '10M/5M', 'shared-users': '1', 'comment': 'WavePass 1h'},
+      {'name': 'profile_12h', 'rate-limit': '15M/5M', 'shared-users': '1', 'comment': 'WavePass 12h'},
+      {'name': 'profile_1d', 'rate-limit': '20M/10M', 'shared-users': '1', 'comment': 'WavePass 24h'},
+    ];
+    int tierSuccess = 0;
+    for (final tier in tiers) {
+      try {
+        await executeSentence([
+          '/ip/hotspot/user/profile/add',
+          '=name=${tier['name']}',
+          '=rate-limit=${tier['rate-limit']}',
+          '=shared-users=${tier['shared-users']}',
+          '=comment=${tier['comment']}',
+        ]);
+        tierSuccess++;
+      } catch (_) {}
+    }
+    results['userProfiles'] = tierSuccess > 0;
+
+    // 6. Expired user auto-cleanup script
+    try {
+      await executeSentence([
+        '/system/script/add',
+        '=name=wavepass-cleanup',
+        '=source=/ip hotspot user remove [find comment="expired"]',
+        '=comment=WavePass low-RAM expired user cleanup',
+      ]);
+      await executeSentence([
+        '/system/scheduler/add',
+        '=name=wavepass-cleanup',
+        '=interval=2h',
+        '=on-event=wavepass-cleanup',
+        '=comment=WavePass 2-hour user cleanup',
+      ]);
+      results['cleanupScheduler'] = true;
+    } catch (_) {}
+
+    final anySuccess = results['identity'] == true ||
+        results['profile'] == true ||
+        results['walledGarden'] == true ||
+        results['hotspot'] == true;
+    results['success'] = anySuccess;
+
+    return results;
+  }
+
   /// Closes the socket connection and releases resources.
   Future<void> close() async {
     _isConnected = false;

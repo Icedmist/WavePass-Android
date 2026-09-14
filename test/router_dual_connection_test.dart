@@ -300,5 +300,39 @@ void main() {
       expect(status.errorMessage, contains('rest-plain=yes'));
       expect(status.errorMessage, contains('HTTP 404'));
     });
+
+    test('DiscoveredRouter on Port 8728 API reports online with API connection type', () {
+      final apiRouter = DiscoveredRouter(
+        ip: '192.168.88.1:8728',
+        identity: 'RB951Ui-2HnD',
+        version: '7.23.5',
+        cpuLoad: '5%',
+        uptime: '2d3h',
+        totalMemory: '128 MB',
+        isReachable: true,
+        connectionType: 'LAN (API :8728)',
+        latencyMs: 3,
+        statusCode: 200,
+      );
+
+      expect(apiRouter.isReachable, isTrue);
+      expect(apiRouter.connectionType, contains('API :8728'));
+      expect(apiRouter.identity, equals('RB951Ui-2HnD'));
+      expect(apiRouter.version, equals('7.23.5'));
+
+      final status = RouterDualConnectionStatus(
+        localRouter: apiRouter,
+        tunnelRouter: null,
+        isLocalOnline: true,
+        isTunnelOnline: false,
+        activeMode: 'local',
+        latencySummary: 'LAN: 3ms',
+      );
+
+      expect(status.isAnyOnline, isTrue);
+      expect(status.isLocalOnline, isTrue);
+      expect(status.activeMode, equals('local'));
+      expect(status.latencySummary, contains('LAN: 3ms'));
+    });
   });
 }

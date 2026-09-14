@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/services/supabase_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/router/app_router.dart';
 import '../core/widgets/shimmer.dart';
@@ -138,6 +139,14 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
           'lastSeen': updated?['lastSeen'] ?? DateTime.now().toIso8601String(),
         };
       });
+
+      if (_dualStatus?.isAnyOnline == true) {
+        SupabaseService.instance.client
+            .from('Router')
+            .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
+            .eq('id', routerId)
+            .catchError((_) {});
+      }
 
       final isOnline = _selectedRouter!['status'] == 'ONLINE' || _dualStatus?.isAnyOnline == true;
       final isCaptivePortal = _dualStatus?.localRouter?.captivePortalIntercepted == true;

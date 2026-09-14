@@ -300,3 +300,20 @@
   - `flutter analyze`: **0 issues found** (clean).
   - `flutter test`: **All 27 tests passed**.
 
+### 23. 1-Tap Hotspot Setup Completion & Local LAN Online Sync (Issue #36)
+- [x] **Binary API HotSpot Setup on Port 8728**:
+  - Added `installHotspotConfig` in `MikrotikApiClient` to provision system identity, hotspot profile, DNS captive portal (`$slug.nexawavepass.com`), walled garden domains, user rate-limit profiles, and auto-cleanup scheduler directly over Port 8728 binary socket.
+  - In `RouterDiscoveryService.installHotspotOnRouter()`, added automatic fallback to Port 8728 binary API if HTTP REST returns 404 or fails.
+  - Unconditionally persisted router credentials (`keyRouterLocalIp`, `keyRouterUsername`, `keyRouterPassword`, `keyRouterTunnelEndpoint`) in `SharedPreferences`.
+- [x] **Interactive Completion Modal in RouterSetupScreen**:
+  - Eliminated the dead-end ("done then nothing happened") by displaying an interactive completion sheet upon setup finish.
+  - Provides instant 1-tap navigation to "Go to Dashboard" or "View Diagnostics" with active gateway details.
+- [x] **Local LAN Online Status Sync**:
+  - Updated `HomeDashboardScreen` and `AdminManagementScreen` to probe local LAN connectivity directly when in `local` mode rather than relying solely on cloud WAN pings against private RFC1918 IPs.
+  - Automatically updates Supabase router record to `status: 'ONLINE'` and `lastSeen: now` when the phone communicates with the router on Wi-Fi.
+- [x] **Verification**:
+  - Added tests in `test/router_dual_connection_test.dart` for Port 8728 online reporting and dual link status.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 28 tests passed**.
+
+

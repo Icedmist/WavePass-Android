@@ -6,6 +6,8 @@ import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
+import '../core/services/router_discovery_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -104,16 +106,47 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             final r = list.first as Map<String, dynamic>;
             final rStatus = r['status']?.toString() ?? 'OFFLINE';
             final rId = r['id']?.toString();
-            final isOnline = rStatus == 'ONLINE';
+            final rEndpoint = r['endpoint']?.toString() ?? '';
+            final rMode = r['connectionMode']?.toString() ?? 'local';
+            final isOnlineInDb = rStatus == 'ONLINE';
+
             if (mounted) {
               setState(() {
                 _hasRouter = true;
                 _routerName = r['name']?.toString() ?? 'MikroTik Gateway';
-                _routerEndpoint = r['endpoint']?.toString() ?? '';
-                _routerOnline = isOnline;
+                _routerEndpoint = rEndpoint;
+                _routerOnline = isOnlineInDb;
               });
             }
-            if (rId != null) {
+
+            final isLocalMode = rMode == 'local' ||
+                rEndpoint.contains('192.168.') ||
+                rEndpoint.contains('10.') ||
+                !rEndpoint.contains('tunnel');
+
+            if (isLocalMode) {
+              // Local gateway on Wi-Fi: check local LAN reachability directly from cashier's phone
+              SharedPreferences.getInstance().then((prefs) {
+                final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+                final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+                final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+                RouterDiscoveryService.discoverLocalRouter(ip: localIp, username: user, password: pass).then((probe) {
+                  final isLocalOnline = probe != null && probe.isReachable && !probe.authFailed;
+                  if (mounted) {
+                    setState(() {
+                      _routerOnline = isLocalOnline || isOnlineInDb;
+                    });
+                  }
+                  if (isLocalOnline && rId != null) {
+                    SupabaseService.instance.client
+                        .from('Router')
+                        .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
+                        .eq('id', rId)
+                        .catchError((_) {});
+                  }
+                }).catchError((_) {});
+              }).catchError((_) {});
+            } else if (rId != null) {
               WavePassApi.instance.getRouterHealth(rId).then((health) {
                 if (mounted && (health['status'] != null || health['reachable'] != null)) {
                   setState(() {

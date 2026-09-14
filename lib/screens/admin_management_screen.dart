@@ -8,8 +8,10 @@ import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminManagementScreen extends StatefulWidget {
   const AdminManagementScreen({super.key});
@@ -235,13 +237,35 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         }
 
         if (rId != null) {
-          WavePassApi.instance.getRouterHealth(rId).then((health) {
-            if (mounted && (health['status'] != null || health['reachable'] != null)) {
-              setState(() {
-                _routerOnline = health['status'] == 'ONLINE' || health['reachable'] == true;
-              });
-            }
-          }).catchError((_) {});
+          final isLocalMode = _routerConnectionMode == 'local' || _routerEndpoint.contains('192.168.');
+          if (isLocalMode) {
+            SharedPreferences.getInstance().then((prefs) {
+              final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+              final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+              final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+              RouterDiscoveryService.discoverLocalRouter(ip: localIp, username: user, password: pass).then((probe) {
+                final isLocalOnline = probe != null && probe.isReachable && !probe.authFailed;
+                if (mounted) {
+                  setState(() => _routerOnline = isLocalOnline || isOnline);
+                }
+                if (isLocalOnline) {
+                  SupabaseService.instance.client
+                      .from('Router')
+                      .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
+                      .eq('id', rId)
+                      .catchError((_) {});
+                }
+              }).catchError((_) {});
+            }).catchError((_) {});
+          } else {
+            WavePassApi.instance.getRouterHealth(rId).then((health) {
+              if (mounted && (health['status'] != null || health['reachable'] != null)) {
+                setState(() {
+                  _routerOnline = health['status'] == 'ONLINE' || health['reachable'] == true;
+                });
+              }
+            }).catchError((_) {});
+          }
         }
       } else {
         if (mounted) {
@@ -258,8 +282,28 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     if (_routerId == null) return;
     setState(() => _testingRouter = true);
     try {
-      final health = await WavePassApi.instance.getRouterHealth(_routerId!);
-      final isOnline = health['status'] == 'ONLINE' || health['reachable'] == true;
+      final isLocalMode = _routerConnectionMode == 'local' || _routerEndpoint.contains('192.168.');
+      bool isOnline = false;
+
+      if (isLocalMode) {
+        final prefs = await SharedPreferences.getInstance();
+        final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+        final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+        final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+        final probe = await RouterDiscoveryService.discoverLocalRouter(ip: localIp, username: user, password: pass);
+        isOnline = probe != null && probe.isReachable && !probe.authFailed;
+        if (isOnline) {
+          await SupabaseService.instance.client
+              .from('Router')
+              .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
+              .eq('id', _routerId!)
+              .catchError((_) {});
+        }
+      } else {
+        final health = await WavePassApi.instance.getRouterHealth(_routerId!);
+        isOnline = health['status'] == 'ONLINE' || health['reachable'] == true;
+      }
+
       if (mounted) {
         setState(() => _routerOnline = isOnline);
         ScaffoldMessenger.of(context).showSnackBar(

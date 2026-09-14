@@ -1089,7 +1089,7 @@ class RouterDiscoveryService {
   }
 
   /// Hardware Execution: Installs the Hotspot profile, DNS captive portal,
-  /// rate limits, and walled garden directly on the MikroTik router via RouterOS REST API.
+  /// rate limits, and walled garden directly on the MikroTik router via RouterOS REST API or native API :8728.
   static Future<Map<String, dynamic>> installHotspotOnRouter({
     required String ip,
     required String username,
@@ -1098,6 +1098,44 @@ class RouterDiscoveryService {
     required String venueName,
     String? tunnelEndpoint,
   }) async {
+    var hostOnly = ip.trim();
+    if (hostOnly.startsWith('http://')) hostOnly = hostOnly.substring(7);
+    if (hostOnly.startsWith('https://')) hostOnly = hostOnly.substring(8);
+    if (hostOnly.startsWith('api://')) hostOnly = hostOnly.substring(6);
+    int port = 80;
+    if (hostOnly.contains(':')) {
+      port = int.tryParse(hostOnly.split(':').last) ?? 80;
+      hostOnly = hostOnly.split(':').first;
+    }
+    if (hostOnly.contains('/')) hostOnly = hostOnly.split('/').first;
+
+    // Unconditionally persist router credentials and endpoints locally
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(keyRouterLocalIp, hostOnly);
+      await prefs.setString(keyRouterUsername, username);
+      await prefs.setString(keyRouterPassword, password);
+      if (tunnelEndpoint != null && tunnelEndpoint.isNotEmpty) {
+        await prefs.setString(keyRouterTunnelEndpoint, tunnelEndpoint);
+      }
+    } catch (_) {}
+
+    // If explicit Port 8728 or API scheme, configure via native RouterOS API directly
+    if (port == 8728 || ip.trim().startsWith('api://') || ip.contains(':8728')) {
+      final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 6));
+      try {
+        final ok = await client8728.connectAndLogin(username, password);
+        if (ok) {
+          final res = await client8728.installHotspotConfig(slug: slug, venueName: venueName, localIp: hostOnly);
+          return res;
+        }
+      } catch (e) {
+        debugPrint('Port 8728 hotspot installation error: $e');
+      } finally {
+        await client8728.close();
+      }
+    }
+
     final client = createRouterClient();
     final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
     final headers = {
@@ -1119,7 +1157,7 @@ class RouterDiscoveryService {
     try {
       // 1. Set System Identity: WavePass-$slug
       try {
-        final idUri = Uri.parse("http://$ip/rest/system/identity");
+        final idUri = Uri.parse("http://$hostOnly:$port/rest/system/identity");
         final idRes = await client.patch(
           idUri,
           headers: headers,
@@ -1132,14 +1170,14 @@ class RouterDiscoveryService {
 
       // 2. Add / Update Hotspot Profile: wavepass-profile
       try {
-        final profUri = Uri.parse("http://$ip/rest/ip/hotspot/profile");
+        final profUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/profile");
         final profRes = await client.put(
           profUri,
           headers: headers,
           body: jsonEncode({
             'name': 'wavepass-profile',
             'dns-name': '$slug.nexawavepass.com',
-            'hotspot-address': ip,
+            'hotspot-address': hostOnly,
             'login-by': 'http-chap,http-pap,mac-cookie',
             'html-directory': 'hotspot',
           }),
@@ -1151,7 +1189,7 @@ class RouterDiscoveryService {
 
       // 3. Add Walled Garden Domains
       try {
-        final wgUri = Uri.parse("http://$ip/rest/ip/hotspot/walled-garden");
+        final wgUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/walled-garden");
         final domains = [
           'api.nexawavepass.com',
           '*.nexawavepass.com',
@@ -1177,7 +1215,7 @@ class RouterDiscoveryService {
 
       // 4. Ensure HotSpot Server on wlan1 or default interface
       try {
-        final hsUri = Uri.parse("http://$ip/rest/ip/hotspot");
+        final hsUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot");
         final hsRes = await client.put(
           hsUri,
           headers: headers,
@@ -1195,7 +1233,7 @@ class RouterDiscoveryService {
 
       // 5. Configure Standard Rate-Limit User Profiles (Mikhmon Parity)
       try {
-        final userProfUri = Uri.parse("http://$ip/rest/ip/hotspot/user/profile");
+        final userProfUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/user/profile");
         final tiers = [
           {'name': 'profile_1h', 'rate-limit': '10M/5M', 'shared-users': '1', 'comment': 'WavePass 1h'},
           {'name': 'profile_12h', 'rate-limit': '15M/5M', 'shared-users': '1', 'comment': 'WavePass 12h'},
@@ -1219,7 +1257,7 @@ class RouterDiscoveryService {
 
       // 6. Inject Low-RAM Memory Auto-Cleanup Script & 2-Hour Scheduler
       try {
-        final scriptUri = Uri.parse("http://$ip/rest/system/script");
+        final scriptUri = Uri.parse("http://$hostOnly:$port/rest/system/script");
         await client.put(
           scriptUri,
           headers: headers,
@@ -1230,7 +1268,7 @@ class RouterDiscoveryService {
           }),
         ).timeout(const Duration(seconds: 3));
 
-        final schedUri = Uri.parse("http://$ip/rest/system/scheduler");
+        final schedUri = Uri.parse("http://$hostOnly:$port/rest/system/scheduler");
         final schedRes = await client.put(
           schedUri,
           headers: headers,
@@ -1253,17 +1291,22 @@ class RouterDiscoveryService {
 
       results['success'] = anySuccess;
 
-      // Persist router credentials and endpoints locally for seamless synchronous voucher creation
-      if (anySuccess) {
+      // If HTTP REST failed or returned 404 (HotSpot wproxy interception), fallback to native Port 8728 API
+      if (!anySuccess) {
+        final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 6));
         try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(keyRouterLocalIp, ip);
-          await prefs.setString(keyRouterUsername, username);
-          await prefs.setString(keyRouterPassword, password);
-          if (tunnelEndpoint != null && tunnelEndpoint.isNotEmpty) {
-            await prefs.setString(keyRouterTunnelEndpoint, tunnelEndpoint);
+          final ok = await client8728.connectAndLogin(username, password);
+          if (ok) {
+            final apiResults = await client8728.installHotspotConfig(slug: slug, venueName: venueName, localIp: hostOnly);
+            if (apiResults['success'] == true) {
+              return apiResults;
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('Fallback Port 8728 hotspot installation error: $e');
+        } finally {
+          await client8728.close();
+        }
       }
 
       return results;

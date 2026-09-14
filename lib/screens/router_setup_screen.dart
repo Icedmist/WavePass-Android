@@ -401,25 +401,34 @@ add address-pool=default-dhcp \\
     profile="wavepass-profile"
 
 # --------------------------------------------------------
-# 3. Walled Garden Domains
+# 3. Walled Garden Domains (Captive Portal & Checkout)
 # --------------------------------------------------------
 /ip hotspot walled-garden
 add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
 add comment="Paystack Checkout" dst-host="*.paystack.co"
 add comment="Paystack API" dst-host="api.paystack.co"
+add comment="Paystack Checkout UI" dst-host="checkout.paystack.com"
+add comment="Paystack Standard" dst-host="standard.paystack.co"
 add comment="Supabase Auth" dst-host="*.supabase.co"
 
 # --------------------------------------------------------
-# 4. Standard Rate-Limit User Profiles (Mikhmon Parity)
+# 4. Standard Rate-Limit User Profiles & Single Device Enforce
 # --------------------------------------------------------
 /ip hotspot user profile
+set [find default=yes] shared-users=1
 add name="profile_1h" rate-limit="10M/5M" shared-users=1 comment="WavePass 1h"
 add name="profile_12h" rate-limit="15M/5M" shared-users=1 comment="WavePass 12h"
 add name="profile_1d" rate-limit="20M/10M" shared-users=1 comment="WavePass 24h"
 
 # --------------------------------------------------------
-# 5. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
+# 5. Anti-Tethering / Anti-Hotspot Sharing (TTL Lock)
+# --------------------------------------------------------
+/ip firewall mangle
+add chain=postrouting action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering"
+
+# --------------------------------------------------------
+# 6. Low-RAM Auto-Cleanup Script & 2-Hour Scheduler
 # --------------------------------------------------------
 /system script
 add name="wavepass-cleanup" source="/ip hotspot user remove [find comment=\\"expired\\"]" comment="WavePass low-RAM expired user cleanup"
@@ -428,12 +437,12 @@ add name="wavepass-cleanup" source="/ip hotspot user remove [find comment=\\"exp
 add name="wavepass-cleanup" interval=2h on-event="wavepass-cleanup" comment="WavePass 2-hour user cleanup"
 
 # --------------------------------------------------------
-# 6. System Identity
+# 7. System Identity
 # --------------------------------------------------------
 /system identity
 set name="WavePass-$slug"
 
-# Setup complete! Router is online.
+# Setup complete! Router is online with Anti-Tethering active.
 """;
 
       setState(() {

@@ -219,5 +219,40 @@ void main() {
       expect(status.tunnelDiagnosticDetail, equals('Cloud tunnel offline'));
       expect(status.errorMessage, contains('timed out'));
     });
+
+    test('DiscoveredRouter handles WebFig on Port 80 gracefully', () {
+      final webfigRouter = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'MikroTik WebFig',
+        version: 'RouterOS WebFig',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: true,
+        statusCode: 200,
+        errorMessage: 'MikroTik WebFig responded on Port 80 at http://192.168.88.1',
+      );
+
+      expect(webfigRouter.isReachable, isTrue);
+      expect(webfigRouter.identity, equals('MikroTik WebFig'));
+      expect(webfigRouter.errorMessage, contains('WebFig responded on Port 80'));
+    });
+
+    test('Strict Port 80 discovery does not produce Port 8728 errors', () {
+      final port80ErrorRouter = DiscoveredRouter(
+        ip: 'http://192.168.88.1',
+        identity: 'Unreachable Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        errorMessage: 'Connection refused at 192.168.88.1:80. Port is closed or RouterOS www service is disabled.',
+      );
+
+      expect(port80ErrorRouter.errorMessage, contains('192.168.88.1:80'));
+      expect(port80ErrorRouter.errorMessage, isNot(contains('8728')));
+      expect(port80ErrorRouter.errorMessage, isNot(contains('192.168.1.1')));
+    });
   });
 }

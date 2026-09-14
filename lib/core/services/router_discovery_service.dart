@@ -769,6 +769,135 @@ class RouterDiscoveryService {
     return conclusiveFailureRouter;
   }
 
+  /// Computes the appropriate user profile name for a given duration in seconds.
+  static String profileForDuration(int seconds) {
+    if (seconds <= 1800) return 'profile_30m';
+    if (seconds <= 3600) return 'profile_1h';
+    if (seconds <= 7200) return 'profile_2h';
+    if (seconds <= 10800) return 'profile_3h';
+    if (seconds <= 21600) return 'profile_6h';
+    if (seconds <= 43200) return 'profile_12h';
+    if (seconds <= 86400) return 'profile_1d';
+    if (seconds <= 604800) return 'profile_7d';
+    return 'profile_30d';
+  }
+
+  /// Formats seconds into RouterOS standard time representation (e.g. 30m, 1h, 12h, 1d, 7d).
+  static String formatRouterOsDuration(int seconds) {
+    if (seconds <= 0) return '0s';
+    if (seconds % 86400 == 0) return '${seconds ~/ 86400}d';
+    if (seconds % 3600 == 0) return '${seconds ~/ 3600}h';
+    if (seconds % 60 == 0) return '${seconds ~/ 60}m';
+
+    final d = seconds ~/ 86400;
+    var rem = seconds % 86400;
+    final h = rem ~/ 3600;
+    rem = rem % 3600;
+    final m = rem ~/ 60;
+    final s = rem % 60;
+
+    final buf = StringBuffer();
+    if (d > 0) buf.write('${d}d');
+    if (h > 0) buf.write('${h}h');
+    if (m > 0) buf.write('${m}m');
+    if (s > 0) buf.write('${s}s');
+    return buf.toString();
+  }
+
+  /// Standard duration-based rate-limit profiles configured on RouterOS with hard timeouts.
+  static List<Map<String, String>> get standardDurationProfiles => [
+    {
+      'name': 'profile_30m',
+      'rate-limit': '10M/5M',
+      'shared-users': '1',
+      'session-timeout': '30m',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 30m',
+    },
+    {
+      'name': 'profile_1h',
+      'rate-limit': '10M/5M',
+      'shared-users': '1',
+      'session-timeout': '1h',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 1h',
+    },
+    {
+      'name': 'profile_2h',
+      'rate-limit': '10M/5M',
+      'shared-users': '1',
+      'session-timeout': '2h',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 2h',
+    },
+    {
+      'name': 'profile_3h',
+      'rate-limit': '15M/5M',
+      'shared-users': '1',
+      'session-timeout': '3h',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 3h',
+    },
+    {
+      'name': 'profile_6h',
+      'rate-limit': '15M/5M',
+      'shared-users': '1',
+      'session-timeout': '6h',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 6h',
+    },
+    {
+      'name': 'profile_12h',
+      'rate-limit': '15M/5M',
+      'shared-users': '1',
+      'session-timeout': '12h',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 12h',
+    },
+    {
+      'name': 'profile_1d',
+      'rate-limit': '20M/10M',
+      'shared-users': '1',
+      'session-timeout': '1d',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 24h',
+    },
+    {
+      'name': 'profile_7d',
+      'rate-limit': '20M/10M',
+      'shared-users': '1',
+      'session-timeout': '7d',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 7d',
+    },
+    {
+      'name': 'profile_30d',
+      'rate-limit': '25M/10M',
+      'shared-users': '1',
+      'session-timeout': '30d',
+      'keepalive-timeout': '2m',
+      'idle-timeout': '5m',
+      'status-autorefresh': '1m',
+      'comment': 'WavePass 30d',
+    },
+  ];
+
   /// Synchronously provisions a HotSpot user/voucher directly onto the MikroTik router hardware
   /// via RouterOS REST API (/rest/ip/hotspot/user) or RouterOS binary API on Port 8728.
   /// Works over Local LAN (http://192.168.88.1, 192.168.88.1:8728) or Remote Tunnel.
@@ -843,12 +972,16 @@ class RouterDiscoveryService {
         'Accept': 'application/json',
       };
 
+      final uptimeStr = sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0
+          ? formatRouterOsDuration(sessionTimeoutSeconds)
+          : null;
+
       final payload = <String, dynamic>{
         'name': code,
         'password': pass ?? code,
         'profile': profile,
-        if (sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0)
-          'limit-uptime': '${sessionTimeoutSeconds}s',
+        if (uptimeStr != null && uptimeStr.isNotEmpty)
+          'limit-uptime': uptimeStr,
         if (limitBytesTotal != null && limitBytesTotal > 0)
           'limit-bytes-total': limitBytesTotal.toString(),
         if (sharedUsers != null && sharedUsers > 0)
@@ -871,18 +1004,46 @@ class RouterDiscoveryService {
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         httpSuccess = true;
-      } else if (res.statusCode == 400 && profile != 'default') {
-        payload['profile'] = 'default';
+      } else if (res.statusCode == 400 || res.statusCode == 409) {
+        // If user already exists, find ID and update credentials/limits via PATCH (resetting uptime to 0s)
         try {
-          final retryRes = await client.put(
-            putUri,
-            headers: headers,
-            body: jsonEncode(payload),
-          ).timeout(const Duration(seconds: 4));
-          if (retryRes.statusCode >= 200 && retryRes.statusCode < 300) {
-            httpSuccess = true;
+          final getUri = Uri.parse('$normalized/rest/ip/hotspot/user?name=$code');
+          final getRes = await client.get(getUri, headers: headers).timeout(const Duration(seconds: 4));
+          if (getRes.statusCode >= 200 && getRes.statusCode < 300) {
+            final dynamic list = jsonDecode(getRes.body);
+            if (list is List && list.isNotEmpty) {
+              final id = list.first['.id'];
+              if (id != null) {
+                final patchUri = Uri.parse('$normalized/rest/ip/hotspot/user/$id');
+                final patchPayload = Map<String, dynamic>.from(payload);
+                patchPayload['uptime'] = '0s'; // Reset spent uptime for re-provisioned pass
+                final patchRes = await client.patch(
+                  patchUri,
+                  headers: headers,
+                  body: jsonEncode(patchPayload),
+                ).timeout(const Duration(seconds: 4));
+                if (patchRes.statusCode >= 200 && patchRes.statusCode < 300) {
+                  httpSuccess = true;
+                }
+              }
+            }
           }
         } catch (_) {}
+
+        // If profile was custom and not yet installed, retry with 'default' profile
+        if (!httpSuccess && profile != 'default') {
+          payload['profile'] = 'default';
+          try {
+            final retryRes = await client.put(
+              putUri,
+              headers: headers,
+              body: jsonEncode(payload),
+            ).timeout(const Duration(seconds: 4));
+            if (retryRes.statusCode >= 200 && retryRes.statusCode < 300) {
+              httpSuccess = true;
+            }
+          } catch (_) {}
+        }
       } else if (res.statusCode == 404 || res.statusCode == 405) {
         // 2b. Fallback to POST /rest/ip/hotspot/user/add
         final postUri = Uri.parse('$normalized/rest/ip/hotspot/user/add');
@@ -1242,16 +1403,11 @@ class RouterDiscoveryService {
         (results['errors'] as List<String>).add('HotSpot: $e');
       }
 
-      // 5. Configure Standard Rate-Limit User Profiles (Mikhmon Parity)
+      // 5. Configure Standard Rate-Limit User Profiles (with hard session timeouts)
       try {
         final userProfUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/user/profile");
-        final tiers = [
-          {'name': 'profile_1h', 'rate-limit': '10M/5M', 'shared-users': '1', 'comment': 'WavePass 1h'},
-          {'name': 'profile_12h', 'rate-limit': '15M/5M', 'shared-users': '1', 'comment': 'WavePass 12h'},
-          {'name': 'profile_1d', 'rate-limit': '20M/10M', 'shared-users': '1', 'comment': 'WavePass 24h'},
-        ];
         int tierSuccess = 0;
-        for (final tier in tiers) {
+        for (final tier in standardDurationProfiles) {
           try {
             final tRes = await client.put(
               userProfUri,
@@ -1261,21 +1417,36 @@ class RouterDiscoveryService {
             if (tRes.statusCode >= 200 && tRes.statusCode < 300) tierSuccess++;
           } catch (_) {}
         }
+        // Enforce shared-users=1, keepalives, and idle timeout on 'default' profile
+        try {
+          await client.put(
+            userProfUri,
+            headers: headers,
+            body: jsonEncode({
+              'name': 'default',
+              'shared-users': '1',
+              'keepalive-timeout': '2m',
+              'idle-timeout': '5m',
+              'status-autorefresh': '1m',
+            }),
+          ).timeout(const Duration(seconds: 3));
+        } catch (_) {}
         results['userProfiles'] = tierSuccess > 0;
       } catch (e) {
         (results['errors'] as List<String>).add('UserProfiles: $e');
       }
 
-      // 6. Inject Low-RAM Memory Auto-Cleanup Script & 2-Hour Scheduler
+      // 6. Inject Low-RAM Memory Auto-Cleanup Script & 1-Minute Limit Enforcer Scheduler
       try {
         final scriptUri = Uri.parse("http://$hostOnly:$port/rest/system/script");
+        const scriptSource = ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; } }; /ip hotspot user remove [find comment~"expired"]';
         await client.put(
           scriptUri,
           headers: headers,
           body: jsonEncode({
             'name': 'wavepass-cleanup',
-            'source': '/ip hotspot user remove [find comment="expired"]',
-            'comment': 'WavePass low-RAM expired user cleanup',
+            'source': scriptSource,
+            'comment': 'WavePass user limit enforcer',
           }),
         ).timeout(const Duration(seconds: 3));
 
@@ -1285,9 +1456,9 @@ class RouterDiscoveryService {
           headers: headers,
           body: jsonEncode({
             'name': 'wavepass-cleanup',
-            'interval': '2h',
+            'interval': '1m',
             'on-event': 'wavepass-cleanup',
-            'comment': 'WavePass 2-hour user cleanup',
+            'comment': 'WavePass 1-minute user limit enforcer',
           }),
         ).timeout(const Duration(seconds: 3));
         results['cleanupScheduler'] = schedRes.statusCode >= 200 && schedRes.statusCode < 300;

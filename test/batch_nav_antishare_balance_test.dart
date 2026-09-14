@@ -3,9 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wavepass_mobile/core/router/scaffold_with_nav.dart';
 import 'package:wavepass_mobile/core/services/mikrotik_api_client.dart';
-import 'package:wavepass_mobile/core/services/router_discovery_service.dart';
 import 'package:wavepass_mobile/screens/home_dashboard_screen.dart';
 import 'package:wavepass_mobile/screens/wallet_screen.dart';
 

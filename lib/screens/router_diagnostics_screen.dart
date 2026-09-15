@@ -134,7 +134,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
       setState(() {
         _selectedRouter = {
           ..._selectedRouter!,
-          if (updated != null) ...updated,
+          ...?updated,
           'status': (_dualStatus?.isAnyOnline == true) ? 'ONLINE' : (updated?['status'] ?? 'OFFLINE'),
           'lastSeen': updated?['lastSeen'] ?? DateTime.now().toIso8601String(),
         };

@@ -68,22 +68,56 @@ void main() {
       expect(html, contains('Launch Venue Portal'));
       expect(html, contains('Visiting Apex Lounge?'));
 
-      // 2. Segmented Dual Credential Tabs
+      // 2. Segmented Credential and Plan Tabs
       expect(html, contains('id="tabVoucher"'));
+      expect(html, contains('id="tabPlans"'));
       expect(html, contains('id="tabCreds"'));
       expect(html, contains('Voucher Code'));
+      expect(html, contains('Buy Pass'));
       expect(html, contains('Username / Phone Number'));
       expect(html, contains('Password / PIN'));
 
-      // 3. Pure-JS RFC 1321 MD5 & CHAP challenge response
+      // 3. Venue Plans & Paystack Integration
+      expect(html, contains('id="panelPlans"'));
+      expect(html, contains('id="pay_email"'));
+      expect(html, contains('payWithPaystack'));
+      expect(html, contains('https://apex-lounge.nexawavepass.com/api/portal/init-payment'));
+
+      // 4. Pure-JS RFC 1321 MD5 & CHAP challenge response
       expect(html, contains('function hexMD5('));
       expect(html, contains(r'var chapId = "$(chap-id)";'));
       expect(html, contains(r'var chapChallenge = "$(chap-challenge)";'));
       expect(html, contains('hexMD5(chapId + p + chapChallenge)'));
 
-      // 4. RouterOS Form
+      // 5. RouterOS Form
       expect(html, contains(r'action="$(link-login-only)"'));
       expect(html, contains(r'name="sendin"'));
+    });
+
+    test('Generated login.html renders custom venue plans dynamically', () {
+      final customPlans = [
+        {
+          'id': 'plan_vip_day',
+          'name': 'VIP All-Day Pass',
+          'price': 1500,
+          'durationMinutes': 1440,
+        },
+        {
+          'id': 'plan_weekly',
+          'name': '7-Day Unlimited',
+          'price': 5000,
+          'duration': '7 Days',
+        },
+      ];
+
+      final html = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', customPlans);
+
+      expect(html, contains('VIP All-Day Pass'));
+      expect(html, contains('₦1500'));
+      expect(html, contains('7-Day Unlimited'));
+      expect(html, contains('₦5000'));
+      expect(html, contains("payWithPaystack('plan_vip_day', '₦1500')"));
+      expect(html, contains("payWithPaystack('plan_weekly', '₦5000')"));
     });
   });
 }

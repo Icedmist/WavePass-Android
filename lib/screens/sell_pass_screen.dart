@@ -30,10 +30,10 @@ class _SellPassScreenState extends State<SellPassScreen> {
   String? _generatedCode;
   String? _generatedPassword;
   bool _showCustomSettings = false;
-  final _prefixCtrl = TextEditingController(text: 'WP-');
+  final _prefixCtrl = TextEditingController(text: '');
   final _passPrefixCtrl = TextEditingController(text: '');
   int _codeLength = 6;
-  String _charPattern = 'Alphanumeric'; // 'Alphanumeric', 'Numbers Only', 'Uppercase Only'
+  String _charPattern = 'Numbers Only'; // 'Numbers Only', 'Alphanumeric', 'Uppercase Only'
   String _userMode = 'Voucher Code'; // 'Voucher Code', 'Username & Password'
   int _passLength = 4;
   String _passPattern = 'Numbers Only'; // 'Numbers Only', 'Alphanumeric', 'Uppercase Only', 'Same as Username'
@@ -136,9 +136,10 @@ class _SellPassScreenState extends State<SellPassScreen> {
     String charset;
     if (pattern == 'Numbers Only') {
       charset = '0123456789';
-    } else if (pattern == 'Uppercase Only') {
+    } else if (pattern == 'Uppercase Only' || pattern == 'Letters Only') {
       charset = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     } else {
+      // Combination with letters without dashes or confusing characters
       charset = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
     }
     final rnd = Random.secure();
@@ -148,9 +149,9 @@ class _SellPassScreenState extends State<SellPassScreen> {
   }
 
   String _randomCode() {
-    final prefix = _prefixCtrl.text.trim().toUpperCase();
+    final prefix = _prefixCtrl.text.trim().toUpperCase().replaceAll('-', '');
     final seg = _generateSegment(_codeLength, _charPattern);
-    return '$prefix$seg';
+    return '$prefix$seg'.replaceAll('-', '');
   }
 
   Widget _miniChip(String text, IconData icon) => Container(
@@ -176,35 +177,9 @@ class _SellPassScreenState extends State<SellPassScreen> {
 
     final selectedPlan = _plans[_selectedPlanIndex];
     final planId = selectedPlan['id'] as String?;
-    String? code;
 
-    try {
-      if (_venueId != null && planId != null && planId.isNotEmpty) {
-        final res = await http.post(
-          Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/vouchers/batches'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'venueId': _venueId,
-            'planId': planId,
-            'quantity': 1,
-          }),
-        ).timeout(const Duration(seconds: 8));
-
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          final data = jsonDecode(res.body);
-          final list = (data is List ? data : data['codes'] ?? data) as List;
-          if (list.isNotEmpty) {
-            final first = list.first;
-            code = first is String ? first : first['code']?.toString();
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Cloud voucher generation error: $e');
-    }
-
-    // Custom format fallback or generated code
-    code ??= _randomCode();
+    // Custom format: numbers only on default or numbers+letters without dashes
+    final code = _randomCode().replaceAll('-', '');
 
     String password = code;
     if (_userMode == 'Username & Password') {
@@ -212,10 +187,26 @@ class _SellPassScreenState extends State<SellPassScreen> {
         password = code;
       } else {
         final passSeg = _generateSegment(_passLength, _passPattern);
-        final passPrefix = _passPrefixCtrl.text.trim();
-        password = '$passPrefix$passSeg';
+        final passPrefix = _passPrefixCtrl.text.trim().replaceAll('-', '');
+        password = '$passPrefix$passSeg'.replaceAll('-', '');
       }
     }
+
+    // Optional cloud notification (non-blocking)
+    try {
+      if (_venueId != null && planId != null && planId.isNotEmpty) {
+        http.post(
+          Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/vouchers/batches'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'venueId': _venueId,
+            'planId': planId,
+            'quantity': 1,
+            'customCode': code,
+          }),
+        ).timeout(const Duration(seconds: 4)).catchError((_) => http.Response('{}', 500));
+      }
+    } catch (_) {}
 
     // Synchronously provision directly onto router hardware (LAN Direct / Cloud Tunnel)
     String? directMode;
@@ -466,7 +457,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                             flex: 3,
                             child: TextField(
                               controller: _prefixCtrl,
-                              decoration: const InputDecoration(labelText: 'Prefix', border: OutlineInputBorder(), hintText: 'WP-'),
+                              decoration: const InputDecoration(labelText: 'Prefix', border: OutlineInputBorder(), hintText: 'Optional'),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -491,11 +482,11 @@ class _SellPassScreenState extends State<SellPassScreen> {
                               initialValue: _charPattern,
                               decoration: const InputDecoration(labelText: 'Pattern', border: OutlineInputBorder()),
                               items: const [
+                                DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers (0-9)')),
                                 DropdownMenuItem(value: 'Alphanumeric', child: Text('Alpha-Num')),
-                                DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers')),
                                 DropdownMenuItem(value: 'Uppercase Only', child: Text('Letters')),
                               ],
-                              onChanged: (val) => setState(() => _charPattern = val ?? 'Alphanumeric'),
+                              onChanged: (val) => setState(() => _charPattern = val ?? 'Numbers Only'),
                             ),
                           ),
                         ],
@@ -508,7 +499,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                               flex: 3,
                               child: TextField(
                                 controller: _passPrefixCtrl,
-                                decoration: const InputDecoration(labelText: 'PIN Prefix', border: OutlineInputBorder(), hintText: 'PIN-'),
+                                decoration: const InputDecoration(labelText: 'PIN Prefix', border: OutlineInputBorder(), hintText: 'Optional'),
                               ),
                             ),
                             const SizedBox(width: 8),

@@ -118,6 +118,25 @@ void main() {
       expect(html, contains('₦5000'));
       expect(html, contains("payWithPaystack('plan_vip_day', '₦1500')"));
       expect(html, contains("payWithPaystack('plan_weekly', '₦5000')"));
+      expect(html, contains('Paystack Online'));
+      expect(html, contains('Need Internet to Pay?'));
+      expect(html, contains(r'username=T-$(mac-esc)'));
+      expect(html, contains('placeholder="e.g. 123456"'));
+    });
+
+    test('Generated login.html displays Paystack Not Available when unconfigured', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        null,
+        false, // isPaystackConfigured = false
+      );
+
+      expect(html, contains('Paystack Not Available'));
+      expect(html, contains('Online card/transfer payments are currently unavailable at this venue'));
+      expect(html, contains('class="btn-pay disabled"'));
+      expect(html, contains('disabled title="Paystack not available"'));
+      expect(html, contains('Need Internet to Pay?'));
     });
   });
 }

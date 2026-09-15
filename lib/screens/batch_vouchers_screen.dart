@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,8 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:http/http.dart' as http;
-import '../core/constants/api_constants.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
@@ -25,12 +22,12 @@ class BatchVouchersScreen extends StatefulWidget {
 
 class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
   final _qtyCtrl = TextEditingController(text: '10');
-  final _prefixCtrl = TextEditingController(text: 'WP-');
+  final _prefixCtrl = TextEditingController(text: '');
   final _passPrefixCtrl = TextEditingController(text: '');
   final _searchCtrl = TextEditingController();
 
   int _codeLength = 6;
-  String _charPattern = 'Alphanumeric'; // 'Alphanumeric', 'Numbers Only', 'Uppercase Only'
+  String _charPattern = 'Numbers Only'; // 'Numbers Only', 'Alphanumeric', 'Uppercase Only'
   String _userMode = 'Voucher Code'; // 'Voucher Code', 'Username & Password'
 
   int _passLength = 4;
@@ -146,10 +143,10 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     String charset;
     if (pattern == 'Numbers Only') {
       charset = '0123456789';
-    } else if (pattern == 'Uppercase Only') {
+    } else if (pattern == 'Uppercase Only' || pattern == 'Letters Only') {
       charset = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     } else {
-      // Alphanumeric, excluding ambiguous chars (0, O, 1, I)
+      // Numbers in combination with letters without dashes
       charset = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
     }
     final rnd = Random.secure();
@@ -172,49 +169,28 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     }
 
     setState(() => _loading = true);
-    final prefix = _prefixCtrl.text.trim().toUpperCase();
+    final prefix = _prefixCtrl.text.trim().toUpperCase().replaceAll('-', '');
 
     try {
       List<String> rawCodes = [];
 
-      // Attempt Cloud Generation first
-      try {
-        final res = await http.post(
-          Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/vouchers/batches'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'venueId': _selectedVenueId,
-            'planId': _selectedPlanId,
-            'quantity': qty,
-          }),
-        ).timeout(const Duration(seconds: 12));
-
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          final data = jsonDecode(res.body);
-          final list = (data is List ? data : data['codes'] ?? data) as List;
-          rawCodes = list.map((e) => e is String ? e : e['code']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
-        }
-      } catch (cloudErr) {
-        debugPrint('Cloud batch generate fallback: $cloudErr');
-      }
-
-      // Offline / custom format fallback if cloud returned fewer than requested
+      // If user customized settings or numbers only, prioritize client-side clean formatting
       while (rawCodes.length < qty) {
         final seg = _generateRandomSegment(_codeLength, _charPattern);
-        rawCodes.add('$prefix$seg');
+        rawCodes.add('$prefix$seg'.replaceAll('-', ''));
       }
 
       final List<Map<String, dynamic>> compiled = [];
-      final passPrefix = _passPrefixCtrl.text.trim();
+      final passPrefix = _passPrefixCtrl.text.trim().replaceAll('-', '');
       for (int i = 0; i < rawCodes.length; i++) {
-        final code = rawCodes[i];
+        final code = rawCodes[i].replaceAll('-', '');
         String password = code;
         if (_userMode == 'Username & Password') {
           if (_passPattern == 'Same as Username') {
             password = code;
           } else {
             final seg = _generateRandomSegment(_passLength, _passPattern);
-            password = '$passPrefix$seg';
+            password = '$passPrefix$seg'.replaceAll('-', '');
           }
         }
         compiled.add({
@@ -715,7 +691,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                       flex: 3,
                       child: TextField(
                         controller: _prefixCtrl,
-                        decoration: const InputDecoration(labelText: 'Prefix', border: OutlineInputBorder(), hintText: 'WP-'),
+                        decoration: const InputDecoration(labelText: 'Prefix', border: OutlineInputBorder(), hintText: 'Optional'),
                       ),
                     ),
                   ],
@@ -744,11 +720,11 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                         initialValue: _charPattern,
                         decoration: const InputDecoration(labelText: 'Charset', border: OutlineInputBorder()),
                         items: const [
+                          DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers (0-9)')),
                           DropdownMenuItem(value: 'Alphanumeric', child: Text('Alpha-Num')),
-                          DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers')),
                           DropdownMenuItem(value: 'Uppercase Only', child: Text('Letters')),
                         ],
-                        onChanged: (val) => setState(() => _charPattern = val ?? 'Alphanumeric'),
+                        onChanged: (val) => setState(() => _charPattern = val ?? 'Numbers Only'),
                       ),
                     ),
                   ],

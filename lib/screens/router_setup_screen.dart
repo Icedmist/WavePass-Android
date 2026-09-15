@@ -17,8 +17,13 @@ class RouterSetupScreen extends StatefulWidget {
   const RouterSetupScreen({super.key});
 
   @visibleForTesting
-  static String generateLoginHtml(String venueName, String slug, [List<Map<String, dynamic>>? plans]) =>
-      _RouterSetupScreenState._generateLoginHtml(venueName, slug, plans);
+  static String generateLoginHtml(
+    String venueName,
+    String slug, [
+    List<Map<String, dynamic>>? plans,
+    bool isPaystackConfigured = true,
+  ]) =>
+      _RouterSetupScreenState._generateLoginHtml(venueName, slug, plans, isPaystackConfigured);
 
   @override
   State<RouterSetupScreen> createState() => _RouterSetupScreenState();
@@ -518,12 +523,13 @@ add name="profile_12h" rate-limit="15M/5M" shared-users=1 session-timeout=12h ke
 add name="profile_1d" rate-limit="20M/10M" shared-users=1 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
 add name="profile_7d" rate-limit="20M/10M" shared-users=1 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
 add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
+add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=yes session-timeout=2m comment="WavePass 2-min Payment Trial"
 
 # --------------------------------------------------------
-# 5. Enforce No Hotspot Sharing (Universal Anti-Tethering for iOS, Windows, Linux, Android)
+# 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
 # --------------------------------------------------------
 /ip hotspot user profile set [find] shared-users=1
-/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie
+/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime-limit=2m trial-uptime-reset=24h
 /interface wireless set [find] default-forwarding=no
 
 /ip firewall mangle
@@ -581,7 +587,12 @@ set name="WavePass-$slug"
     }
   }
 
-  static String _generateLoginHtml(String venueName, String slug, [List<Map<String, dynamic>>? plans]) {
+  static String _generateLoginHtml(
+    String venueName,
+    String slug, [
+    List<Map<String, dynamic>>? plans,
+    bool isPaystackConfigured = true,
+  ]) {
     final safePlans = (plans != null && plans.isNotEmpty)
         ? plans
         : [
@@ -615,6 +626,10 @@ set name="WavePass-$slug"
                   ? '${((p['durationSeconds'] as num) / 3600).round()}h'
                   : '1h'));
 
+      final payBtn = isPaystackConfigured
+          ? '<button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack(\'$pid\', \'$pprice\')">Pay $pprice &rarr;</button>'
+          : '<button type="button" id="btn_plan_$pid" class="btn-pay disabled" disabled title="Paystack not available">Paystack Not Available</button>';
+
       plansBuffer.writeln('''
         <div class="plan-item">
           <div class="plan-info">
@@ -622,9 +637,7 @@ set name="WavePass-$slug"
             <div class="plan-name">$pname</div>
             <div class="plan-price">$pprice</div>
           </div>
-          <button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack('$pid', '$pprice')">
-            Pay $pprice &rarr;
-          </button>
+          $payBtn
         </div>''');
     }
 
@@ -831,9 +844,88 @@ set name="WavePass-$slug"
     .btn-pay:hover {
       background: #2ea043;
     }
-    .btn-pay:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
+    .btn-pay:disabled, .btn-pay.disabled {
+      background: #21262D !important;
+      color: #8B949E !important;
+      cursor: not-allowed !important;
+      border: 1px solid #30363D !important;
+      opacity: 0.7;
+    }
+    .paystack-status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0D1117;
+      border: 1px solid #30363D;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #38EF7D;
+      box-shadow: 0 0 8px #38EF7D;
+    }
+    .status-dot.disabled {
+      background: #F85149;
+      box-shadow: 0 0 8px #F85149;
+    }
+    .status-notice {
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid #F85149;
+      border-radius: 10px;
+      padding: 10px;
+      color: #FF7B72;
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .trial-box {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid #38BDF8;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-top: 14px;
+      text-align: center;
+    }
+    .trial-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #38BDF8;
+      margin-bottom: 4px;
+    }
+    .trial-desc {
+      font-size: 11px;
+      color: #C9D1D9;
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+    .btn-trial {
+      display: inline-block;
+      width: 100%;
+      padding: 10px;
+      background: #0284C7;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 800;
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+    .btn-trial:hover {
+      background: #0369A1;
     }
     .btn-submit {
       width: 100%;
@@ -899,20 +991,41 @@ set name="WavePass-$slug"
     <!-- Panel 1: Voucher Code -->
     <div id="panelVoucher">
       <div class="form-group">
-        <label for="voucher_input">Voucher Code</label>
-        <input type="text" id="voucher_input" class="input-upper" placeholder="WP-XXXXX" autocomplete="off" autocorrect="off" autocapitalize="characters">
+        <label for="voucher_input">Voucher Code (Numbers or Text)</label>
+        <input type="text" id="voucher_input" class="input-upper" placeholder="e.g. 123456" autocomplete="off" autocorrect="off" autocapitalize="characters">
       </div>
       <button type="button" class="btn-submit" onclick="submitVoucher()">Connect with Voucher</button>
     </div>
 
     <!-- Panel 2: Venue Plans & Paystack Checkout -->
     <div id="panelPlans" style="display:none;">
+      <div class="paystack-status-banner">
+        <span>Payment Gateway</span>
+        <div class="status-indicator">
+          <span class="status-dot ${isPaystackConfigured ? '' : 'disabled'}"></span>
+          <span style="color: ${isPaystackConfigured ? '#38EF7D' : '#FF7B72'};">
+            ${isPaystackConfigured ? 'Paystack Online' : 'Paystack Not Available'}
+          </span>
+        </div>
+      </div>
+      ${!isPaystackConfigured ? '''
+      <div class="status-notice">
+        ⚠️ Online card/transfer payments are currently unavailable at this venue. Please connect using a cash voucher from the counter.
+      </div>''' : ''}
       <div class="form-group">
         <label for="pay_email">Receipt Email (Optional)</label>
         <input type="email" id="pay_email" placeholder="guest@example.com" autocomplete="email">
       </div>
       <div class="plans-list" id="plansContainer">
         ${plansBuffer.toString()}
+      </div>
+      <!-- 2-Minute Payment Trial Access -->
+      <div class="trial-box">
+        <div class="trial-title">⚡ Need Internet to Pay?</div>
+        <div class="trial-desc">Get a 2-minute temporary connection window to open your bank app or complete Paystack checkout.</div>
+        <a href="\$(link-login-only)?dst=\$(link-orig-esc)&username=T-\$(mac-esc)" class="btn-trial">
+          Activate 2-Min Payment Trial &rarr;
+        </a>
       </div>
     </div>
 
@@ -1074,6 +1187,11 @@ set name="WavePass-$slug"
     }
 
     function payWithPaystack(planId, price) {
+      var isConfigured = $isPaystackConfigured;
+      if (!isConfigured) {
+        alert('Paystack is not configured for this venue. Please connect using a cash voucher from the counter.');
+        return;
+      }
       var email = document.getElementById('pay_email') ? document.getElementById('pay_email').value.trim() : '';
       var mac = "\$(mac)";
       var btn = document.getElementById('btn_plan_' + planId);
@@ -1493,8 +1611,23 @@ set name="WavePass-$slug"
     if (plans.isEmpty) {
       plans = await VenueStateService.instance.refreshPlans();
     }
+    final dva = venue['dva'] ?? venue['virtual_account'];
+    bool isPaystackConfigured = true;
+    if (dva is Map) {
+      final meta = dva['metadata'];
+      if (meta is Map && (meta['mock'] == true || meta['mock']?.toString() == 'true')) {
+        isPaystackConfigured = false;
+      }
+      final bank = (dva['bankName']?.toString() ?? dva['bank_name']?.toString() ?? '').toLowerCase();
+      if (bank.contains('mock')) {
+        isPaystackConfigured = false;
+      }
+    } else if (venue['paystack_configured'] == false) {
+      isPaystackConfigured = false;
+    }
+
     final suite = {
-      'login.html': _generateLoginHtml(venueName, slug, plans),
+      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };

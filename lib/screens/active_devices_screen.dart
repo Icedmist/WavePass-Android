@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
@@ -19,6 +20,20 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
   bool _loading = true;
   bool _isRefreshing = false;
   Timer? _autoRefreshTimer;
+
+  static String _formatSecondsToReadable(int sec) {
+    if (sec <= 0) return '0m';
+    final d = sec ~/ 86400;
+    final h = (sec % 86400) ~/ 3600;
+    final m = (sec % 3600) ~/ 60;
+    if (d > 0) {
+      return h > 0 ? '${d}d ${h}h' : '${d}d';
+    }
+    if (h > 0) {
+      return m > 0 ? '${h}h ${m}m' : '${h}h';
+    }
+    return '${m}m';
+  }
 
   @override
   void initState() {
@@ -88,9 +103,13 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
       final matchedHwIds = <String>{};
 
       for (final s in dbSessions) {
+        final startedAt = s['startedAt'] != null ? DateTime.tryParse(s['startedAt'].toString()) : null;
         final expiresAt = s['expiresAt'] != null ? DateTime.tryParse(s['expiresAt'].toString()) : null;
-        final remaining = expiresAt != null ? expiresAt.difference(DateTime.now()).inMinutes : 0;
-        final prog = expiresAt != null ? (remaining / 1440).clamp(0.0, 1.0) : 0.5;
+        final totalLimitSec = (startedAt != null && expiresAt != null)
+            ? expiresAt.difference(startedAt).inSeconds
+            : ((s['durationSeconds'] as num?)?.toInt() ?? 0);
+        final remainingSec = expiresAt != null ? expiresAt.difference(DateTime.now()).inSeconds : 0;
+        final dbProg = totalLimitSec > 0 ? (remainingSec / totalLimitSec).clamp(0.0, 1.0) : 0.5;
         final sMac = (s['mac']?.toString() ?? '').toLowerCase().trim();
         final sIp = s['ip']?.toString().trim() ?? '';
         final sUser = (s['voucherId']?.toString() ?? s['deviceId']?.toString() ?? '').trim();
@@ -112,9 +131,27 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
           }
         }
 
+        final hwU = matchHw?['user']?.toString() ?? '';
+        final isTrial = hwU.startsWith('T-') || hwU.toLowerCase().contains('trial');
+        final hwLimitUptime = matchHw?['limit-uptime']?.toString() ?? '';
+        final hwTimeLeft = matchHw?['session-time-left']?.toString() ?? '';
+        final hwUptime = matchHw?['uptime']?.toString() ?? '';
+        final hwLimitSec = VoucherHistoryService.parseRouterOsUptimeSeconds(hwLimitUptime);
+        final hwTimeLeftSec = VoucherHistoryService.parseRouterOsUptimeSeconds(hwTimeLeft);
+        final hwUptimeSec = VoucherHistoryService.parseRouterOsUptimeSeconds(hwUptime);
+
+        final int hwTotal = hwLimitSec > 0 ? hwLimitSec : (hwTimeLeftSec > 0 && hwUptimeSec > 0 ? (hwTimeLeftSec + hwUptimeSec) : totalLimitSec);
+        final resolvedProg = hwTotal > 0 && hwTimeLeftSec > 0
+            ? (hwTimeLeftSec / hwTotal).clamp(0.0, 1.0)
+            : dbProg;
+
+        final resolvedLimitDisplay = isTrial
+            ? '2m Payment Trial'
+            : (hwTotal > 0 ? '${_formatSecondsToReadable(hwTotal)} Limit' : (totalLimitSec > 0 ? '${_formatSecondsToReadable(totalLimitSec)} Limit' : 'Standard Pass'));
+
         final timeLeft = matchHw?['session-time-left'] != null && matchHw!['session-time-left'].toString().isNotEmpty
             ? matchHw['session-time-left'].toString()
-            : (remaining > 60 ? '${remaining ~/ 60}h ${remaining % 60}m left' : '${remaining}m left');
+            : (remainingSec > 3600 ? '${remainingSec ~/ 3600}h ${(remainingSec % 3600) ~/ 60}m left' : (remainingSec > 0 ? '${remainingSec ~/ 60}m left' : 'Expired'));
 
         merged.add({
           'id': s['id'],
@@ -123,7 +160,9 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
           'ip': s['ip'] ?? matchHw?['address'] ?? '—',
           'plan': s['plan'] ?? s['voucherId'] ?? (matchHw?['user'] != null ? 'Voucher (${matchHw!['user']})' : 'Pass'),
           'timeLeft': timeLeft,
-          'progress': prog,
+          'progress': resolvedProg,
+          'limit': resolvedLimitDisplay,
+          'isTrial': isTrial,
           'sessionId': s['id'],
           'hardwareId': matchHw?['.id'],
           'hardwareUser': matchHw?['user'],
@@ -141,20 +180,40 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         }
 
         final userCode = hw['user']?.toString() ?? 'Guest';
-        final timeLeft = hw['session-time-left']?.toString();
-        final uptime = hw['uptime']?.toString();
-        final displayTime = (timeLeft != null && timeLeft.isNotEmpty)
+        final isTrial = userCode.startsWith('T-') || userCode.toLowerCase().contains('trial');
+        final timeLeft = hw['session-time-left']?.toString() ?? '';
+        final uptime = hw['uptime']?.toString() ?? '';
+        final limitUptime = hw['limit-uptime']?.toString() ?? '';
+
+        final uptimeSec = VoucherHistoryService.parseRouterOsUptimeSeconds(uptime);
+        final timeLeftSec = VoucherHistoryService.parseRouterOsUptimeSeconds(timeLeft);
+        final limitSec = VoucherHistoryService.parseRouterOsUptimeSeconds(limitUptime);
+
+        int totalSec = limitSec > 0 ? limitSec : (timeLeftSec > 0 ? (uptimeSec + timeLeftSec) : 0);
+        if (totalSec == 0 && isTrial) totalSec = 120; // 2 minutes
+
+        final double prog = totalSec > 0
+            ? (timeLeftSec > 0 ? (timeLeftSec / totalSec) : (1.0 - (uptimeSec / totalSec))).clamp(0.0, 1.0)
+            : 0.8;
+
+        final String limitDisplay = isTrial
+            ? '2m Payment Trial'
+            : (totalSec > 0 ? '${_formatSecondsToReadable(totalSec)} Limit' : 'Unlimited');
+
+        final displayTime = (timeLeft.isNotEmpty)
             ? '$timeLeft left'
-            : (uptime != null ? 'Online: $uptime' : 'Active');
+            : (uptime.isNotEmpty ? 'Online: $uptime' : 'Active');
 
         merged.add({
           'id': hw['.id'] ?? hw['user'] ?? hw['mac-address'] ?? hw['address'],
           'name': hw['user'] != null && hw['user'].toString().isNotEmpty ? 'Voucher ${hw['user']}' : (hw['mac-address'] ?? 'Connected Device'),
           'mac': hw['mac-address'] ?? '—',
           'ip': hw['address'] ?? '—',
-          'plan': 'Active Pass ($userCode)',
+          'plan': isTrial ? '2-Min Trial' : 'Active Pass ($userCode)',
           'timeLeft': displayTime,
-          'progress': 0.8,
+          'progress': prog,
+          'limit': limitDisplay,
+          'isTrial': isTrial,
           'sessionId': hw['.id'] ?? hw['user'],
           'hardwareId': hw['.id'],
           'hardwareUser': hw['user'],
@@ -327,22 +386,59 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
                 const SizedBox(height: 8),
 
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      dev['mac'],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: AppColors.textLight,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          dev['mac'],
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          dev['ip'],
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      dev['ip'],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: AppColors.textLight,
+                    // User Limit Indicator
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: dev['isTrial'] == true
+                            ? Colors.amber.withValues(alpha: 0.15)
+                            : AppColors.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: dev['isTrial'] == true ? Colors.amber.shade700 : AppColors.cardBorder,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            dev['isTrial'] == true ? Icons.bolt_rounded : Icons.timelapse_rounded,
+                            size: 12,
+                            color: dev['isTrial'] == true ? Colors.amber.shade900 : AppColors.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            dev['limit']?.toString() ?? 'Standard Pass',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: dev['isTrial'] == true ? Colors.amber.shade900 : AppColors.primary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -356,7 +452,9 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
                     value: dev['progress'],
                     minHeight: 6,
                     backgroundColor: Colors.black.withValues(alpha: 0.06),
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentGreen),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      dev['isTrial'] == true ? Colors.amber.shade800 : AppColors.accentGreen,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -370,10 +468,10 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
                     ),
                     Text(
                       dev['timeLeft'],
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.accentGreen,
+                        color: dev['isTrial'] == true ? Colors.amber.shade900 : AppColors.accentGreen,
                       ),
                     ),
                   ],

@@ -1862,10 +1862,23 @@ class RouterDiscoveryService {
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
 
+    // Proactively configure hotspot profile to accept HTTP-PAP alongside HTTP-CHAP so plain & MD5 logins work
+    try {
+      await client.patch(
+        Uri.parse('$target/rest/ip/hotspot/profile/wavepass-profile'),
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'login-by': 'http-pap,http-chap,mac-cookie'}),
+      ).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+
     try {
       final api = MikrotikApiClient(host: ftpHost);
       if (await api.connectAndLogin(username, password)) {
         await api.executeSentence(['/ip/service/set', '=.id=ftp', '=disabled=no']);
+        await api.executeSentence(['/ip/hotspot/profile/set', '=[find]', '=login-by=http-pap,http-chap,mac-cookie']);
         await api.close();
       }
     } catch (_) {}

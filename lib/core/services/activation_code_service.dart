@@ -56,6 +56,25 @@ class ActivationCodeService {
     return false;
   }
 
+  /// Clears cached activation keys on account logout so stale account states don't persist.
+  Future<void> clearCache([String? email]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (email != null && email.isNotEmpty) {
+        final targetEmail = email.toLowerCase().trim();
+        await prefs.remove('$_keyActivationPrefix$targetEmail');
+        await prefs.remove('$_keyActivatedCodePrefix$targetEmail');
+      } else {
+        final keys = prefs.getKeys();
+        for (final key in keys) {
+          if (key.startsWith(_keyActivationPrefix) || key.startsWith(_keyActivatedCodePrefix)) {
+            await prefs.remove(key);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Gets the redeemed activation code for this account, if any.
   Future<String?> getActivatedCode([String? email]) async {
     final targetEmail = (email ?? await _getCurrentUserEmail()).toLowerCase().trim();

@@ -32,7 +32,7 @@ class VenueStateService {
 
   bool _initialized = false;
 
-  /// Initialize state from SharedPreferences cache, then refresh from cloud.
+  /// Initialize state from SharedPreferences cache, then refresh from cloud if cached.
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
@@ -51,14 +51,34 @@ class VenueStateService {
           'slug': cachedSlug ?? 'venue',
           'logoUrl': cachedLogo,
         };
+        await refreshVenue(targetVenueId: cachedId);
       }
     } catch (_) {}
+  }
 
-    await refreshVenue();
+  /// Clears active venue state from memory and persistent storage.
+  /// Must be called upon user logout.
+  Future<void> clearVenue() async {
+    venueNotifier.value = null;
+    plansNotifier.value = [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(keyVenueId);
+      await prefs.remove(keyLegacyVenueId);
+      await prefs.remove(keyVenueName);
+      await prefs.remove(keyLegacyVenueName);
+      await prefs.remove(keyVenueSlug);
+      await prefs.remove(keyLegacyVenueSlug);
+      await prefs.remove(keyVenueLogo);
+      await prefs.remove(keyLegacyVenueLogo);
+    } catch (_) {}
   }
 
   /// Refreshes the active venue from the backend API or Supabase.
-  Future<Map<String, dynamic>?> refreshVenue({String? targetVenueId}) async {
+  Future<Map<String, dynamic>?> refreshVenue({
+    String? targetVenueId,
+    bool allowFallbackToPrimary = false,
+  }) async {
     isLoadingNotifier.value = true;
     Map<String, dynamic>? venue;
 
@@ -67,7 +87,12 @@ class VenueStateService {
       final vid = targetVenueId ?? prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
       final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
 
-      // 1. Try finding by subdomain or default from backend
+      // If no venue ID or slug is known and primary fallback is not permitted, do nothing
+      if ((vid == null || vid.isEmpty) && (slug == null || slug.isEmpty) && !allowFallbackToPrimary) {
+        return null;
+      }
+
+      // 1. Try finding by subdomain from backend
       if (slug != null && slug.isNotEmpty) {
         try {
           final res = await WavePassApi.instance.getVenueBySubdomain(slug);
@@ -75,26 +100,30 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 2. Try default venue from backend
-      if (venue == null) {
+      // 2. Try target or cached ID from Supabase
+      if (venue == null && vid != null && vid.isNotEmpty) {
+        try {
+          final res = await SupabaseService.instance.client
+              .from('Venue')
+              .select('*')
+              .eq('id', vid)
+              .maybeSingle();
+          if (res != null) venue = Map<String, dynamic>.from(res);
+        } catch (_) {}
+      }
+
+      // 3. Try default venue from backend if explicit or fallback allowed
+      if (venue == null && allowFallbackToPrimary) {
         try {
           final res = await WavePassApi.instance.getDefaultVenue();
           if (res['id'] != null) venue = res;
         } catch (_) {}
       }
 
-      // 3. Fallback to Supabase directly
-      if (venue == null) {
+      // 4. Fallback to Supabase primary venue if permitted
+      if (venue == null && allowFallbackToPrimary) {
         try {
-          if (vid != null && vid.isNotEmpty) {
-            final res = await SupabaseService.instance.client
-                .from('Venue')
-                .select('*')
-                .eq('id', vid)
-                .maybeSingle();
-            if (res != null) venue = Map<String, dynamic>.from(res);
-          }
-          venue ??= await SupabaseService.instance.getPrimaryVenue();
+          venue = await SupabaseService.instance.getPrimaryVenue();
         } catch (_) {}
       }
 
@@ -102,14 +131,14 @@ class VenueStateService {
         venueNotifier.value = Map<String, dynamic>.from(venue);
         final id = venue['id']?.toString() ?? '';
         final name = venue['name']?.toString() ?? 'WavePass Venue';
-        final slug = venue['slug']?.toString() ?? 'venue';
+        final slugVal = venue['slug']?.toString() ?? 'venue';
         final logo = venue['logoUrl']?.toString() ?? '';
 
         await prefs.setString(keyVenueId, id);
         await prefs.setString(keyLegacyVenueId, id);
         await prefs.setString(keyVenueName, name);
         await prefs.setString(keyLegacyVenueName, name);
-        await prefs.setString(keyVenueSlug, slug);
+        await prefs.setString(keyVenueSlug, slugVal);
         if (logo.isNotEmpty) await prefs.setString(keyVenueLogo, logo);
 
         await refreshPlans();

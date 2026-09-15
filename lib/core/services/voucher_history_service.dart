@@ -5,9 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'mikrotik_api_client.dart';
 import 'notification_service.dart';
 import 'router_discovery_service.dart';
+import 'supabase_service.dart';
+import 'venue_state_service.dart';
 
 class VoucherRecord {
   final String code;
+  String? password;
   final String planTitle;
   final String price;
   final int durationSeconds;
@@ -17,9 +20,14 @@ class VoucherRecord {
   DateTime? usedAt;
   String? mac;
   String? ip;
+  String? uptime;
+  int? bytesIn;
+  int? bytesOut;
+  String? source; // 'local', 'router', 'supabase'
 
   VoucherRecord({
     required this.code,
+    this.password,
     required this.planTitle,
     required this.price,
     required this.durationSeconds,
@@ -29,10 +37,40 @@ class VoucherRecord {
     this.usedAt,
     this.mac,
     this.ip,
+    this.uptime,
+    this.bytesIn,
+    this.bytesOut,
+    this.source,
   });
+
+  String get effectivePassword => (password != null && password!.isNotEmpty) ? password! : code;
+  bool get isDualCredential => password != null && password!.isNotEmpty && password != code;
+
+  String get dataTransferredFormatted {
+    final totalBytes = (bytesIn ?? 0) + (bytesOut ?? 0);
+    if (totalBytes <= 0) return '0 KB';
+    if (totalBytes < 1024 * 1024) {
+      return '${(totalBytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (totalBytes < 1024 * 1024 * 1024) {
+      return '${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(totalBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  String get uptimeFormatted {
+    if (uptime != null && uptime!.isNotEmpty && uptime != '0s') return uptime!;
+    if (usedAt == null) return '0s';
+    final elapsed = DateTime.now().difference(usedAt!).inSeconds;
+    if (elapsed <= 0) return '0s';
+    if (elapsed < 60) return '${elapsed}s';
+    if (elapsed < 3600) return '${elapsed ~/ 60}m ${elapsed % 60}s';
+    return '${elapsed ~/ 3600}h ${(elapsed % 3600) ~/ 60}m';
+  }
 
   Map<String, dynamic> toJson() => {
         'code': code,
+        'password': password,
         'planTitle': planTitle,
         'price': price,
         'durationSeconds': durationSeconds,
@@ -42,10 +80,15 @@ class VoucherRecord {
         'usedAt': usedAt?.toIso8601String(),
         'mac': mac,
         'ip': ip,
+        'uptime': uptime,
+        'bytesIn': bytesIn,
+        'bytesOut': bytesOut,
+        'source': source,
       };
 
   factory VoucherRecord.fromJson(Map<String, dynamic> json) => VoucherRecord(
         code: json['code']?.toString() ?? '',
+        password: json['password']?.toString(),
         planTitle: json['planTitle']?.toString() ?? 'Pass',
         price: json['price']?.toString() ?? '₦0',
         durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 3600,
@@ -57,6 +100,10 @@ class VoucherRecord {
         usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
         mac: json['mac']?.toString(),
         ip: json['ip']?.toString(),
+        uptime: json['uptime']?.toString(),
+        bytesIn: (json['bytesIn'] as num?)?.toInt(),
+        bytesOut: (json['bytesOut'] as num?)?.toInt(),
+        source: json['source']?.toString(),
       );
 }
 
@@ -88,10 +135,12 @@ class VoucherHistoryService {
   /// Records a newly generated / sold voucher into history
   Future<void> recordVoucher({
     required String code,
+    String? password,
     required String planTitle,
     required String price,
     required int durationSeconds,
     String? directMode,
+    String? source,
   }) async {
     try {
       final history = await getHistory();
@@ -100,12 +149,14 @@ class VoucherHistoryService {
 
       final record = VoucherRecord(
         code: code,
+        password: password,
         planTitle: planTitle,
         price: price,
         durationSeconds: durationSeconds,
         createdAt: DateTime.now(),
         status: 'unused',
         directMode: directMode,
+        source: source ?? 'local',
       );
 
       history.insert(0, record);
@@ -121,7 +172,7 @@ class VoucherHistoryService {
     }
   }
 
-  /// Retrieves all recorded vouchers
+  /// Retrieves all recorded vouchers from local cache
   Future<List<VoucherRecord>> getHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -133,6 +184,177 @@ class VoucherHistoryService {
       debugPrint('Error loading voucher history: $e');
       return [];
     }
+  }
+
+  /// Fetches comprehensive voucher activity by consolidating:
+  /// 1. Local device sales & batch vouchers history
+  /// 2. Live router hardware user accounts & active sessions
+  /// 3. Supabase cloud vouchers and session records
+  Future<List<VoucherRecord>> fetchFullVoucherActivity([BuildContext? context]) async {
+    final localList = await getHistory();
+    final Map<String, VoucherRecord> consolidated = {
+      for (final v in localList) v.code.toUpperCase(): v,
+    };
+
+    // 1. Query Router Hardware via MikrotikApiClient
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+      final client = MikrotikApiClient(host: localIp);
+
+      if (await client.connectAndLogin(user, pass)) {
+        final activeUsers = await client.getHotspotActiveUsers();
+        final hotspotUsers = await client.getHotspotUsers();
+
+        final Map<String, Map<String, String>> activeMap = {};
+        for (final a in activeUsers) {
+          final u = a['user']?.toString().toUpperCase();
+          if (u != null && u.isNotEmpty) {
+            activeMap[u] = a;
+          }
+        }
+
+        for (final hu in hotspotUsers) {
+          final name = hu['name']?.toString();
+          if (name == null || name.isEmpty || name.toLowerCase() == 'admin') continue;
+
+          final key = name.toUpperCase();
+          final password = hu['password']?.toString() ?? name;
+          final uptimeStr = hu['uptime']?.toString() ?? '0s';
+          final limitUptimeStr = hu['limit-uptime']?.toString() ?? '';
+          final bytesIn = int.tryParse(hu['bytes-in']?.toString() ?? '0') ?? 0;
+          final bytesOut = int.tryParse(hu['bytes-out']?.toString() ?? '0') ?? 0;
+          final uptimeSec = parseRouterOsUptimeSeconds(uptimeStr);
+          final limitSec = parseRouterOsUptimeSeconds(limitUptimeStr);
+
+          final isActive = activeMap.containsKey(key);
+          final activeData = activeMap[key];
+
+          String status = 'unused';
+          if (isActive) {
+            status = 'in_use';
+          } else if (limitSec > 0 && uptimeSec >= limitSec) {
+            status = 'expired';
+          } else if (uptimeSec > 0) {
+            status = 'in_use';
+          }
+
+          final mac = activeData?['mac-address']?.toString() ?? hu['mac-address']?.toString();
+          final ip = activeData?['address']?.toString() ?? hu['address']?.toString();
+          final activeUptime = activeData?['uptime']?.toString() ?? uptimeStr;
+
+          if (consolidated.containsKey(key)) {
+            final existing = consolidated[key]!;
+            existing.status = status;
+            if (mac != null && mac.isNotEmpty && mac != '—') existing.mac = mac;
+            if (ip != null && ip.isNotEmpty && ip != '—') existing.ip = ip;
+            existing.uptime = activeUptime;
+            existing.bytesIn = bytesIn;
+            existing.bytesOut = bytesOut;
+            if (existing.password == null || existing.password!.isEmpty) {
+              existing.password = password;
+            }
+          } else {
+            consolidated[key] = VoucherRecord(
+              code: name,
+              password: password,
+              planTitle: hu['profile']?.toString() ?? 'Hotspot Pass',
+              price: '₦0',
+              durationSeconds: limitSec > 0 ? limitSec : 3600,
+              createdAt: DateTime.now().subtract(Duration(seconds: uptimeSec)),
+              status: status,
+              mac: mac,
+              ip: ip,
+              uptime: activeUptime,
+              bytesIn: bytesIn,
+              bytesOut: bytesOut,
+              source: 'router',
+            );
+          }
+        }
+        await client.close();
+      }
+    } catch (routerErr) {
+      debugPrint('[VoucherHistoryService] Hardware sync note: $routerErr');
+    }
+
+    // 2. Query Supabase Cloud Vouchers & Sessions
+    try {
+      final supabase = SupabaseService.instance.client;
+      final currentVenue = VenueStateService.instance.currentVenue;
+      final venueId = currentVenue?['id']?.toString();
+
+      var query = supabase.from('Voucher').select('*, plan:Plan(*), sessions:Session(*)');
+      if (venueId != null && venueId.isNotEmpty) {
+        query = query.eq('venueId', venueId);
+      }
+      final cloudVouchers = await query.order('issuedAt', ascending: false).limit(200);
+
+      for (final raw in cloudVouchers) {
+        final vMap = Map<String, dynamic>.from(raw as Map);
+        final code = vMap['displayCodeEnc']?.toString() ?? vMap['id']?.toString() ?? '';
+        if (code.isEmpty) continue;
+
+        final key = code.toUpperCase();
+        final plan = vMap['plan'] as Map<String, dynamic>?;
+        final planName = plan?['name']?.toString() ?? 'Pass';
+        final priceMinor = (plan?['priceMinor'] as num?)?.toInt() ?? 0;
+        final durationSec = (plan?['durationSeconds'] as num?)?.toInt() ?? 3600;
+        final cloudStatus = vMap['status']?.toString().toUpperCase();
+
+        String status = 'unused';
+        if (cloudStatus == 'ACTIVE') {
+          status = 'in_use';
+        } else if (cloudStatus == 'EXPIRED' || cloudStatus == 'CONSUMED' || cloudStatus == 'REVOKED') {
+          status = 'expired';
+        }
+
+        final sessions = List<Map<String, dynamic>>.from(vMap['sessions'] as List? ?? []);
+        Map<String, dynamic>? latestSession;
+        if (sessions.isNotEmpty) {
+          latestSession = sessions.first;
+        }
+
+        if (consolidated.containsKey(key)) {
+          final existing = consolidated[key]!;
+          if (existing.status == 'unused' && status != 'unused') {
+            existing.status = status;
+          }
+          if (latestSession != null) {
+            existing.mac ??= latestSession['mac']?.toString();
+            existing.ip ??= latestSession['ip']?.toString();
+            existing.bytesIn ??= (latestSession['bytesIn'] as num?)?.toInt();
+            existing.bytesOut ??= (latestSession['bytesOut'] as num?)?.toInt();
+          }
+        } else {
+          consolidated[key] = VoucherRecord(
+            code: code,
+            planTitle: planName,
+            price: '₦${priceMinor ~/ 100}',
+            durationSeconds: durationSec,
+            createdAt: DateTime.tryParse(vMap['issuedAt']?.toString() ?? '') ?? DateTime.now(),
+            status: status,
+            mac: latestSession?['mac']?.toString(),
+            ip: latestSession?['ip']?.toString(),
+            bytesIn: (latestSession?['bytesIn'] as num?)?.toInt(),
+            bytesOut: (latestSession?['bytesOut'] as num?)?.toInt(),
+            source: 'supabase',
+          );
+        }
+      }
+    } catch (cloudErr) {
+      debugPrint('[VoucherHistoryService] Cloud vouchers fetch note: $cloudErr');
+    }
+
+    final result = consolidated.values.toList();
+    result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // Save consolidated sync state to SharedPreferences
+    await _saveHistory(result);
+
+    return result;
   }
 
   Future<void> _saveHistory(List<VoucherRecord> history) async {

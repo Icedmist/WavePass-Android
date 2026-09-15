@@ -106,5 +106,71 @@ void main() {
       final v = history.firstWhere((item) => item.code == 'WP-EXPIRE-ME');
       expect(v.status, 'expired');
     });
+
+    test('VoucherRecord supports dual credentials, serialization, and telemetry formatting', () {
+      final record = VoucherRecord(
+        code: 'WP-USER100',
+        password: 'PIN-9876',
+        planTitle: 'Daily Pass',
+        price: '₦500',
+        durationSeconds: 86400,
+        createdAt: DateTime.now(),
+        status: 'in_use',
+        uptime: '02:30:00',
+        bytesIn: 52428800, // 50 MB
+        bytesOut: 104857600, // 100 MB
+        source: 'batch',
+      );
+
+      expect(record.isDualCredential, isTrue);
+      expect(record.effectivePassword, 'PIN-9876');
+      expect(record.dataTransferredFormatted, '150.0 MB');
+      expect(record.uptimeFormatted, '02:30:00');
+
+      final json = record.toJson();
+      expect(json['code'], 'WP-USER100');
+      expect(json['password'], 'PIN-9876');
+      expect(json['source'], 'batch');
+
+      final restored = VoucherRecord.fromJson(json);
+      expect(restored.code, 'WP-USER100');
+      expect(restored.password, 'PIN-9876');
+      expect(restored.isDualCredential, isTrue);
+      expect(restored.bytesIn, 52428800);
+      expect(restored.bytesOut, 104857600);
+      expect(restored.dataTransferredFormatted, '150.0 MB');
+    });
+
+    test('recordVoucher stores password and custom source', () async {
+      final service = VoucherHistoryService.instance;
+      await service.recordVoucher(
+        code: 'WP-DUAL-1',
+        password: 'SECRET-PIN',
+        planTitle: 'VIP Pass',
+        price: '₦1000',
+        durationSeconds: 86400,
+        source: 'pos',
+      );
+
+      final history = await service.getHistory();
+      final v = history.firstWhere((item) => item.code == 'WP-DUAL-1');
+      expect(v.isDualCredential, isTrue);
+      expect(v.effectivePassword, 'SECRET-PIN');
+      expect(v.source, 'pos');
+    });
+
+    test('fetchFullVoucherActivity merges and returns consolidated records', () async {
+      final service = VoucherHistoryService.instance;
+      await service.recordVoucher(
+        code: 'WP-HIST-1',
+        planTitle: 'Basic Pass',
+        price: '₦100',
+        durationSeconds: 3600,
+      );
+
+      final activity = await service.fetchFullVoucherActivity();
+      expect(activity.isNotEmpty, isTrue);
+      expect(activity.any((v) => v.code == 'WP-HIST-1'), isTrue);
+    });
   });
 }

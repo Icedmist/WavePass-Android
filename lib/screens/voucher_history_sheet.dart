@@ -33,7 +33,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
-    final history = await VoucherHistoryService.instance.getHistory();
+    final history = await VoucherHistoryService.instance.fetchFullVoucherActivity();
     if (mounted) {
       setState(() {
         _vouchers = history;
@@ -44,8 +44,8 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
 
   Future<void> _checkLifecycle() async {
     setState(() => _isRefreshing = true);
-    await VoucherHistoryService.instance.checkVoucherLifecycle(context);
-    final history = await VoucherHistoryService.instance.getHistory();
+    await VoucherHistoryService.instance.checkVoucherLifecycle(mounted ? context : null);
+    final history = await VoucherHistoryService.instance.fetchFullVoucherActivity();
     if (mounted) {
       setState(() {
         _vouchers = history;
@@ -53,7 +53,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Hardware lifecycle checked! Active and expired passes synced."),
+          content: Text("Hardware & cloud activity synced! All active sessions up to date."),
           backgroundColor: AppColors.accentGreen,
           duration: Duration(seconds: 2),
         ),
@@ -96,7 +96,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
 
   List<VoucherRecord> get _filteredVouchers {
     if (_filter == 'all') {
-      return _vouchers.where((v) => v.status != 'expired').toList();
+      return _vouchers;
     }
     return _vouchers.where((v) => v.status == _filter).toList();
   }
@@ -236,11 +236,11 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    _buildFilterChip('unused', 'Inactive / Available ($unusedCount)'),
+                    _buildFilterChip('all', 'All Activity (${_vouchers.length})'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('unused', 'Available ($unusedCount)'),
                     const SizedBox(width: 8),
                     _buildFilterChip('in_use', 'In Use ($activeCount)'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('all', 'All Valid (${_vouchers.where((v) => v.status != 'expired').length})'),
                     const SizedBox(width: 8),
                     _buildFilterChip('expired', 'Expired ($expiredCount)'),
                   ],
@@ -261,7 +261,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                 Icon(Icons.confirmation_number_outlined, size: 48, color: AppColors.cardBorder),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _filter == 'all' ? "No passes sold yet" : "No $_filter passes found",
+                                  _filter == 'all' ? "No voucher activity found" : "No $_filter passes found",
                                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textLight),
                                 ),
                               ],
@@ -275,6 +275,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                             itemBuilder: (context, index) {
                               final item = _filteredVouchers[index];
                               final statusColor = _statusColor(item.status);
+                              final isDual = item.isDualCredential;
 
                               return Container(
                                 padding: const EdgeInsets.all(16),
@@ -293,34 +294,102 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              item.code,
-                                              style: const TextStyle(
-                                                fontSize: 17,
-                                                fontWeight: FontWeight.w900,
-                                                fontFamily: 'monospace',
-                                                letterSpacing: 1.0,
-                                                color: AppColors.primary,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            IconButton(
-                                              icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textLight),
-                                              visualDensity: VisualDensity.compact,
-                                              padding: EdgeInsets.zero,
-                                              onPressed: () {
-                                                Clipboard.setData(ClipboardData(text: item.code));
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text("Copied ${item.code} to clipboard"),
-                                                    duration: const Duration(seconds: 1),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ],
+                                        Expanded(
+                                          child: isDual
+                                              ? Row(
+                                                  children: [
+                                                    Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Row(
+                                                          children: [
+                                                            const Text(
+                                                              "USER: ",
+                                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight),
+                                                            ),
+                                                            Text(
+                                                              item.code,
+                                                              style: const TextStyle(
+                                                                fontSize: 15,
+                                                                fontWeight: FontWeight.w900,
+                                                                fontFamily: 'monospace',
+                                                                color: AppColors.primary,
+                                                              ),
+                                                            ),
+                                                            IconButton(
+                                                              icon: const Icon(Icons.copy_rounded, size: 14, color: AppColors.textLight),
+                                                              visualDensity: VisualDensity.compact,
+                                                              padding: EdgeInsets.zero,
+                                                              onPressed: () {
+                                                                Clipboard.setData(ClipboardData(text: item.code));
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  SnackBar(content: Text("Copied username ${item.code}"), duration: const Duration(seconds: 1)),
+                                                                );
+                                                              },
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        Row(
+                                                          children: [
+                                                            const Text(
+                                                              "PIN:    ",
+                                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight),
+                                                            ),
+                                                            Text(
+                                                              item.effectivePassword,
+                                                              style: const TextStyle(
+                                                                fontSize: 15,
+                                                                fontWeight: FontWeight.w900,
+                                                                fontFamily: 'monospace',
+                                                                color: AppColors.primary,
+                                                              ),
+                                                            ),
+                                                            IconButton(
+                                                              icon: const Icon(Icons.copy_rounded, size: 14, color: AppColors.textLight),
+                                                              visualDensity: VisualDensity.compact,
+                                                              padding: EdgeInsets.zero,
+                                                              onPressed: () {
+                                                                Clipboard.setData(ClipboardData(text: item.effectivePassword));
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  SnackBar(content: Text("Copied PIN ${item.effectivePassword}"), duration: const Duration(seconds: 1)),
+                                                                );
+                                                              },
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                )
+                                              : Row(
+                                                  children: [
+                                                    Text(
+                                                      item.code,
+                                                      style: const TextStyle(
+                                                        fontSize: 17,
+                                                        fontWeight: FontWeight.w900,
+                                                        fontFamily: 'monospace',
+                                                        letterSpacing: 1.0,
+                                                        color: AppColors.primary,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textLight),
+                                                      visualDensity: VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                      onPressed: () {
+                                                        Clipboard.setData(ClipboardData(text: item.code));
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text("Copied ${item.code} to clipboard"),
+                                                            duration: const Duration(seconds: 1),
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
                                         ),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -352,12 +421,30 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                             color: AppColors.primary,
                                           ),
                                         ),
-                                        Text(
-                                          _formatTime(item.createdAt),
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: AppColors.textLight,
-                                          ),
+                                        Row(
+                                          children: [
+                                            if (item.source != null && item.source != 'local') ...[
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                margin: const EdgeInsets.only(right: 6),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.cardBorder,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  item.source!.toUpperCase(),
+                                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textLight),
+                                                ),
+                                              ),
+                                            ],
+                                            Text(
+                                              _formatTime(item.createdAt),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.textLight,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
@@ -369,25 +456,51 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                           color: AppColors.accentGreen.withValues(alpha: 0.08),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
-                                        child: Row(
+                                        child: Column(
                                           children: [
-                                            const Icon(Icons.wifi_tethering_rounded, size: 14, color: AppColors.accentGreen),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                "Active: MAC ${item.mac ?? 'Unknown'} • IP ${item.ip ?? '—'}",
-                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accentGreen),
-                                              ),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.wifi_tethering_rounded, size: 14, color: AppColors.accentGreen),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    "Active: MAC ${item.mac ?? 'Unknown'} • IP ${item.ip ?? '—'}",
+                                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accentGreen),
+                                                  ),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () async {
+                                                    await VoucherHistoryService.instance.expireVoucher(item.code);
+                                                    _loadData();
+                                                  },
+                                                  child: const Text("Disconnect", style: TextStyle(fontSize: 10, color: AppColors.accentRed)),
+                                                ),
+                                              ],
                                             ),
-                                            TextButton(
-                                              onPressed: () async {
-                                                await VoucherHistoryService.instance.expireVoucher(item.code);
-                                                _loadData();
-                                              },
-                                              child: const Text("Disconnect", style: TextStyle(fontSize: 10, color: AppColors.accentRed)),
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                const SizedBox(width: 20),
+                                                Text(
+                                                  "Uptime: ${item.uptimeFormatted}  •  Data: ${item.dataTransferredFormatted}",
+                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
+                                      ),
+                                    ] else if (item.status == 'expired') ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.history_rounded, size: 12, color: AppColors.textLight),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "Used: ${item.uptimeFormatted}  •  Transferred: ${item.dataTransferredFormatted}",
+                                            style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/router/app_router.dart';
 import '../../core/services/system_admin_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -210,11 +211,39 @@ class _SystemMonitorScreenState extends State<SystemMonitorScreen> {
                                       ],
                                     ),
                                     Text(
-                                      "${v['activeSessions'] ?? 0} active devices",
+                                      "${v['activeSessions'] ?? 0} active devices • ${v['vouchersCount'] ?? 0} vouchers",
                                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary),
                                     ),
                                   ],
                                 ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () async {
+                                        await SystemAdminService.instance.switchActiveVenue(v);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text("Switched app context to venue: ${v['name']}"),
+                                              backgroundColor: AppColors.primary,
+                                            ),
+                                          );
+                                          context.go(AppRouter.dashboard);
+                                        }
+                                      },
+                                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                                      label: const Text("Manage & View in App", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.primary,
+                                        side: const BorderSide(color: AppColors.primary),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

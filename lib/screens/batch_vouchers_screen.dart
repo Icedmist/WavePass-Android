@@ -26,11 +26,15 @@ class BatchVouchersScreen extends StatefulWidget {
 class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
   final _qtyCtrl = TextEditingController(text: '10');
   final _prefixCtrl = TextEditingController(text: 'WP-');
+  final _passPrefixCtrl = TextEditingController(text: '');
   final _searchCtrl = TextEditingController();
 
   int _codeLength = 6;
   String _charPattern = 'Alphanumeric'; // 'Alphanumeric', 'Numbers Only', 'Uppercase Only'
   String _userMode = 'Voucher Code'; // 'Voucher Code', 'Username & Password'
+
+  int _passLength = 4;
+  String _passPattern = 'Numbers Only'; // 'Numbers Only', 'Alphanumeric', 'Uppercase Only', 'Same as Username'
 
   String? _selectedVenueId;
   String? _selectedPlanId;
@@ -60,6 +64,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
     _qtyCtrl.dispose();
     _prefixCtrl.dispose();
+    _passPrefixCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -200,11 +205,18 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       }
 
       final List<Map<String, dynamic>> compiled = [];
+      final passPrefix = _passPrefixCtrl.text.trim();
       for (int i = 0; i < rawCodes.length; i++) {
         final code = rawCodes[i];
-        final password = _userMode == 'Username & Password'
-            ? _generateRandomSegment(4, 'Numbers Only')
-            : code;
+        String password = code;
+        if (_userMode == 'Username & Password') {
+          if (_passPattern == 'Same as Username') {
+            password = code;
+          } else {
+            final seg = _generateRandomSegment(_passLength, _passPattern);
+            password = '$passPrefix$seg';
+          }
+        }
         compiled.add({
           'code': code,
           'password': password,
@@ -243,12 +255,15 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       // Record batch vouchers in local history
       for (final item in compiled) {
         final code = item['code'] as String;
+        final pass = item['password'] as String?;
         VoucherHistoryService.instance.recordVoucher(
           code: code,
+          password: pass,
           planTitle: planName,
           price: price,
           durationSeconds: durationSec,
           directMode: routerMode,
+          source: 'batch',
         );
       }
 
@@ -718,6 +733,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                           DropdownMenuItem(value: 4, child: Text('4 chars')),
                           DropdownMenuItem(value: 6, child: Text('6 chars')),
                           DropdownMenuItem(value: 8, child: Text('8 chars')),
+                          DropdownMenuItem(value: 10, child: Text('10 chars')),
                         ],
                         onChanged: (val) => setState(() => _codeLength = val ?? 6),
                       ),
@@ -749,6 +765,69 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                   ],
                   onChanged: (val) => setState(() => _userMode = val ?? 'Voucher Code'),
                 ),
+
+                // Password Customization Parameters (if Username & Password mode)
+                if (_userMode == 'Username & Password') ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Password / PIN Customization',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: _passLength,
+                                decoration: const InputDecoration(labelText: 'PIN Length', border: OutlineInputBorder()),
+                                items: const [
+                                  DropdownMenuItem(value: 4, child: Text('4 chars')),
+                                  DropdownMenuItem(value: 6, child: Text('6 chars')),
+                                  DropdownMenuItem(value: 8, child: Text('8 chars')),
+                                  DropdownMenuItem(value: 10, child: Text('10 chars')),
+                                ],
+                                onChanged: (val) => setState(() => _passLength = val ?? 4),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _passPattern,
+                                decoration: const InputDecoration(labelText: 'PIN Pattern', border: OutlineInputBorder()),
+                                items: const [
+                                  DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers')),
+                                  DropdownMenuItem(value: 'Alphanumeric', child: Text('Alpha-Num')),
+                                  DropdownMenuItem(value: 'Uppercase Only', child: Text('Letters')),
+                                  DropdownMenuItem(value: 'Same as Username', child: Text('Same as Code')),
+                                ],
+                                onChanged: (val) => setState(() => _passPattern = val ?? 'Numbers Only'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _passPrefixCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Password Prefix (Optional)',
+                            border: OutlineInputBorder(),
+                            hintText: 'e.g. PIN-',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 // Generate Button

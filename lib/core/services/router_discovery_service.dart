@@ -1743,55 +1743,64 @@ class RouterDiscoveryService {
       ctrl = await Socket.connect(host, 21, timeout: const Duration(seconds: 4));
       final stream = ctrl.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).asBroadcastStream();
 
-      Future<String> waitForCode(String codePrefix) {
+      Future<String> waitForCodes(List<String> codePrefixes) {
         final c = Completer<String>();
         final sub = stream.listen((line) {
-          if (line.startsWith(codePrefix)) {
+          if (codePrefixes.any((prefix) => line.startsWith(prefix))) {
             if (!c.isCompleted) c.complete(line);
           }
         });
         return c.future.timeout(const Duration(seconds: 5), onTimeout: () {
           sub.cancel();
-          throw TimeoutException('Timed out waiting for FTP code $codePrefix');
+          throw TimeoutException('Timed out waiting for FTP codes $codePrefixes');
         }).whenComplete(() => sub.cancel());
       }
 
-      await waitForCode('220');
+      await waitForCodes(['220']);
 
       ctrl.write('USER $username\r\n');
       await ctrl.flush();
-      await waitForCode('331');
+      await waitForCodes(['331', '230']);
 
-      ctrl.write('PASS $password\r\n');
-      await ctrl.flush();
-      await waitForCode('230');
+      if (password.isNotEmpty) {
+        ctrl.write('PASS $password\r\n');
+        await ctrl.flush();
+        await waitForCodes(['230']);
+      }
 
       ctrl.write('TYPE I\r\n');
       await ctrl.flush();
-      await waitForCode('200');
+      await waitForCodes(['200']);
 
       ctrl.write('PASV\r\n');
       await ctrl.flush();
-      final pasvLine = await waitForCode('227');
+      final pasvLine = await waitForCodes(['227']);
 
       final pasvMatch = RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)').firstMatch(pasvLine);
       if (pasvMatch == null) throw Exception('Invalid PASV response: $pasvLine');
+
+      final h1 = pasvMatch.group(1)!;
+      final h2 = pasvMatch.group(2)!;
+      final h3 = pasvMatch.group(3)!;
+      final h4 = pasvMatch.group(4)!;
+      final pasvIp = '$h1.$h2.$h3.$h4';
 
       final p1 = int.parse(pasvMatch.group(5)!);
       final p2 = int.parse(pasvMatch.group(6)!);
       final dataPort = (p1 * 256) + p2;
 
-      data = await Socket.connect(host, dataPort, timeout: const Duration(seconds: 4));
+      final connectHost = (pasvIp != '0.0.0.0' && !pasvIp.startsWith('127.')) ? pasvIp : host;
+      data = await Socket.connect(connectHost, dataPort, timeout: const Duration(seconds: 4));
 
       ctrl.write('STOR $remotePath\r\n');
       await ctrl.flush();
-      await waitForCode('150');
+      await waitForCodes(['150', '125']);
 
       data.add(utf8.encode(content));
       await data.flush();
       await data.close();
 
-      await waitForCode('226');
+      await waitForCodes(['226', '250']);
 
       try {
         ctrl.write('QUIT\r\n');
@@ -1823,6 +1832,13 @@ class RouterDiscoveryService {
     cleanHost = cleanHost.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
     if (cleanHost.isEmpty) cleanHost = ip.trim();
 
+    // If endpoint is a cloud tunnel, FTP must connect via direct local LAN IP
+    final ftpHost = (cleanHost.contains('.') && !cleanHost.contains('nexawavepass.com'))
+        ? cleanHost
+        : ip.trim().isNotEmpty
+            ? ip.trim()
+            : '192.168.88.1';
+
     var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : ip.trim();
     if (!target.startsWith('http://') && !target.startsWith('https://')) {
       target = 'http://$target';
@@ -1834,6 +1850,26 @@ class RouterDiscoveryService {
     final client = createRouterClient();
     final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
 
+    // 0. Proactively ensure FTP service is enabled on MikroTik (in case it is disabled by default)
+    try {
+      await client.patch(
+        Uri.parse('$target/rest/ip/service/ftp'),
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'disabled': 'false'}),
+      ).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+
+    try {
+      final api = MikrotikApiClient(host: ftpHost);
+      if (await api.connectAndLogin(username, password)) {
+        await api.executeSentence(['/ip/service/set', '=.id=ftp', '=disabled=no']);
+        await api.close();
+      }
+    } catch (_) {}
+
     for (final entry in files.entries) {
       final fileName = entry.key;
       final content = entry.value;
@@ -1844,7 +1880,7 @@ class RouterDiscoveryService {
         if (success) break;
         try {
           success = await _uploadViaFtp(
-            host: cleanHost,
+            host: ftpHost,
             username: username,
             password: password,
             remotePath: '$folder/$fileName',

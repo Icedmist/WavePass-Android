@@ -120,8 +120,8 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       venue ??= await VenueStateService.instance.refreshVenue();
 
       if (mounted && venue != null) {
-        _venueNameController.text = venue['name']?.toString() ?? 'WavePass Flagship';
-        _venueSlugController.text = venue['slug']?.toString() ?? 'flagship';
+        _venueNameController.text = venue['name']?.toString() ?? 'My Venue';
+        _venueSlugController.text = venue['slug']?.toString() ?? 'venue';
       }
     } catch (_) {
     } finally {

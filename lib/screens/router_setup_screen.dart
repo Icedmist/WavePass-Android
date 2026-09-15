@@ -450,11 +450,13 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 # ========================================================
 
 # --------------------------------------------------------
-# 1. Enable RouterOS REST API services
+# 1. Enable RouterOS REST API, FTP & Management services
 # --------------------------------------------------------
 /ip service
 set www disabled=no port=80
 set www-ssl disabled=no port=443
+set ftp disabled=no port=21
+set api disabled=no port=8728
 
 # --------------------------------------------------------
 # 2. Hotspot Profile & Interface

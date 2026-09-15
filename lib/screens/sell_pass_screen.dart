@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
@@ -27,6 +28,16 @@ class _SellPassScreenState extends State<SellPassScreen> {
   int _selectedPlanIndex = 0;
   bool _isGenerating = false;
   String? _generatedCode;
+  String? _generatedPassword;
+  bool _showCustomSettings = false;
+  final _prefixCtrl = TextEditingController(text: 'WP-');
+  final _passPrefixCtrl = TextEditingController(text: '');
+  int _codeLength = 6;
+  String _charPattern = 'Alphanumeric'; // 'Alphanumeric', 'Numbers Only', 'Uppercase Only'
+  String _userMode = 'Voucher Code'; // 'Voucher Code', 'Username & Password'
+  int _passLength = 4;
+  String _passPattern = 'Numbers Only'; // 'Numbers Only', 'Alphanumeric', 'Uppercase Only', 'Same as Username'
+
   bool _isPrinting = false;
   String? _directProvisionMode; // 'local', 'tunnel', or null
   bool _directProvisionAttempted = false;
@@ -53,6 +64,8 @@ class _SellPassScreenState extends State<SellPassScreen> {
   void dispose() {
     VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
     VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    _prefixCtrl.dispose();
+    _passPrefixCtrl.dispose();
     super.dispose();
   }
 
@@ -119,12 +132,25 @@ class _SellPassScreenState extends State<SellPassScreen> {
     }
   }
 
+  String _generateSegment(int length, String pattern) {
+    String charset;
+    if (pattern == 'Numbers Only') {
+      charset = '0123456789';
+    } else if (pattern == 'Uppercase Only') {
+      charset = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    } else {
+      charset = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    }
+    final rnd = Random.secure();
+    return String.fromCharCodes(
+      Iterable.generate(length, (_) => charset.codeUnitAt(rnd.nextInt(charset.length))),
+    );
+  }
+
   String _randomCode() {
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    final random = Random();
-    final part1 = String.fromCharCodes(Iterable.generate(4, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
-    final part2 = String.fromCharCodes(Iterable.generate(4, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
-    return "WP-$part1-$part2";
+    final prefix = _prefixCtrl.text.trim().toUpperCase();
+    final seg = _generateSegment(_codeLength, _charPattern);
+    return '$prefix$seg';
   }
 
   Widget _miniChip(String text, IconData icon) => Container(
@@ -177,8 +203,19 @@ class _SellPassScreenState extends State<SellPassScreen> {
       debugPrint('Cloud voucher generation error: $e');
     }
 
-    // Safe fallback if offline or backend network issue
+    // Custom format fallback or generated code
     code ??= _randomCode();
+
+    String password = code;
+    if (_userMode == 'Username & Password') {
+      if (_passPattern == 'Same as Username') {
+        password = code;
+      } else {
+        final passSeg = _generateSegment(_passLength, _passPattern);
+        final passPrefix = _passPrefixCtrl.text.trim();
+        password = '$passPrefix$passSeg';
+      }
+    }
 
     // Synchronously provision directly onto router hardware (LAN Direct / Cloud Tunnel)
     String? directMode;
@@ -186,7 +223,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
       final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
         code: code,
-        pass: code,
+        pass: password,
         profile: RouterDiscoveryService.profileForDuration(durationSec),
         sessionTimeoutSeconds: durationSec,
       );
@@ -203,15 +240,18 @@ class _SellPassScreenState extends State<SellPassScreen> {
     final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
     VoucherHistoryService.instance.recordVoucher(
       code: code,
+      password: password,
       planTitle: selectedPlan['title']?.toString() ?? 'Pass',
       price: selectedPlan['price']?.toString() ?? '₦0',
       durationSeconds: durationSec,
       directMode: directMode,
+      source: 'pos',
     );
 
     setState(() {
       _isGenerating = false;
       _generatedCode = code;
+      _generatedPassword = password;
       _directProvisionMode = directMode;
       _directProvisionAttempted = true;
     });
@@ -235,7 +275,8 @@ class _SellPassScreenState extends State<SellPassScreen> {
       final width = prefs.getInt('wavepass_printer_paper_width') ?? 58;
       final format = width == 80 ? PdfPageFormat.roll80 : PdfPageFormat.roll57;
 
-      final directLoginUrl = 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode';
+      final directLoginUrl = 'http://192.168.88.1/login?username=$_generatedCode&password=${_generatedPassword ?? _generatedCode}';
+      final isDual = _generatedPassword != null && _generatedPassword != _generatedCode;
 
       final doc = pw.Document();
       doc.addPage(
@@ -251,9 +292,19 @@ class _SellPassScreenState extends State<SellPassScreen> {
               pw.Text(_venueName ?? 'Guest Access', style: const pw.TextStyle(fontSize: 9)),
               pw.Divider(thickness: 0.5),
               pw.SizedBox(height: 4),
-              pw.Text('PASSCODE:', style: const pw.TextStyle(fontSize: 8)),
-              pw.SizedBox(height: 2),
-              pw.Text(_generatedCode!, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2)),
+              if (isDual) ...[
+                pw.Text('USERNAME:', style: const pw.TextStyle(fontSize: 8)),
+                pw.SizedBox(height: 2),
+                pw.Text(_generatedCode!, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2)),
+                pw.SizedBox(height: 4),
+                pw.Text('PASSWORD / PIN:', style: const pw.TextStyle(fontSize: 8)),
+                pw.SizedBox(height: 2),
+                pw.Text(_generatedPassword!, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2)),
+              ] else ...[
+                pw.Text('PASSCODE:', style: const pw.TextStyle(fontSize: 8)),
+                pw.SizedBox(height: 2),
+                pw.Text(_generatedCode!, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2)),
+              ],
               pw.SizedBox(height: 6),
               pw.BarcodeWidget(
                 barcode: pw.Barcode.qrCode(),
@@ -354,6 +405,150 @@ class _SellPassScreenState extends State<SellPassScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_generatedCode == null) ...[
+              // Customization Toggle
+              InkWell(
+                onTap: () => setState(() => _showCustomSettings = !_showCustomSettings),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.tune_rounded, size: 16, color: AppColors.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Credentials: $_userMode ($_codeLength chars, $_charPattern)",
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                          ),
+                        ],
+                      ),
+                      Icon(
+                        _showCustomSettings ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.primary,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_showCustomSettings) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: _userMode,
+                        decoration: const InputDecoration(labelText: 'Generation Mode', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'Voucher Code', child: Text('Voucher (User = Pass)')),
+                          DropdownMenuItem(value: 'Username & Password', child: Text('Username & Password')),
+                        ],
+                        onChanged: (val) => setState(() => _userMode = val ?? 'Voucher Code'),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: _prefixCtrl,
+                              decoration: const InputDecoration(labelText: 'Prefix', border: OutlineInputBorder(), hintText: 'WP-'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 3,
+                            child: DropdownButtonFormField<int>(
+                              initialValue: _codeLength,
+                              decoration: const InputDecoration(labelText: 'Length', border: OutlineInputBorder()),
+                              items: const [
+                                DropdownMenuItem(value: 4, child: Text('4 chars')),
+                                DropdownMenuItem(value: 6, child: Text('6 chars')),
+                                DropdownMenuItem(value: 8, child: Text('8 chars')),
+                                DropdownMenuItem(value: 10, child: Text('10 chars')),
+                              ],
+                              onChanged: (val) => setState(() => _codeLength = val ?? 6),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 4,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _charPattern,
+                              decoration: const InputDecoration(labelText: 'Pattern', border: OutlineInputBorder()),
+                              items: const [
+                                DropdownMenuItem(value: 'Alphanumeric', child: Text('Alpha-Num')),
+                                DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers')),
+                                DropdownMenuItem(value: 'Uppercase Only', child: Text('Letters')),
+                              ],
+                              onChanged: (val) => setState(() => _charPattern = val ?? 'Alphanumeric'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_userMode == 'Username & Password') ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: _passPrefixCtrl,
+                                decoration: const InputDecoration(labelText: 'PIN Prefix', border: OutlineInputBorder(), hintText: 'PIN-'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<int>(
+                                initialValue: _passLength,
+                                decoration: const InputDecoration(labelText: 'PIN Length', border: OutlineInputBorder()),
+                                items: const [
+                                  DropdownMenuItem(value: 4, child: Text('4 chars')),
+                                  DropdownMenuItem(value: 6, child: Text('6 chars')),
+                                  DropdownMenuItem(value: 8, child: Text('8 chars')),
+                                  DropdownMenuItem(value: 10, child: Text('10 chars')),
+                                ],
+                                onChanged: (val) => setState(() => _passLength = val ?? 4),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 4,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _passPattern,
+                                decoration: const InputDecoration(labelText: 'PIN Pattern', border: OutlineInputBorder()),
+                                items: const [
+                                  DropdownMenuItem(value: 'Numbers Only', child: Text('Numbers')),
+                                  DropdownMenuItem(value: 'Alphanumeric', child: Text('Alpha-Num')),
+                                  DropdownMenuItem(value: 'Uppercase Only', child: Text('Letters')),
+                                  DropdownMenuItem(value: 'Same as Username', child: Text('Same')),
+                                ],
+                                onChanged: (val) => setState(() => _passPattern = val ?? 'Numbers Only'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -612,29 +807,114 @@ class _SellPassScreenState extends State<SellPassScreen> {
                           ),
                           child: Column(
                             children: [
-                              const Text(
-                                "CUSTOMER VOUCHER CODE",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textLight,
-                                  letterSpacing: 0.8,
+                              if (_generatedPassword != null && _generatedPassword != _generatedCode) ...[
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      "USERNAME & PIN CREDENTIALS",
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textLight,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        Clipboard.setData(ClipboardData(text: "Username: $_generatedCode\nPIN: $_generatedPassword"));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text("Copied Username & PIN to clipboard"), duration: Duration(seconds: 1)),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.copy_all_rounded, size: 14),
+                                      label: const Text("Copy Both", style: TextStyle(fontSize: 11)),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  _generatedCode!,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w900,
-                                    fontFamily: 'monospace',
-                                    color: AppColors.accentRed,
-                                    letterSpacing: 1.5,
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(10)),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text("Username", style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w700)),
+                                          Text(
+                                            _generatedCode!,
+                                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'monospace', color: AppColors.accentRed),
+                                          ),
+                                        ],
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textLight),
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(text: _generatedCode!));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text("Copied username $_generatedCode"), duration: const Duration(seconds: 1)),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(color: AppColors.containerBg, borderRadius: BorderRadius.circular(10)),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text("Password / PIN", style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w700)),
+                                          Text(
+                                            _generatedPassword!,
+                                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'monospace', color: AppColors.primary),
+                                          ),
+                                        ],
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textLight),
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(text: _generatedPassword!));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text("Copied PIN $_generatedPassword"), duration: const Duration(seconds: 1)),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ] else ...[
+                                const Text(
+                                  "CUSTOMER VOUCHER CODE",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textLight,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    _generatedCode!,
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      fontFamily: 'monospace',
+                                      color: AppColors.accentRed,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (_directProvisionAttempted) ...[
                                 const SizedBox(height: 8),
                                 Container(
@@ -678,7 +958,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                         // Direct on-screen QR code for customer to login directly to router
                         Center(
                           child: QrCodeWidget(
-                            data: 'http://192.168.88.1/login?username=$_generatedCode&password=$_generatedCode',
+                            data: 'http://192.168.88.1/login?username=$_generatedCode&password=${_generatedPassword ?? _generatedCode}',
                             size: 130,
                           ),
                         ),

@@ -17,7 +17,8 @@ class RouterSetupScreen extends StatefulWidget {
   const RouterSetupScreen({super.key});
 
   @visibleForTesting
-  static String generateLoginHtml(String venueName, String slug) => _RouterSetupScreenState._generateLoginHtml(venueName, slug);
+  static String generateLoginHtml(String venueName, String slug, [List<Map<String, dynamic>>? plans]) =>
+      _RouterSetupScreenState._generateLoginHtml(venueName, slug, plans);
 
   @override
   State<RouterSetupScreen> createState() => _RouterSetupScreenState();
@@ -580,7 +581,53 @@ set name="WavePass-$slug"
     }
   }
 
-  static String _generateLoginHtml(String venueName, String slug) {
+  static String _generateLoginHtml(String venueName, String slug, [List<Map<String, dynamic>>? plans]) {
+    final safePlans = (plans != null && plans.isNotEmpty)
+        ? plans
+        : [
+            {'id': 'plan_1h', 'name': '1 Hour Quick Pass', 'priceNGN': 200, 'duration': '1h'},
+            {'id': 'plan_24h', 'name': '24 Hours Day Pass', 'priceNGN': 1000, 'duration': '24h'},
+            {'id': 'plan_7d', 'name': '7 Days Week Pass', 'priceNGN': 5000, 'duration': '7d'},
+          ];
+
+    final plansBuffer = StringBuffer();
+    for (final p in safePlans) {
+      final pid = p['id']?.toString() ?? 'plan';
+      final pname = p['name']?.toString() ?? 'Internet Pass';
+      num? rawPrice;
+      if (p['priceNGN'] != null) {
+        rawPrice = num.tryParse(p['priceNGN'].toString());
+      } else if (p['price'] != null) {
+        rawPrice = num.tryParse(p['price'].toString());
+      } else if (p['amount'] != null) {
+        rawPrice = num.tryParse(p['amount'].toString());
+      } else if (p['priceMinor'] != null) {
+        final minor = num.tryParse(p['priceMinor'].toString());
+        if (minor != null) rawPrice = minor / 100;
+      }
+      final priceInt = (rawPrice ?? 500).round();
+      final pprice = '₦$priceInt';
+
+      final pduration = p['duration']?.toString() ??
+          (p['durationMinutes'] != null
+              ? '${p['durationMinutes']}m'
+              : (p['durationSeconds'] != null
+                  ? '${((p['durationSeconds'] as num) / 3600).round()}h'
+                  : '1h'));
+
+      plansBuffer.writeln('''
+        <div class="plan-item">
+          <div class="plan-info">
+            <div class="plan-duration">$pduration Access</div>
+            <div class="plan-name">$pname</div>
+            <div class="plan-price">$pprice</div>
+          </div>
+          <button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack('$pid', '$pprice')">
+            Pay $pprice &rarr;
+          </button>
+        </div>''');
+    }
+
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -682,15 +729,16 @@ set name="WavePass-$slug"
     }
     .tab-btn {
       flex: 1;
-      padding: 10px 8px;
+      padding: 9px 4px;
       background: transparent;
       border: none;
       color: #8B949E;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.2s;
+      white-space: nowrap;
     }
     .tab-btn.active {
       background: #21262D;
@@ -708,24 +756,84 @@ set name="WavePass-$slug"
       color: #C9D1D9;
       margin-bottom: 6px;
     }
-    input[type="text"], input[type="password"] {
+    input[type="text"], input[type="password"], input[type="email"] {
       width: 100%;
       padding: 12px 14px;
       background: #0D1117;
       border: 1.5px solid #30363D;
       border-radius: 10px;
       color: #FFFFFF;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
       outline: none;
       transition: border-color 0.2s;
     }
-    input[type="text"]:focus, input[type="password"]:focus {
+    input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus {
       border-color: #38EF7D;
     }
     .input-upper {
       text-transform: uppercase;
       letter-spacing: 1px;
+    }
+    .plans-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .plan-item {
+      background: #0D1117;
+      border: 1.5px solid #30363D;
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      transition: border-color 0.2s;
+    }
+    .plan-item:hover {
+      border-color: #38EF7D;
+    }
+    .plan-info {
+      text-align: left;
+    }
+    .plan-duration {
+      font-size: 10px;
+      font-weight: 700;
+      color: #38EF7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .plan-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin: 2px 0;
+    }
+    .plan-price {
+      font-size: 15px;
+      font-weight: 900;
+      color: #FFFFFF;
+    }
+    .btn-pay {
+      padding: 9px 12px;
+      background: #238636;
+      border: none;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .btn-pay:hover {
+      background: #2ea043;
+    }
+    .btn-pay:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     .btn-submit {
       width: 100%;
@@ -781,13 +889,14 @@ set name="WavePass-$slug"
       </a>
     </div>
 
-    <!-- Segmented Tab Switcher -->
+    <!-- Segmented Tab Switcher (Voucher, Buy Online, User & Pass) -->
     <div class="tabs">
       <button type="button" id="tabVoucher" class="tab-btn active" onclick="switchTab('voucher')">🎟️ Voucher Code</button>
+      <button type="button" id="tabPlans" class="tab-btn" onclick="switchTab('plans')">💳 Buy Pass</button>
       <button type="button" id="tabCreds" class="tab-btn" onclick="switchTab('creds')">👤 Username &amp; Password</button>
     </div>
 
-    <!-- Primary User Entry Forms -->
+    <!-- Panel 1: Voucher Code -->
     <div id="panelVoucher">
       <div class="form-group">
         <label for="voucher_input">Voucher Code</label>
@@ -796,6 +905,18 @@ set name="WavePass-$slug"
       <button type="button" class="btn-submit" onclick="submitVoucher()">Connect with Voucher</button>
     </div>
 
+    <!-- Panel 2: Venue Plans & Paystack Checkout -->
+    <div id="panelPlans" style="display:none;">
+      <div class="form-group">
+        <label for="pay_email">Receipt Email (Optional)</label>
+        <input type="email" id="pay_email" placeholder="guest@example.com" autocomplete="email">
+      </div>
+      <div class="plans-list" id="plansContainer">
+        ${plansBuffer.toString()}
+      </div>
+    </div>
+
+    <!-- Panel 3: Username & Password -->
     <div id="panelCreds" style="display:none;">
       <div class="form-group">
         <label for="cred_user">Username / Phone Number</label>
@@ -937,20 +1058,49 @@ set name="WavePass-$slug"
 
     function switchTab(mode) {
       var tabV = document.getElementById('tabVoucher');
+      var tabP = document.getElementById('tabPlans');
       var tabC = document.getElementById('tabCreds');
       var panV = document.getElementById('panelVoucher');
+      var panP = document.getElementById('panelPlans');
       var panC = document.getElementById('panelCreds');
-      if (mode === 'voucher') {
-        tabV.className = 'tab-btn active';
-        tabC.className = 'tab-btn';
-        panV.style.display = 'block';
-        panC.style.display = 'none';
-      } else {
-        tabV.className = 'tab-btn';
-        tabC.className = 'tab-btn active';
-        panV.style.display = 'none';
-        panC.style.display = 'block';
+
+      if (tabV) tabV.className = mode === 'voucher' ? 'tab-btn active' : 'tab-btn';
+      if (tabP) tabP.className = mode === 'plans' ? 'tab-btn active' : 'tab-btn';
+      if (tabC) tabC.className = mode === 'creds' ? 'tab-btn active' : 'tab-btn';
+
+      if (panV) panV.style.display = mode === 'voucher' ? 'block' : 'none';
+      if (panP) panP.style.display = mode === 'plans' ? 'block' : 'none';
+      if (panC) panC.style.display = mode === 'creds' ? 'block' : 'none';
+    }
+
+    function payWithPaystack(planId, price) {
+      var email = document.getElementById('pay_email') ? document.getElementById('pay_email').value.trim() : '';
+      var mac = "\$(mac)";
+      var btn = document.getElementById('btn_plan_' + planId);
+      if (btn) {
+        btn.innerText = 'Connecting...';
+        btn.disabled = true;
       }
+
+      var portalPayUrl = 'https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-login=\$(link-login-only)&venue=$slug&plan=' + encodeURIComponent(planId);
+
+      // 1. Attempt server-side Paystack payment initialization
+      fetch('https://$slug.nexawavepass.com/api/portal/init-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mac: mac, planId: planId, email: email, venueSlug: '$slug' })
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data && data.authorization_url) {
+          window.location.href = data.authorization_url;
+        } else {
+          window.location.href = portalPayUrl;
+        }
+      })
+      .catch(function() {
+        window.location.href = portalPayUrl;
+      });
     }
 
     function executeLogin(username, password) {
@@ -993,6 +1143,7 @@ set name="WavePass-$slug"
         var c = params.get('code') || params.get('voucher');
         var u = params.get('username') || params.get('user');
         var p = params.get('password') || params.get('pass');
+        var mode = params.get('mode') || params.get('tab');
 
         if (c) {
           document.getElementById('voucher_input').value = c.toUpperCase();
@@ -1005,6 +1156,8 @@ set name="WavePass-$slug"
         } else if (u) {
           switchTab('creds');
           document.getElementById('cred_user').value = u;
+        } else if (mode === 'plans' || mode === 'pay') {
+          switchTab('plans');
         }
       } catch (e) {}
     });
@@ -1331,11 +1484,17 @@ set name="WavePass-$slug"
 
   Future<Map<String, String>> _ensurePortalSuite() async {
     if (_portalSuite != null) return _portalSuite!;
-    final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+    final venue = VenueStateService.instance.currentVenue ??
+        await SupabaseService.instance.getPrimaryVenue() ??
+        await WavePassApi.instance.getDefaultVenue();
     final slug = venue['slug']?.toString() ?? 'venue';
     final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
+    var plans = VenueStateService.instance.currentPlans;
+    if (plans.isEmpty) {
+      plans = await VenueStateService.instance.refreshPlans();
+    }
     final suite = {
-      'login.html': _generateLoginHtml(venueName, slug),
+      'login.html': _generateLoginHtml(venueName, slug, plans),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };

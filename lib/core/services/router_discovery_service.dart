@@ -1728,7 +1728,88 @@ class RouterDiscoveryService {
     return results;
   }
 
+  /// Native Dart FTP client to upload files directly to MikroTik router on port 21.
+  /// Standard FTP protocol (RFC 959) using passive mode (PASV) and STOR command.
+  static Future<bool> _uploadViaFtp({
+    required String host,
+    required String username,
+    required String password,
+    required String remotePath,
+    required String content,
+  }) async {
+    Socket? ctrl;
+    Socket? data;
+    try {
+      ctrl = await Socket.connect(host, 21, timeout: const Duration(seconds: 4));
+      final stream = ctrl.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).asBroadcastStream();
+
+      Future<String> waitForCode(String codePrefix) {
+        final c = Completer<String>();
+        final sub = stream.listen((line) {
+          if (line.startsWith(codePrefix)) {
+            if (!c.isCompleted) c.complete(line);
+          }
+        });
+        return c.future.timeout(const Duration(seconds: 5), onTimeout: () {
+          sub.cancel();
+          throw TimeoutException('Timed out waiting for FTP code $codePrefix');
+        }).whenComplete(() => sub.cancel());
+      }
+
+      await waitForCode('220');
+
+      ctrl.write('USER $username\r\n');
+      await ctrl.flush();
+      await waitForCode('331');
+
+      ctrl.write('PASS $password\r\n');
+      await ctrl.flush();
+      await waitForCode('230');
+
+      ctrl.write('TYPE I\r\n');
+      await ctrl.flush();
+      await waitForCode('200');
+
+      ctrl.write('PASV\r\n');
+      await ctrl.flush();
+      final pasvLine = await waitForCode('227');
+
+      final pasvMatch = RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)').firstMatch(pasvLine);
+      if (pasvMatch == null) throw Exception('Invalid PASV response: $pasvLine');
+
+      final p1 = int.parse(pasvMatch.group(5)!);
+      final p2 = int.parse(pasvMatch.group(6)!);
+      final dataPort = (p1 * 256) + p2;
+
+      data = await Socket.connect(host, dataPort, timeout: const Duration(seconds: 4));
+
+      ctrl.write('STOR $remotePath\r\n');
+      await ctrl.flush();
+      await waitForCode('150');
+
+      data.add(utf8.encode(content));
+      await data.flush();
+      await data.close();
+
+      await waitForCode('226');
+
+      try {
+        ctrl.write('QUIT\r\n');
+        await ctrl.flush();
+      } catch (_) {}
+
+      return true;
+    } catch (e) {
+      debugPrint('[FTP Upload] $remotePath failed: $e');
+      return false;
+    } finally {
+      try { await data?.close(); } catch (_) {}
+      try { await ctrl?.close(); } catch (_) {}
+    }
+  }
+
   /// Uploads captive portal files (login.html, status.html, logout.html) directly to MikroTik router.
+  /// Uses native FTP (port 21) first (fastest and standard for RouterOS), with REST API fallback.
   /// Supports both standard `hotspot/` and `flash/hotspot/` directory layouts.
   static Future<Map<String, bool>> uploadPortalFiles({
     required String ip,
@@ -1738,6 +1819,10 @@ class RouterDiscoveryService {
     String? endpoint,
   }) async {
     final results = <String, bool>{};
+    var cleanHost = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : ip.trim();
+    cleanHost = cleanHost.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
+    if (cleanHost.isEmpty) cleanHost = ip.trim();
+
     var target = (endpoint != null && endpoint.trim().isNotEmpty) ? endpoint.trim() : ip.trim();
     if (!target.startsWith('http://') && !target.startsWith('https://')) {
       target = 'http://$target';
@@ -1754,41 +1839,58 @@ class RouterDiscoveryService {
       final content = entry.value;
       bool success = false;
 
+      // 1. Primary Method: Native FTP Upload on Port 21 (Industry Standard for MikroTik)
       for (final folder in ['hotspot', 'flash/hotspot']) {
         if (success) break;
         try {
-          final uri = Uri.parse('$target/rest/file/$folder/$fileName');
-          final res = await client.put(
-            uri,
-            headers: {
-              'Authorization': authHeader,
-              'Content-Type': 'text/html; charset=utf-8',
-            },
-            body: content,
-          ).timeout(const Duration(seconds: 5));
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            success = true;
-          }
+          success = await _uploadViaFtp(
+            host: cleanHost,
+            username: username,
+            password: password,
+            remotePath: '$folder/$fileName',
+            content: content,
+          );
         } catch (_) {}
+      }
 
-        if (!success) {
+      // 2. Secondary Method: REST API Fallback
+      if (!success) {
+        for (final folder in ['hotspot', 'flash/hotspot']) {
+          if (success) break;
           try {
-            final uri = Uri.parse('$target/rest/file');
-            final res = await client.post(
+            final uri = Uri.parse('$target/rest/file/$folder/$fileName');
+            final res = await client.put(
               uri,
               headers: {
                 'Authorization': authHeader,
-                'Content-Type': 'application/json',
+                'Content-Type': 'text/html; charset=utf-8',
               },
-              body: jsonEncode({
-                'name': '$folder/$fileName',
-                'contents': content,
-              }),
-            ).timeout(const Duration(seconds: 5));
+              body: content,
+            ).timeout(const Duration(seconds: 4));
             if (res.statusCode >= 200 && res.statusCode < 300) {
               success = true;
             }
           } catch (_) {}
+
+          if (!success) {
+            try {
+              final uri = Uri.parse('$target/rest/file');
+              final res = await client.post(
+                uri,
+                headers: {
+                  'Authorization': authHeader,
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'name': '$folder/$fileName',
+                  'contents': content,
+                }),
+              ).timeout(const Duration(seconds: 4));
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                success = true;
+              }
+            } catch (_) {}
+          }
         }
       }
 

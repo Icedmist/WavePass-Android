@@ -19,6 +19,12 @@ import '../../screens/wallet_screen.dart';
 import '../../screens/notifications_screen.dart';
 import '../../screens/account_center_screen.dart';
 import '../../screens/batch_vouchers_screen.dart';
+import '../../screens/venue_activation_screen.dart';
+import '../../screens/system_admin/system_admin_dashboard_screen.dart';
+import '../../screens/system_admin/system_monitor_screen.dart';
+import '../../screens/system_admin/system_control_screen.dart';
+import '../../screens/system_admin/system_audits_screen.dart';
+import '../../screens/system_admin/activation_codes_screen.dart';
 import 'scaffold_with_nav.dart';
 
 CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
@@ -64,6 +70,12 @@ class AppRouter {
   static const barcodeScanner = '/barcode-scanner';
   static const batchVouchers = '/batch-vouchers';
   static const wallet = '/wallet';
+  static const activateVenue = '/activate-venue';
+  static const systemAdmin = '/system-admin';
+  static const systemAdminMonitor = '/system-admin/monitor';
+  static const systemAdminControl = '/system-admin/control';
+  static const systemAdminAudits = '/system-admin/audits';
+  static const activationCodes = '/system-admin/activation-codes';
 
   static final GoRouter router = GoRouter(
     initialLocation: splash,
@@ -92,6 +104,12 @@ class AppRouter {
       GoRoute(path: terms, pageBuilder: (c, s) => _slideFade(const TermsScreen(), s)),
       GoRoute(path: privacy, pageBuilder: (c, s) => _slideFade(const PrivacyScreen(), s)),
       GoRoute(path: barcodeScanner, pageBuilder: (c, s) => _slideFade(const BarcodeScannerScreen(), s)),
+      GoRoute(path: activateVenue, pageBuilder: (c, s) => _slideFade(const VenueActivationScreen(), s)),
+      GoRoute(path: systemAdmin, pageBuilder: (c, s) => _slideFade(const SystemAdminDashboardScreen(), s)),
+      GoRoute(path: systemAdminMonitor, pageBuilder: (c, s) => _slideFade(const SystemMonitorScreen(), s)),
+      GoRoute(path: systemAdminControl, pageBuilder: (c, s) => _slideFade(const SystemControlScreen(), s)),
+      GoRoute(path: systemAdminAudits, pageBuilder: (c, s) => _slideFade(const SystemAuditsScreen(), s)),
+      GoRoute(path: activationCodes, pageBuilder: (c, s) => _slideFade(const ActivationCodesScreen(), s)),
     ],
   );
 }

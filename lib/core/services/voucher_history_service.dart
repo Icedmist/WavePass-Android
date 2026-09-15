@@ -351,4 +351,34 @@ class VoucherHistoryService {
       }
     } catch (_) {}
   }
+
+  /// Purges all expired vouchers from storage and router hardware, keeping the history clean
+  Future<int> purgeExpiredVouchers() async {
+    final history = await getHistory();
+    final expired = history.where((v) => v.status == 'expired').toList();
+    if (expired.isEmpty) return 0;
+
+    history.removeWhere((v) => v.status == 'expired');
+    await _saveHistory(history);
+
+    // Clean up hardware
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+      final client = MikrotikApiClient(host: localIp);
+      if (await client.connectAndLogin(user, pass)) {
+        for (final v in expired) {
+          try {
+            await client.disconnectActiveUser(v.code);
+            await client.removeHotspotUser(v.code);
+          } catch (_) {}
+        }
+        await client.close();
+      }
+    } catch (_) {}
+
+    return expired.length;
+  }
 }

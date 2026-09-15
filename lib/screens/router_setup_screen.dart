@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
+import '../core/services/activation_code_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
@@ -42,7 +43,15 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   @override
   void initState() {
     super.initState();
+    _checkActivationGate();
     _loadSavedCredentials();
+  }
+
+  Future<void> _checkActivationGate() async {
+    final isActivated = await ActivationCodeService.instance.isAccountActivated();
+    if (!isActivated && mounted) {
+      context.go(AppRouter.activateVenue);
+    }
   }
 
   Future<void> _loadSavedCredentials() async {
@@ -503,19 +512,22 @@ add name="profile_7d" rate-limit="20M/10M" shared-users=1 session-timeout=7d kee
 add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
 
 # --------------------------------------------------------
-# 5. Enforce No Hotspot Sharing (1 Device/Voucher & Anti-Tethering)
+# 5. Enforce No Hotspot Sharing (Universal Anti-Tethering for iOS, Windows, Linux, Android)
 # --------------------------------------------------------
 /ip hotspot user profile set [find] shared-users=1
 /ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no
 /interface wireless set [find] default-forwarding=no
 
 /ip firewall mangle
-remove [find comment="WavePass Anti-Tethering"]
+remove [find comment~"WavePass Anti-Tethering"]
+add chain=postrouting action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
 
 /ip firewall filter
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=forward action=drop in-interface=wlan1 ttl=equal:63 comment="WavePass Anti-Tethering: block secondary devices (64-ttl)"
-add chain=forward action=drop in-interface=wlan1 ttl=equal:127 comment="WavePass Anti-Tethering: block secondary devices (128-ttl)"
+add chain=forward action=drop ttl=equal:63 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)"
+add chain=forward action=drop ttl=equal:62 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)"
+add chain=forward action=drop ttl=equal:127 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
+add chain=forward action=drop ttl=equal:126 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
 
 # --------------------------------------------------------
 # 6. Active Session Expiry & 1-Minute User Limit Enforcer
@@ -749,6 +761,26 @@ set name="WavePass-$slug"
       document.getElementById('passInput').value = user;
       return true;
     }
+
+    // Auto-login when opened via QR code or direct link with ?username=CODE or ?code=CODE
+    window.addEventListener('DOMContentLoaded', function() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var u = params.get('username') || params.get('user') || params.get('code');
+        var p = params.get('password') || params.get('pass') || u;
+        if (u) {
+          var uIn = document.getElementById('username');
+          var pIn = document.getElementById('passInput');
+          if (uIn && pIn) {
+            uIn.value = u;
+            pIn.value = p;
+            var subBtn = document.querySelector('.btn-login');
+            if (subBtn) subBtn.innerText = 'Connecting with ' + u + '...';
+            document.forms['login'].submit();
+          }
+        }
+      } catch (e) {}
+    });
   </script>
 </body>
 </html>""";
@@ -1169,16 +1201,17 @@ set name="WavePass-$slug"
         if (uploadedCount > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Successfully uploaded $uploadedCount/3 portal files to router hotspot/ directory!"),
+              content: Text("Successfully uploaded $uploadedCount/3 portal files (FTP/Hotspot) to router! Custom login and auto-auth active."),
               backgroundColor: AppColors.accentGreen,
+              duration: const Duration(seconds: 4),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("Could not write files via REST API. Use 'Share All 3' or drag to WinBox Files -> hotspot/."),
+              content: Text("FTP/REST upload failed. Ensure router FTP port 21 is enabled, or use 'Share All 3' to drag files into WebFig/WinBox Files -> hotspot/."),
               backgroundColor: AppColors.accentOrange,
-              duration: Duration(seconds: 5),
+              duration: Duration(seconds: 6),
             ),
           );
         }

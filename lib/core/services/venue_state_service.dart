@@ -209,6 +209,35 @@ class VenueStateService {
     return current;
   }
 
+  /// Switch currently active venue (useful for System Admin multi-venue inspection)
+  Future<void> switchVenue(Map<String, dynamic> venue) async {
+    venueNotifier.value = Map<String, dynamic>.from(venue);
+    final prefs = await SharedPreferences.getInstance();
+    final vid = venue['id']?.toString();
+    final name = venue['name']?.toString();
+    final slug = venue['slug']?.toString();
+    final logo = venue['logoUrl']?.toString();
+
+    if (vid != null) {
+      await prefs.setString(keyVenueId, vid);
+      await prefs.setString(keyLegacyVenueId, vid);
+    }
+    if (name != null) {
+      await prefs.setString(keyVenueName, name);
+      await prefs.setString(keyLegacyVenueName, name);
+    }
+    if (slug != null) {
+      await prefs.setString(keyVenueSlug, slug);
+      await prefs.setString(keyLegacyVenueSlug, slug);
+    }
+    if (logo != null) {
+      await prefs.setString(keyVenueLogo, logo);
+      await prefs.setString(keyLegacyVenueLogo, logo);
+    }
+
+    await refreshPlans();
+  }
+
   /// Validates and checks whether a subdomain/slogan is available.
   Future<Map<String, dynamic>> checkSlugAvailability(String rawSlug) async {
     final slug = rawSlug.trim().toLowerCase();

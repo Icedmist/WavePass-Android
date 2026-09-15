@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
+import '../core/services/activation_code_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/theme/app_theme.dart';
@@ -573,7 +574,16 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   }
 
   void _handleLogout() async {
-    await SupabaseService.instance.signOut();
+    try {
+      await SupabaseService.instance.signOut();
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('sb-user-email');
+      await prefs.remove('admin_token');
+      await VenueStateService.instance.clearVenue();
+      await ActivationCodeService.instance.clearCache();
+    } catch (_) {}
     if (!mounted) return;
     context.go(AppRouter.login);
   }

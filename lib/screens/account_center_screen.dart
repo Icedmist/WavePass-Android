@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
+import '../core/services/activation_code_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/theme/app_theme.dart';
@@ -354,9 +355,13 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     try {
       await SupabaseService.instance.signOut();
     } catch (_) {}
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('sb-user-email');
-    await prefs.remove('admin_token');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('sb-user-email');
+      await prefs.remove('admin_token');
+      await VenueStateService.instance.clearVenue();
+      await ActivationCodeService.instance.clearCache();
+    } catch (_) {}
   }
 
   Future<void> _handleSignOut() async {

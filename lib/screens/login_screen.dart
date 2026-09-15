@@ -7,6 +7,7 @@ import '../core/constants/api_constants.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,6 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('sb-user-email', email);
+        await VenueStateService.instance.clearVenue();
+        await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;
@@ -58,6 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('admin_token', j['token']);
           await prefs.setString('sb-user-email', email);
+          await VenueStateService.instance.clearVenue();
+          await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
           if (!mounted) return;
           context.go(AppRouter.dashboard);
           return;

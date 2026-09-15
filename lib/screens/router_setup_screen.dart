@@ -22,8 +22,15 @@ class RouterSetupScreen extends StatefulWidget {
     String slug, [
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
+    bool useHostedSubdomainPortal = true,
   ]) =>
-      _RouterSetupScreenState._generateLoginHtml(venueName, slug, plans, isPaystackConfigured);
+      _RouterSetupScreenState._generateLoginHtml(
+        venueName,
+        slug,
+        plans,
+        isPaystackConfigured,
+        useHostedSubdomainPortal,
+      );
 
   @override
   State<RouterSetupScreen> createState() => _RouterSetupScreenState();
@@ -48,6 +55,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingPortalHtml = false;
   bool _uploadingPortalFiles = false;
   int _selectedPortalTabIndex = 0;
+  bool _useHostedSubdomainPortal = true;
   Map<String, String>? _portalSuite;
 
   @override
@@ -592,7 +600,199 @@ set name="WavePass-$slug"
     String slug, [
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
+    bool useHostedSubdomainPortal = true,
   ]) {
+    if (useHostedSubdomainPortal) {
+      return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>$venueName | Fast Wi-Fi Access</title>
+  <!-- Instant 0-second browser redirect to hosted venue subdomain -->
+  <meta http-equiv="refresh" content="0; url=https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0D1117;
+      color: #FFFFFF;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: #161B22;
+      border: 1px solid #30363D;
+      border-radius: 20px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(56, 239, 125, 0.15);
+      border: 1px solid #38EF7D;
+      border-radius: 20px;
+      color: #38EF7D;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .spinner {
+      width: 42px;
+      height: 42px;
+      border: 3.5px solid rgba(56, 239, 125, 0.2);
+      border-top-color: #38EF7D;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 16px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #8B949E;
+      margin-bottom: 20px;
+    }
+    .btn-portal {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
+      color: #0D1117;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+      border-radius: 10px;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 4px 14px rgba(56, 239, 125, 0.35);
+      transition: transform 0.15s;
+    }
+    .btn-portal:active {
+      transform: scale(0.98);
+    }
+    .fallback-box {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #30363D;
+      text-align: left;
+    }
+    .fallback-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #FF7B72;
+      margin-bottom: 8px;
+    }
+    .fallback-desc {
+      font-size: 11px;
+      color: #8B949E;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 11px 13px;
+      background: #0D1117;
+      border: 1.5px solid #30363D;
+      border-radius: 9px;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      outline: none;
+      margin-bottom: 10px;
+    }
+    .btn-fallback {
+      width: 100%;
+      padding: 11px;
+      background: #238636;
+      border: none;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 800;
+      border-radius: 9px;
+      cursor: pointer;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #8B949E;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">Wi-Fi Gateway</span>
+    <div class="logo">$venueName</div>
+    <div class="subtitle">Opening venue portal...</div>
+
+    <div class="spinner"></div>
+
+    <a id="portalBtn" href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug" class="btn-portal">
+      Continue to Portal &rarr;
+    </a>
+
+    <!-- Emergency Offline Fail-safe (revealed if venue internet/DNS is unreachable after 3.5s) -->
+    <div id="offlineFallback" class="fallback-box" style="display:none;">
+      <div class="fallback-title">⚠️ Network Offline?</div>
+      <div class="fallback-desc">If the venue uplink is temporarily disconnected, enter your cash voucher code below to connect directly:</div>
+      <form name="sendin" action="\$(link-login-only)" method="post">
+        <input type="hidden" name="dst" value="\$(link-orig)">
+        <input type="hidden" name="popup" value="true">
+        <input type="hidden" name="password" id="dst_pass">
+        <input type="text" name="username" id="dst_user" placeholder="e.g. 123456" autocomplete="off" autocorrect="off" autocapitalize="characters">
+        <button type="submit" class="btn-fallback" onclick="document.getElementById('dst_pass').value=document.getElementById('dst_user').value.trim();">Connect Directly &rarr;</button>
+      </form>
+    </div>
+
+    <div class="footer">
+      MAC: <strong>\$(mac)</strong> &bull; IP: <strong>\$(ip)</strong>
+    </div>
+  </div>
+
+  <script>
+    var portalUrl = "https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug";
+
+    // Check for direct voucher prefill or code query parameters
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var c = params.get('code') || params.get('voucher');
+      if (c) {
+        portalUrl += '&code=' + encodeURIComponent(c);
+      }
+    } catch (e) {}
+
+    // 1. Instant transparent navigation to hosted subdomain
+    try {
+      window.location.replace(portalUrl);
+    } catch (e) {
+      window.location.href = portalUrl;
+    }
+
+    // 2. Fail-safe timeout: If WAN dropped or DNS failed, surface local voucher form after 3.5s
+    setTimeout(function() {
+      var fb = document.getElementById('offlineFallback');
+      if (fb) fb.style.display = 'block';
+    }, 3500);
+  </script>
+</body>
+</html>""";
+    }
     final safePlans = (plans != null && plans.isNotEmpty)
         ? plans
         : [
@@ -1627,7 +1827,7 @@ set name="WavePass-$slug"
     }
 
     final suite = {
-      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured),
+      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured, _useHostedSubdomainPortal),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
@@ -2347,6 +2547,84 @@ set name="WavePass-$slug"
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Architecture Selector: Hosted Subdomain vs Standalone Router
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.containerBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              if (!_useHostedSubdomainPortal) {
+                                setState(() {
+                                  _useHostedSubdomainPortal = true;
+                                  _portalSuite = null;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                              decoration: BoxDecoration(
+                                color: _useHostedSubdomainPortal ? AppColors.primary : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                "🌐 Hosted Subdomain",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: _useHostedSubdomainPortal ? AppColors.white : AppColors.textLight,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              if (_useHostedSubdomainPortal) {
+                                setState(() {
+                                  _useHostedSubdomainPortal = false;
+                                  _portalSuite = null;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                              decoration: BoxDecoration(
+                                color: !_useHostedSubdomainPortal ? AppColors.primary : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                "💾 Standalone Router",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: !_useHostedSubdomainPortal ? AppColors.white : AppColors.textLight,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _useHostedSubdomainPortal
+                        ? "Permanently bounces connecting guests in 0s to your venue subdomain with offline voucher fallback."
+                        : "Embeds plans, Paystack, and voucher entry directly in on-router HTML.",
+                    style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 14),
 
                   // Segmented Tabs: login.html | status.html | logout.html
                   Container(

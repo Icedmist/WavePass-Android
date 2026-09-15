@@ -60,8 +60,32 @@ void main() {
   });
 
   group('Captive Portal Suite & Venue Subpage Integration Tests', () {
-    test('Generated login.html contains venue subpage, dual credential tabs, and pure-JS MD5 CHAP logic', () {
+    test('Generated login.html defaults to instant hosted subdomain redirector with offline fail-safe', () {
       final html = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge');
+
+      // 1. Instant 0-second redirect to venue subdomain
+      expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
+      expect(html, contains('<meta http-equiv="refresh" content="0; url=https://apex-lounge.nexawavepass.com/portal'));
+      expect(html, contains(r'mac=$(mac)'));
+      expect(html, contains(r'ip=$(ip)'));
+      expect(html, contains(r'link-login=$(link-login-only)'));
+      expect(html, contains('window.location.replace(portalUrl)'));
+
+      // 2. Offline fail-safe form
+      expect(html, contains('id="offlineFallback"'));
+      expect(html, contains(r'action="$(link-login-only)"'));
+      expect(html, contains('placeholder="e.g. 123456"'));
+      expect(html, contains('setTimeout('));
+    });
+
+    test('Standalone mode login.html contains full on-router portal card with dual tabs and Paystack', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        null,
+        true,
+        false, // useHostedSubdomainPortal = false
+      );
 
       // 1. Venue Hosted Subpage Integration
       expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
@@ -94,7 +118,7 @@ void main() {
       expect(html, contains(r'name="sendin"'));
     });
 
-    test('Generated login.html renders custom venue plans dynamically', () {
+    test('Standalone mode login.html renders custom venue plans dynamically', () {
       final customPlans = [
         {
           'id': 'plan_vip_day',
@@ -110,7 +134,13 @@ void main() {
         },
       ];
 
-      final html = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', customPlans);
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        customPlans,
+        true,
+        false, // standalone
+      );
 
       expect(html, contains('VIP All-Day Pass'));
       expect(html, contains('₦1500'));
@@ -124,12 +154,13 @@ void main() {
       expect(html, contains('placeholder="e.g. 123456"'));
     });
 
-    test('Generated login.html displays Paystack Not Available when unconfigured', () {
+    test('Standalone mode login.html displays Paystack Not Available when unconfigured', () {
       final html = RouterSetupScreen.generateLoginHtml(
         'Apex Lounge',
         'apex-lounge',
         null,
         false, // isPaystackConfigured = false
+        false, // standalone
       );
 
       expect(html, contains('Paystack Not Available'));

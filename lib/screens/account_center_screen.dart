@@ -7,6 +7,7 @@ import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/services/system_admin_service.dart';
 import '../core/theme/app_theme.dart';
 
 class AccountCenterScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   bool _savingProfile = false;
   bool _changingPassword = false;
   bool _savingVenue = false;
+  bool _isSystemAdmin = false;
 
   @override
   void initState() {
@@ -108,6 +110,11 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       final savedEmail = prefs.getString('sb-user-email') ?? user?.email ?? 'talk2icedmist@gmail.com';
       _emailController.text = savedEmail;
       _nameController.text = user?.userMetadata?['name']?.toString() ?? 'Venue Owner';
+
+      final isAdmin = await SystemAdminService.instance.isSystemAdmin(savedEmail);
+      if (mounted) {
+        setState(() => _isSystemAdmin = isAdmin);
+      }
 
       var venue = VenueStateService.instance.currentVenue;
       venue ??= await VenueStateService.instance.refreshVenue();
@@ -435,6 +442,74 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                if (_isSystemAdmin) ...[
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF00E5FF), size: 22),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'SYSTEM ADMINISTRATOR',
+                                    style: TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.1),
+                                  ),
+                                  Text(
+                                    'Full fleet monitor, audits, controls & activation codes',
+                                    style: TextStyle(color: Colors.white70, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        ElevatedButton.icon(
+                          onPressed: () => context.push(AppRouter.systemAdmin),
+                          icon: const Icon(Icons.dashboard_customize_rounded, size: 16),
+                          label: const Text('LAUNCH SYSTEM ADMIN HUB', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00E5FF),
+                            foregroundColor: const Color(0xFF0F172A),
+                            minimumSize: const Size.fromHeight(42),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
 
                 // SECTION 1: PROFILE DETAILS
                 _cardSection(

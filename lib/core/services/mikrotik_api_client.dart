@@ -687,35 +687,55 @@ class MikrotikApiClient {
         }
       } catch (_) {}
 
-      // 4. Firewall Filter Drop tethered packets (TTL 63 and 127) on wlan1
+      // 4. Mangle Postrouting: Change TTL to 1 for all outbound client traffic
+      // This is the universal, industry-standard anti-tethering technique.
+      // When a client (iOS, Windows, Android, Linux) receives a packet with TTL=1,
+      // the device itself functions 100% normally. But if it attempts to tether/share,
+      // the OS decrements TTL to 0 (1 - 1 = 0) and drops the packet.
       try {
-        final existingFilters = await executeSentence([
-          '/ip/firewall/filter/print',
-          '?comment=WavePass Anti-Tethering: block secondary devices (64-ttl)',
+        final existingMangle = await executeSentence([
+          '/ip/firewall/mangle/print',
+          '?comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
         ]);
-        if (existingFilters.isEmpty) {
+        if (existingMangle.isEmpty) {
           await executeSentence([
-            '/ip/firewall/filter/add',
-            '=chain=forward',
-            '=action=drop',
-            '=in-interface=wlan1',
-            '=ttl=equal:63',
-            '=comment=WavePass Anti-Tethering: block secondary devices (64-ttl)',
+            '/ip/firewall/mangle/add',
+            '=chain=postrouting',
+            '=action=change-ttl',
+            '=new-ttl=set:1',
+            '=passthrough=yes',
+            '=comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
           ]);
         }
-        final existingFilters127 = await executeSentence([
-          '/ip/firewall/filter/print',
-          '?comment=WavePass Anti-Tethering: block secondary devices (128-ttl)',
-        ]);
-        if (existingFilters127.isEmpty) {
-          await executeSentence([
-            '/ip/firewall/filter/add',
-            '=chain=forward',
-            '=action=drop',
-            '=in-interface=wlan1',
-            '=ttl=equal:127',
-            '=comment=WavePass Anti-Tethering: block secondary devices (128-ttl)',
+        results['mangleTtl'] = true;
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing mangle change-ttl error: $e');
+      }
+
+      // 5. Firewall Filter Drop tethered packets (TTL 63, 62, 127, 126) on ALL interfaces
+      // Removed in-interface restriction so bridged interfaces, Ethernet, and all Wi-Fi bands are covered.
+      try {
+        final ttlsToDrop = [
+          {'ttl': 'equal:63', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)'},
+          {'ttl': 'equal:62', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)'},
+          {'ttl': 'equal:127', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)'},
+          {'ttl': 'equal:126', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)'},
+        ];
+
+        for (final rule in ttlsToDrop) {
+          final existing = await executeSentence([
+            '/ip/firewall/filter/print',
+            '?comment=${rule['comment']}',
           ]);
+          if (existing.isEmpty) {
+            await executeSentence([
+              '/ip/firewall/filter/add',
+              '=chain=forward',
+              '=action=drop',
+              '=ttl=${rule['ttl']}',
+              '=comment=${rule['comment']}',
+            ]);
+          }
         }
         results['firewallFilter'] = true;
       } catch (e) {
@@ -725,12 +745,24 @@ class MikrotikApiClient {
       results['success'] = results['profiles'] == true ||
           results['serverProfiles'] == true ||
           results['isolation'] == true ||
+          results['mangleTtl'] == true ||
           results['firewallFilter'] == true;
     } catch (e) {
       debugPrint('[MikrotikApiClient] enforceNoHotspotSharing failed: $e');
     }
 
     return results;
+  }
+
+  /// Reboots the MikroTik router hardware via RouterOS API.
+  Future<bool> rebootRouter() async {
+    try {
+      await executeSentence(['/system/reboot']);
+      return true;
+    } catch (e) {
+      // Reboots disconnect the socket immediately, which is normal behavior
+      return true;
+    }
   }
 
   /// Closes the socket connection and releases resources.

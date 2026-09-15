@@ -22,7 +22,7 @@ class VoucherHistorySheet extends StatefulWidget {
 class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   List<VoucherRecord> _vouchers = [];
   bool _loading = true;
-  String _filter = 'all'; // 'all', 'in_use', 'unused', 'expired'
+  String _filter = 'unused'; // 'unused' (inactive available), 'in_use', 'all', 'expired'
   bool _isRefreshing = false;
 
   @override
@@ -61,8 +61,43 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
     }
   }
 
+  bool _isPurging = false;
+
+  Future<void> _handlePurgeExpired() async {
+    final expiredCount = _vouchers.where((v) => v.status == 'expired').length;
+    if (expiredCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No expired vouchers to remove."),
+          backgroundColor: AppColors.primary,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isPurging = true);
+    final count = await VoucherHistoryService.instance.purgeExpiredVouchers();
+    await _loadData();
+    if (mounted) {
+      setState(() {
+        _isPurging = false;
+        if (_filter == 'expired') _filter = 'unused';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Removed $count expired vouchers from device and router hardware!"),
+          backgroundColor: AppColors.accentGreen,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   List<VoucherRecord> get _filteredVouchers {
-    if (_filter == 'all') return _vouchers;
+    if (_filter == 'all') {
+      return _vouchers.where((v) => v.status != 'expired').toList();
+    }
     return _vouchers.where((v) => v.status == _filter).toList();
   }
 
@@ -88,17 +123,19 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   String _statusLabel(String status) {
     switch (status) {
       case 'in_use':
-        return 'IN USE';
+        return 'IN USE (ACTIVE)';
       case 'expired':
         return 'EXPIRED';
       default:
-        return 'UNUSED';
+        return 'INACTIVE (AVAILABLE)';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final activeCount = _vouchers.where((v) => v.status == 'in_use').length;
+    final unusedCount = _vouchers.where((v) => v.status == 'unused').length;
+    final expiredCount = _vouchers.where((v) => v.status == 'expired').length;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -167,12 +204,20 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "${_vouchers.length} total sold passes recorded on device",
+                            "$unusedCount inactive (available) • $activeCount in use • $expiredCount expired",
                             style: const TextStyle(fontSize: 12, color: AppColors.textLight),
                           ),
                         ],
                       ),
                     ),
+                    if (expiredCount > 0)
+                      IconButton(
+                        onPressed: _isPurging ? null : _handlePurgeExpired,
+                        icon: _isPurging
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.delete_sweep_rounded, color: AppColors.accentRed),
+                        tooltip: "Remove Expired Vouchers",
+                      ),
                     IconButton(
                       onPressed: _isRefreshing ? null : _checkLifecycle,
                       icon: _isRefreshing
@@ -191,13 +236,13 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    _buildFilterChip('all', 'All (${_vouchers.length})'),
+                    _buildFilterChip('unused', 'Inactive / Available ($unusedCount)'),
                     const SizedBox(width: 8),
                     _buildFilterChip('in_use', 'In Use ($activeCount)'),
                     const SizedBox(width: 8),
-                    _buildFilterChip('unused', 'Unused (${_vouchers.where((v) => v.status == 'unused').length})'),
+                    _buildFilterChip('all', 'All Valid (${_vouchers.where((v) => v.status != 'expired').length})'),
                     const SizedBox(width: 8),
-                    _buildFilterChip('expired', 'Expired (${_vouchers.where((v) => v.status == 'expired').length})'),
+                    _buildFilterChip('expired', 'Expired ($expiredCount)'),
                   ],
                 ),
               ),

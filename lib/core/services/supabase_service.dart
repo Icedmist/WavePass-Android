@@ -27,26 +27,75 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
-  User? get currentUser => client.auth.currentUser;
+  User? get currentUser {
+    try {
+      return Supabase.instance.client.auth.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // Venue queries
-  Future<Map<String, dynamic>?> getPrimaryVenue() async {
+  Future<Map<String, dynamic>?> getPrimaryVenue({String? email}) async {
     try {
-      final res = await client
-          .from('Venue')
-          .select('*')
-          .limit(1)
-          .maybeSingle();
-      return res;
+      final user = currentUser;
+      final targetEmail = (email ?? user?.email ?? '').toLowerCase().trim();
+
+      // 1. If user is logged in, try finding their venue via VenueMember membership
+      if (user != null) {
+        try {
+          final memberRes = await client
+              .from('VenueMember')
+              .select('venueId, role, Venue(*)')
+              .eq('userId', user.id)
+              .limit(1)
+              .maybeSingle();
+          if (memberRes != null && memberRes['Venue'] != null) {
+            return Map<String, dynamic>.from(memberRes['Venue'] as Map);
+          }
+        } catch (_) {}
+      }
+
+      // 2. Only platform super admin is allowed to inspect the primary venue fallback
+      if (targetEmail == 'talk2icedmist@gmail.com') {
+        final res = await client
+            .from('Venue')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+        return res;
+      }
+
+      return null;
     } catch (e) {
       return null;
     }
   }
 
-  Future<List<Map<String, dynamic>>> getVenues() async {
+  Future<List<Map<String, dynamic>>> getVenues({String? email}) async {
     try {
-      final res = await client.from('Venue').select('*');
-      return List<Map<String, dynamic>>.from(res);
+      final user = currentUser;
+      final targetEmail = (email ?? user?.email ?? '').toLowerCase().trim();
+
+      if (user != null) {
+        try {
+          final memberRes = await client
+              .from('VenueMember')
+              .select('venueId, role, Venue(*)')
+              .eq('userId', user.id);
+          final venues = (memberRes as List)
+              .where((m) => m['Venue'] != null)
+              .map((m) => Map<String, dynamic>.from(m['Venue'] as Map))
+              .toList();
+          if (venues.isNotEmpty) return venues;
+        } catch (_) {}
+      }
+
+      if (targetEmail == 'talk2icedmist@gmail.com') {
+        final res = await client.from('Venue').select('*');
+        return List<Map<String, dynamic>>.from(res);
+      }
+      return [];
     } catch (e) {
       return [];
     }

@@ -6,6 +6,7 @@ import 'mikrotik_api_client.dart';
 import 'notification_service.dart';
 import 'router_discovery_service.dart';
 import 'supabase_service.dart';
+import 'system_admin_service.dart';
 import 'venue_state_service.dart';
 
 class VoucherRecord {
@@ -132,6 +133,15 @@ class VoucherHistoryService {
     _monitorTimer = null;
   }
 
+  /// Wipes the local cached voucher history and stops monitoring timers
+  Future<void> clearCache() async {
+    try {
+      stopMonitoring();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyHistory);
+    } catch (_) {}
+  }
+
   /// Records a newly generated / sold voucher into history
   Future<void> recordVoucher({
     required String code,
@@ -196,9 +206,14 @@ class VoucherHistoryService {
       for (final v in localList) v.code.toUpperCase(): v,
     };
 
-    // 1. Query Router Hardware via MikrotikApiClient
-    try {
-      final prefs = await SharedPreferences.getInstance();
+    final currentVenue = VenueStateService.instance.currentVenue;
+    final venueId = currentVenue?['id']?.toString();
+    final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
+
+    // 1. Query Router Hardware via MikrotikApiClient only if venue is configured or superadmin
+    if (currentVenue != null || isSuperAdmin) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
       final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
       final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
       final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
@@ -279,18 +294,17 @@ class VoucherHistoryService {
     } catch (routerErr) {
       debugPrint('[VoucherHistoryService] Hardware sync note: $routerErr');
     }
+    }
 
     // 2. Query Supabase Cloud Vouchers & Sessions
-    try {
-      final supabase = SupabaseService.instance.client;
-      final currentVenue = VenueStateService.instance.currentVenue;
-      final venueId = currentVenue?['id']?.toString();
-
-      var query = supabase.from('Voucher').select('*, plan:Plan(*), sessions:Session(*)');
-      if (venueId != null && venueId.isNotEmpty) {
-        query = query.eq('venueId', venueId);
-      }
-      final cloudVouchers = await query.order('issuedAt', ascending: false).limit(200);
+    if ((venueId != null && venueId.isNotEmpty) || isSuperAdmin) {
+      try {
+        final supabase = SupabaseService.instance.client;
+        var query = supabase.from('Voucher').select('*, plan:Plan(*), sessions:Session(*)');
+        if (venueId != null && venueId.isNotEmpty) {
+          query = query.eq('venueId', venueId);
+        }
+        final cloudVouchers = await query.order('issuedAt', ascending: false).limit(200);
 
       for (final raw in cloudVouchers) {
         final vMap = Map<String, dynamic>.from(raw as Map);
@@ -346,6 +360,7 @@ class VoucherHistoryService {
       }
     } catch (cloudErr) {
       debugPrint('[VoucherHistoryService] Cloud vouchers fetch note: $cloudErr');
+    }
     }
 
     final result = consolidated.values.toList();
@@ -408,6 +423,10 @@ class VoucherHistoryService {
     try {
       final history = await getHistory();
       if (history.isEmpty) return;
+
+      final currentVenue = VenueStateService.instance.currentVenue;
+      final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
+      if (currentVenue == null && !isSuperAdmin) return;
 
       // 1. Fetch active users & configured accounts on MikroTik
       final prefs = await SharedPreferences.getInstance();

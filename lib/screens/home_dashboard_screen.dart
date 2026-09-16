@@ -8,6 +8,7 @@ import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/voucher_history_service.dart';
+import '../core/services/system_admin_service.dart';
 import 'voucher_history_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -103,94 +104,129 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           } catch (_) {}
         }
       }
-      try {
-        final stats = await WavePassApi.instance.adminStats();
-        if (mounted) {
-          if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
-          if (stats['sessions'] != null && _activeUsers == 0) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
-        }
-      } catch (_) {}
+      final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
+      if (isSuperAdmin && vid == null) {
+        try {
+          final stats = await WavePassApi.instance.adminStats();
+          if (mounted) {
+            if (stats['revenue'] != null) setState(() => _todaySales = (stats['revenue']['totalNGN'] as num?)?.toInt() ?? 0);
+            if (stats['sessions'] != null && _activeUsers == 0) setState(() => _activeUsers = (stats['sessions']['active'] as num?)?.toInt() ?? _activeUsers);
+          }
+        } catch (_) {}
+      }
       // Check router status truthfully: directly probe local gateway on Wi-Fi and/or cloud
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-        final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
-        final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
-        final tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+      if (venue != null || isSuperAdmin) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+          final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+          final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+          final tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
 
-        // 1. Direct hardware probe (LAN/Wi-Fi)
-        DiscoveredRouter? localProbe = await RouterDiscoveryService.discoverLocalRouter(
-          ip: localIp,
-          username: user,
-          password: pass,
-        );
-
-        // 2. Tunnel probe if local probe unreachable and tunnel configured
-        if ((localProbe == null || !localProbe.isReachable) && tunnel != null && tunnel.isNotEmpty) {
-          localProbe = await RouterDiscoveryService.probeEndpoint(
-            tunnel,
+          // 1. Direct hardware probe (LAN/Wi-Fi)
+          DiscoveredRouter? localProbe = await RouterDiscoveryService.discoverLocalRouter(
+            ip: localIp,
             username: user,
             password: pass,
-            connectionType: "Tunnel",
           );
-        }
 
-        final isHardwareOnline = localProbe != null && localProbe.isReachable && !localProbe.authFailed;
-        final lp = isHardwareOnline ? localProbe : null;
-
-        if (isHardwareOnline) {
-          try {
-            final hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
-              ip: localIp,
+          // 2. Tunnel probe if local probe unreachable and tunnel configured
+          if ((localProbe == null || !localProbe.isReachable) && tunnel != null && tunnel.isNotEmpty) {
+            localProbe = await RouterDiscoveryService.probeEndpoint(
+              tunnel,
               username: user,
               password: pass,
-              endpoint: lp?.ip,
+              connectionType: "Tunnel",
             );
-            if (mounted && (hwUsers.isNotEmpty || _activeUsers == 0)) {
-              setState(() => _activeUsers = hwUsers.length);
-            }
-          } catch (_) {}
-        }
+          }
 
-        // 3. Database synchronization
-        final venueForRouter = venue ?? await SupabaseService.instance.getPrimaryVenue();
-        if (venueForRouter != null) {
-          try {
-            final res = await SupabaseService.instance.client
-                .from('Router')
-                .select('id, name, endpoint, status, connectionMode, lastSeen')
-                .eq('venueId', venueForRouter['id'])
-                .limit(1);
-            final list = res as List;
+          final isHardwareOnline = localProbe != null && localProbe.isReachable && !localProbe.authFailed;
+          final lp = isHardwareOnline ? localProbe : null;
 
-            if (list.isNotEmpty) {
-              final r = list.first as Map<String, dynamic>;
-              final rId = r['id']?.toString();
-              final isOnlineInDb = r['status']?.toString() == 'ONLINE';
-              final resolvedName = (lp != null && lp.identity.isNotEmpty)
-                  ? lp.identity
-                  : (r['name']?.toString() ?? 'MikroTik Gateway');
-              final resolvedEndpoint = lp != null ? lp.ip : (r['endpoint']?.toString() ?? localIp);
-
-              if (mounted) {
-                setState(() {
-                  _hasRouter = true;
-                  _routerOnline = isHardwareOnline || isOnlineInDb;
-                  _routerName = resolvedName;
-                  _routerEndpoint = resolvedEndpoint;
-                });
+          if (isHardwareOnline) {
+            try {
+              final hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
+                ip: localIp,
+                username: user,
+                password: pass,
+                endpoint: lp?.ip,
+              );
+              if (mounted && (hwUsers.isNotEmpty || _activeUsers == 0)) {
+                setState(() => _activeUsers = hwUsers.length);
               }
+            } catch (_) {}
+          }
 
-              if (isHardwareOnline && rId != null) {
+          // 3. Database synchronization
+          final venueForRouter = venue ?? (isSuperAdmin ? await SupabaseService.instance.getPrimaryVenue() : null);
+          if (venueForRouter != null) {
+            try {
+              final res = await SupabaseService.instance.client
+                  .from('Router')
+                  .select('id, name, endpoint, status, connectionMode, lastSeen')
+                  .eq('venueId', venueForRouter['id'])
+                  .limit(1);
+              final list = res as List;
+
+              if (list.isNotEmpty) {
+                final r = list.first as Map<String, dynamic>;
+                final rId = r['id']?.toString();
+                final isOnlineInDb = r['status']?.toString() == 'ONLINE';
+                final resolvedName = (lp != null && lp.identity.isNotEmpty)
+                    ? lp.identity
+                    : (r['name']?.toString() ?? 'MikroTik Gateway');
+                final resolvedEndpoint = lp != null ? lp.ip : (r['endpoint']?.toString() ?? localIp);
+
+                if (mounted) {
+                  setState(() {
+                    _hasRouter = true;
+                    _routerOnline = isHardwareOnline || isOnlineInDb;
+                    _routerName = resolvedName;
+                    _routerEndpoint = resolvedEndpoint;
+                  });
+                }
+
+                if (isHardwareOnline && rId != null) {
+                  SupabaseService.instance.client
+                      .from('Router')
+                      .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
+                      .eq('id', rId)
+                      .catchError((_) {});
+                }
+              } else if (lp != null) {
+                // Hardware online locally even though not registered in DB yet
+                if (mounted) {
+                  setState(() {
+                    _hasRouter = true;
+                    _routerOnline = true;
+                    _routerName = lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway';
+                    _routerEndpoint = lp.ip;
+                  });
+                }
+                // Auto-register in DB in background
                 SupabaseService.instance.client
                     .from('Router')
-                    .update({'status': 'ONLINE', 'lastSeen': DateTime.now().toIso8601String()})
-                    .eq('id', rId)
+                    .insert({
+                      'venueId': venueForRouter['id'],
+                      'name': lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway',
+                      'endpoint': lp.ip,
+                      'status': 'ONLINE',
+                      'connectionMode': 'local',
+                      'lastSeen': DateTime.now().toIso8601String(),
+                    })
                     .catchError((_) {});
+              } else {
+                if (mounted) {
+                  setState(() {
+                    _hasRouter = false;
+                    _routerOnline = false;
+                    _routerName = '';
+                    _routerEndpoint = '';
+                  });
+                }
               }
-            } else if (lp != null) {
-              // Hardware online locally even though not registered in DB yet
-              if (mounted) {
+            } catch (_) {
+              if (lp != null && mounted) {
                 setState(() {
                   _hasRouter = true;
                   _routerOnline = true;
@@ -198,47 +234,17 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   _routerEndpoint = lp.ip;
                 });
               }
-              // Auto-register in DB in background
-              SupabaseService.instance.client
-                  .from('Router')
-                  .insert({
-                    'venueId': venueForRouter['id'],
-                    'name': lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway',
-                    'endpoint': lp.ip,
-                    'status': 'ONLINE',
-                    'connectionMode': 'local',
-                    'lastSeen': DateTime.now().toIso8601String(),
-                  })
-                  .catchError((_) {});
-            } else {
-              if (mounted) {
-                setState(() {
-                  _hasRouter = false;
-                  _routerOnline = false;
-                  _routerName = '';
-                  _routerEndpoint = '';
-                });
-              }
             }
-          } catch (_) {
-            if (lp != null && mounted) {
-              setState(() {
-                _hasRouter = true;
-                _routerOnline = true;
-                _routerName = lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway';
-                _routerEndpoint = lp.ip;
-              });
-            }
+          } else if (lp != null && mounted) {
+            setState(() {
+              _hasRouter = true;
+              _routerOnline = true;
+              _routerName = lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway';
+              _routerEndpoint = lp.ip;
+            });
           }
-        } else if (lp != null && mounted) {
-          setState(() {
-            _hasRouter = true;
-            _routerOnline = true;
-            _routerName = lp.identity.isNotEmpty ? lp.identity : 'MikroTik Gateway';
-            _routerEndpoint = lp.ip;
-          });
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     } finally {
       if (mounted) setState(() => _loadingStats = false);
     }

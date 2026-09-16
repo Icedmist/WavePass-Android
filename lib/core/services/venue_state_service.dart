@@ -112,8 +112,11 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 3. Try default venue from backend if explicit or fallback allowed
-      if (venue == null && allowFallbackToPrimary) {
+      // 3. Try default venue from backend if explicit or fallback allowed for super admin
+      final currentEmail = (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '').toLowerCase().trim();
+      final isSuperAdmin = currentEmail == 'talk2icedmist@gmail.com';
+
+      if (venue == null && allowFallbackToPrimary && isSuperAdmin) {
         try {
           final res = await WavePassApi.instance.getDefaultVenue();
           if (res['id'] != null) venue = res;
@@ -123,7 +126,7 @@ class VenueStateService {
       // 4. Fallback to Supabase primary venue if permitted
       if (venue == null && allowFallbackToPrimary) {
         try {
-          venue = await SupabaseService.instance.getPrimaryVenue();
+          venue = await SupabaseService.instance.getPrimaryVenue(email: currentEmail);
         } catch (_) {}
       }
 

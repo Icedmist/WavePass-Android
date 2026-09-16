@@ -373,3 +373,25 @@
     - `flutter analyze`: **0 issues found** (clean).
     - `flutter test`: **All 58 tests passed**.
     - PR [#75](https://github.com/Icedmist/WavePass-Android/pull/75) merged into `main` (`7ff8552`).
+
+### 27. End-to-End Grace Period Architecture & Native Passwordless Trial Auth (Issues #9 & #76, PRs #10 & #77)
+- [x] **Native RouterOS Hotspot Trial Auth Mechanics**:
+  - Identified that MikroTik Hotspot's native trial functionality (`login-by=trial`) provisions a virtual trial user `T-<mac>` and strictly requires passwordless authentication.
+  - Submitting passwords or CHAP MD5 challenge hashes on `T-<mac>` causes RouterOS to look in the `/ip hotspot user` database, fail to find the user, and reject the login with *"invalid username or password"*.
+- [x] **Hosted Subdomain Trial Navigation Alignment (`WavePass-Web`)**:
+  - Updated `activateTrial()` in `wavepass-web/app/portal/page.tsx` to dispatch `http://192.168.88.1/login?username=T-<mac>&trial=yes&dst=<target>` without sending `code=` or `password=` query parameters.
+  - Production build clean (`pnpm build`: 30 static pages, 9 route handlers, 0 errors).
+  - Closed Issue [#9](https://github.com/Icedmist/WavePass-Web/issues/9) via PR [#10](https://github.com/Icedmist/WavePass-Web/pull/10) merged to `main` (`e0dae7b`).
+- [x] **Router Trampoline & Standalone Portal Trial Parameter Handling (`WavePass-Android`)**:
+  - Updated `_generateHostedTrampolineHtml()` and `_generatePortalHtml()` in `RouterSetupScreen` to detect `params.get('trial') === 'yes'` or `username.indexOf('T-') === 0`.
+  - Sets `dst_user` to `trialUser` and leaves `dst_pass` empty `''`, immediately submitting `document.sendin.submit()` directly to the hotspot gateway without CHAP MD5 hashing.
+  - Closed Issue [#76](https://github.com/Icedmist/WavePass-Android/issues/76) via PR [#77](https://github.com/Icedmist/WavePass-Android/pull/77) merged to `main` (`3c1b9b3`).
+- [x] **Session Limits, Bandwidth Shaping & 24-Hour Abuse Protection**:
+  - Provisioned profile: `wp-payment-trial` with `rate-limit=2M/2M` (2 Mbps down / 2 Mbps up).
+  - Strict session duration: `session-timeout=2m`, `trial-uptime-limit=2m` (hard 120-second cutoff).
+  - Anti-abuse cooldown: `trial-uptime-reset=24h` (hardware MAC tracking enforces a single trial per device every 24 hours).
+  - Anti-tethering: TTL=1 client mangle rules and wireless/bridge isolation apply to trial sessions, preventing trial data sharing.
+- [x] **Verification**:
+  - `wavepass-web`: Next.js build clean (0 errors).
+  - `wavepass-android`: `flutter analyze` clean (0 errors), `flutter test` (58/58 passed).
+

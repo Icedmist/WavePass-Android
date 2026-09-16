@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/supabase_service.dart';
 import 'core/services/venue_state_service.dart';
+import 'core/services/activation_code_service.dart';
 import 'core/router/app_router.dart';
 
 void main() async {
@@ -17,6 +18,12 @@ void main() async {
     await VenueStateService.instance.init();
   } catch (e) {
     debugPrint('VenueStateService initial load: $e');
+  }
+
+  try {
+    await ActivationCodeService.instance.warmCache();
+  } catch (e) {
+    debugPrint('ActivationCodeService warm cache: $e');
   }
 
   runApp(const WavePassApp());

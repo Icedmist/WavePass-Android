@@ -42,6 +42,8 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
   Future<void> _showGenerateDialog() async {
     int count = 1;
     final noteCtrl = TextEditingController(text: "Venue License");
+    final venueCtrl = TextEditingController();
+    DateTime expiry = DateTime.now().add(const Duration(days: 30));
 
     final result = await showDialog<bool>(
       context: context,
@@ -51,33 +53,70 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
             "Generate Activation Codes",
             style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Each activation code is strictly limited to 1 venue. New accounts must redeem an authorized code to activate venue setup.",
-                style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
-              ),
-              const SizedBox(height: 16),
-              const Text("NUMBER OF CODES", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<int>(
-                initialValue: count,
-                decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                items: [1, 5, 10, 25, 50].map((n) => DropdownMenuItem(value: n, child: Text("$n Codes"))).toList(),
-                onChanged: (val) {
-                  if (val != null) setDialogState(() => count = val);
-                },
-              ),
-              const SizedBox(height: 12),
-              const Text("NOTE / CLIENT ASSIGNEE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: noteCtrl,
-                decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "e.g. Lagos Island Venue", isDense: true),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Each activation code is strictly limited to 1 venue. Codes carry their own expiry date — expired venues pause all activity until a fresh code is redeemed.",
+                  style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                const Text("NUMBER OF CODES", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int>(
+                  initialValue: count,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                  items: [1, 5, 10, 25, 50].map((n) => DropdownMenuItem(value: n, child: Text("$n Codes"))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => count = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text("NOTE / CLIENT ASSIGNEE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "e.g. September rotation", isDense: true),
+                ),
+                const SizedBox(height: 12),
+                const Text("VENUE IDS (OPTIONAL, COMMA-SEPARATED)", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: venueCtrl,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "One code per venue; leave empty for unassigned", isDense: true),
+                ),
+                const SizedBox(height: 12),
+                const Text("EXPIRY DATE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: expiry,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 730)),
+                    );
+                    if (picked != null) setDialogState(() => expiry = picked);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(border: Border.all(color: AppColors.cardBorder), borderRadius: BorderRadius.circular(4)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_month_rounded, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          "${expiry.year}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}",
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
@@ -93,10 +132,13 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
 
     if (result == true) {
       setState(() => _isGenerating = true);
+      final venueIds = venueCtrl.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       final generated = await SystemAdminService.instance.generateActivationCodes(
         count: count,
         note: noteCtrl.text.trim(),
         quota: 1,
+        expiresAt: expiry.toIso8601String(),
+        venueIds: venueIds.isEmpty ? null : venueIds,
       );
       await _loadCodes();
       if (mounted) {
@@ -142,6 +184,8 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
         return AppColors.textLight;
       case 'REVOKED':
         return AppColors.accentRed;
+      case 'EXPIRED':
+        return const Color(0xFFD97706);
       default:
         return AppColors.primary;
     }
@@ -151,6 +195,7 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
   Widget build(BuildContext context) {
     final authCount = _codes.where((c) => (c['status'] ?? '').toString().toUpperCase() == 'AUTHORIZED').length;
     final usedCount = _codes.where((c) => (c['status'] ?? '').toString().toUpperCase() == 'USED').length;
+    final expiredCount = _codes.where((c) => (c['status'] ?? '').toString().toUpperCase() == 'EXPIRED').length;
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -185,7 +230,7 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "${_codes.length} Total Codes • $authCount Authorized • $usedCount Used",
+                        "${_codes.length} Total Codes • $authCount Authorized • $usedCount Used • $expiredCount Expired",
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
                       ),
                       const Text(
@@ -215,7 +260,7 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
-              children: ['ALL', 'AUTHORIZED', 'USED', 'REVOKED'].map((filter) {
+              children: ['ALL', 'AUTHORIZED', 'USED', 'REVOKED', 'EXPIRED'].map((filter) {
                 final isSelected = _filter == filter;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -255,6 +300,7 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                           final redeemedBy = item['redeemedBy']?.toString();
                           final venueId = item['venueId']?.toString();
                           final notes = item['notes']?.toString();
+                          final expiresAt = item['expiresAt']?.toString();
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -314,6 +360,19 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                                   Text(
                                     "Note: $notes (1 Venue License)",
                                     style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                                  ),
+                                ],
+                                if (expiresAt != null && expiresAt.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.calendar_month_rounded, size: 12, color: Color(0xFFD97706)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "Expires: $expiresAt",
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFD97706)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                                 if (status == 'USED') ...[

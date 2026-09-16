@@ -16,6 +16,28 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
   final _codeCtrl = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  String? _expiryNotice;
+
+  @override
+  void initState() {
+    super.initState();
+    _forwardIfActivated();
+  }
+
+  /// Already licensed (e.g. bounced here by the router guard on cold start
+  /// before re-verification)? Skip ahead to the dashboard.
+  Future<void> _forwardIfActivated() async {
+    final lastExpired = await ActivationCodeService.instance.getLastExpired();
+    final ok = await ActivationCodeService.instance.isAccountActivated();
+    if (!mounted) return;
+    if (ok) {
+      context.go(AppRouter.dashboard);
+      return;
+    }
+    if (lastExpired != null) {
+      setState(() => _expiryNotice = 'Your previous activation expired on $lastExpired. Redeem a new monthly code to resume all activity.');
+    }
+  }
 
   @override
   void dispose() {
@@ -132,6 +154,30 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
                   ),
                 ),
                 const SizedBox(height: 28),
+
+                if (_expiryNotice != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.timer_off_rounded, color: Color(0xFFD97706), size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _expiryNotice!,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF92400E), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 // Activation Card Form
                 Container(

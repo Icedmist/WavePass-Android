@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../services/activation_code_service.dart';
 import '../../screens/splash_screen.dart';
 import '../../screens/onboarding_screen.dart';
 import '../../screens/login_screen.dart';
@@ -77,8 +78,29 @@ class AppRouter {
   static const systemAdminAudits = '/system-admin/audits';
   static const activationCodes = '/system-admin/activation-codes';
 
+  /// Routes reachable without an active venue license. Everything else
+  /// requires activation — expired venues are paused until a fresh code is
+  /// redeemed (checked against the warmed local cache; verified remotely by
+  /// screens via ActivationCodeService).
+  static const _activationFreeRoutes = {
+    '/',
+    '/onboarding',
+    '/login',
+    '/signup',
+    '/activate-venue',
+    '/how-to-use',
+    '/terms',
+    '/privacy',
+  };
+
   static final GoRouter router = GoRouter(
     initialLocation: splash,
+    redirect: (context, state) {
+      final loc = state.matchedLocation;
+      if (_activationFreeRoutes.contains(loc)) return null;
+      if (!ActivationCodeService.instance.isActivatedCached) return activateVenue;
+      return null;
+    },
     routes: [
       GoRoute(path: splash, builder: (_, _) => const SplashScreen()),
       GoRoute(path: onboarding, builder: (_, _) => const OnboardingScreen()),

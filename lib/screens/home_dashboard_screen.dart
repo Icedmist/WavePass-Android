@@ -9,6 +9,7 @@ import '../core/services/notification_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/services/system_admin_service.dart';
+import '../core/services/activation_code_service.dart';
 import 'voucher_history_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,6 +40,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
     _onVenueChanged();
     _loadDashboard();
+    _enforceActivation();
     VoucherHistoryService.instance.startMonitoring(context);
   }
 
@@ -68,6 +70,42 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         AppNotifier.instance.startPaymentPolling(vid);
       }
     }
+  }
+
+  /// License enforcement: re-validates activation with the backend (clears
+  /// stale/revoked/expired local activations) and pauses ALL activity by
+  /// routing to the activation screen when denied. Runs in background so the
+  /// dashboard never blocks on network.
+  Future<void> _enforceActivation() async {
+    try {
+      final status = await ActivationCodeService.instance.reverifyActivations();
+      if (!mounted) return;
+      if (status['activated'] != true) {
+        AppNotifier.instance.stopPaymentPolling();
+        context.go(AppRouter.activateVenue);
+        return;
+      }
+      await _checkVenueReadiness();
+    } catch (_) {}
+  }
+
+  /// New-venue setup enforcement: a venue without an active pricing plan
+  /// cannot sell vouchers — surface it immediately after activation passes.
+  Future<void> _checkVenueReadiness() async {
+    try {
+      final vid = VenueStateService.instance.currentVenueId;
+      if (vid == null || vid.isEmpty || !mounted) return;
+      final readiness = await WavePassApi.instance.venueReadiness(vid);
+      if (!mounted) return;
+      if (readiness['ready'] != true) {
+        final missing = (readiness['missing'] as List?)?.join(' and ') ?? 'setup steps';
+        AppNotifier.instance.warning(
+          context,
+          'Venue setup incomplete',
+          'Your venue is missing: $missing. Guests cannot buy passes until this is fixed.',
+        );
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadDashboard() async {

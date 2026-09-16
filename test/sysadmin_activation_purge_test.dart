@@ -56,22 +56,36 @@ void main() {
       expect(await service.isAccountActivated('new_venue_owner@gmail.com'), isFalse);
     });
 
-    test('redeeming activation code activates the account locally', () async {
+    test('offline redeem without backend does NOT activate (no format fallback)', () async {
       final service = ActivationCodeService.instance;
       final testEmail = 'new_venue_owner@gmail.com';
 
       // Initially not activated
       expect(await service.isAccountActivated(testEmail), isFalse);
 
-      // Redeem authorized code
+      // Redeem with no backend reachable must fail, not locally self-activate
       final result = await service.redeemActivationCode(
         code: 'WP-ACT-TEST-0001',
         email: testEmail,
       );
 
-      expect(result['ok'], isTrue);
-      expect(await service.isAccountActivated(testEmail), isTrue);
-      expect(await service.getActivatedCode(testEmail), 'WP-ACT-TEST-0001');
+      expect(result['ok'], isFalse);
+      expect(await service.isAccountActivated(testEmail), isFalse);
+      expect(await service.getActivatedCode(testEmail), isNull);
+    });
+
+    test('expired local activation locks the account even offline', () async {
+      final service = ActivationCodeService.instance;
+      final testEmail = 'expired_owner@gmail.com';
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('wavepass_venue_activated_$testEmail', true);
+      await prefs.setString(
+        'wavepass_venue_activated_expiry_$testEmail',
+        DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+      );
+
+      expect(await service.isAccountActivated(testEmail), isFalse);
+      expect(await service.getLastExpired(), isNotNull);
     });
 
     test('rejects empty or malformed activation codes', () async {

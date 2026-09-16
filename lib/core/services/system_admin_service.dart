@@ -306,19 +306,24 @@ class SystemAdminService {
     int count = 1,
     String? note,
     int quota = 1,
+    String? expiresAt,
+    List<String>? venueIds,
   }) async {
     try {
       final headers = await _getAuthHeaders();
+      final payload = <String, dynamic>{
+        'count': count,
+        'note': note ?? 'Admin generated activation code',
+        'quota': quota,
+        'createdBy': _superAdminEmail,
+      };
+      if (expiresAt != null) payload['expiresAt'] = expiresAt;
+      if (venueIds != null && venueIds.isNotEmpty) payload['venueIds'] = venueIds;
       final res = await http
           .post(
             Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-codes/generate'),
             headers: headers,
-            body: jsonEncode({
-              'count': count,
-              'note': note ?? 'Admin generated activation code',
-              'quota': quota,
-              'createdBy': _superAdminEmail,
-            }),
+            body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 8));
 

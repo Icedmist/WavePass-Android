@@ -68,6 +68,11 @@ class WavePassApi {
     return _get('/api/v1/venues/by-host?host=${Uri.encodeComponent(host)}');
   }
 
+  /// New-venue setup gate: reports missing plans/router before going live.
+  Future<Map<String, dynamic>> venueReadiness(String venueId) {
+    return _get('/api/v1/venues/${Uri.encodeComponent(venueId)}/readiness');
+  }
+
   Future<Map<String, dynamic>> checkSlugAvailability(String slug, {String? venueId}) {
     final query = venueId != null ? '?venueId=$venueId' : '';
     return _get('/api/v1/venues/check-slug/${Uri.encodeComponent(slug)}$query');

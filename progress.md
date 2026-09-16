@@ -395,3 +395,22 @@
   - `wavepass-web`: Next.js build clean (0 errors).
   - `wavepass-android`: `flutter analyze` clean (0 errors), `flutter test` (58/58 passed).
 
+### 28. Account Switch Session Isolation ("Session Catcher" Fix) & Universal Account Deletion (Issues #78, #23, #11; PRs #79, #24, #12)
+- [x] **Universal Account Deletion Across Supabase Auth & Prisma (`WavePass-Backend` #23, #24)**:
+  - Updated `POST /api/v1/admin/delete-account` to verify credentials for both system admins (`ADMIN_PASSWORD`) and standard Supabase operators via Supabase Auth REST verification (`POST /auth/v1/token?grant_type=password`).
+  - Implemented cascading user deletion in `AdminAuthService.deleteUserAccount()`: purges user from Supabase Auth admin API (`DELETE /auth/v1/admin/users/:id`), drops venue memberships, cleans up owned vouchers, and deletes Prisma records.
+  - Test suite clean: all 27 backend unit/service tests passing; `pnpm build` clean.
+- [x] **Session Catcher & Cross-Account State Isolation (`WavePass-Android` #78, #79)**:
+  - **Account Purge on Sign Out**: `AccountCenterScreen._signOutUser()` and `LoginScreen._handleSignIn()` now wipe `admin_token`, `wavepass_voucher_history_v1`, router credentials (`wavepass_router_local_ip`, `wavepass_router_username`, `wavepass_router_password`), venue cache, activation state, and voucher cache upon account switch.
+  - **Scoped System Admin Elevation**: `SystemAdminService.isSystemAdmin()` now strictly validates email alongside token presence; non-admin accounts are never elevated to System Admin.
+  - **Strict Venue Ownership & Fallback Isolation**: `SupabaseService.getPrimaryVenue()`, `getVenues()`, and `VenueStateService.refreshVenue()` limit primary venue fallback strictly to `talk2icedmist@gmail.com`. Standard operator accounts resolve only their own `VenueMember` associations.
+  - **Home Dashboard Active User Leak Guard**: `HomeDashboardScreen` guards `WavePassApi.instance.adminStats()` behind `isSuperAdmin && vid == null` so platform-wide active user counts never overwrite local stats for zero-session accounts. Guarded router hardware probes behind `venue != null || isSuperAdmin`.
+  - **Voucher History & Hardware Polling Isolation**: `VoucherHistoryService` now scopes database queries to `venueId` when not super admin, clears internal caches via `clearCache()`, and guards 20-second router background polling when no venue is configured.
+- [x] **Web Admin Cookie & Token Purge (`WavePass-Web` #11, #12)**:
+  - Updated `app/login/page.tsx` to explicitly delete `admin_token` from `localStorage` and set `admin_token` cookie to expired upon standard Supabase user login.
+- [x] **Verification**:
+  - `wavepass-backend`: 27/27 unit tests passed; `pnpm build` clean. PR [#24](https://github.com/Icedmist/WavePass-Backend/pull/24) merged to `main` (`2bc542c`).
+  - `wavepass-web`: `pnpm build` clean (30 static pages, 9 route handlers). PR [#12](https://github.com/Icedmist/WavePass-Web/pull/12) merged to `main` (`2f1bd45`).
+  - `wavepass-android`: `flutter analyze` clean (0 warnings, 0 errors); `flutter test` clean (all 58 tests passed). PR [#79](https://github.com/Icedmist/WavePass-Android/pull/79) merged to `main` (`b8766be`).
+
+

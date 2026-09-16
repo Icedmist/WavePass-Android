@@ -542,7 +542,7 @@ add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=
 
 /ip firewall mangle
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=postrouting action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
+add chain=postrouting out-interface=!ether1 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
 
 /ip firewall filter
 remove [find comment~"WavePass Anti-Tethering"]

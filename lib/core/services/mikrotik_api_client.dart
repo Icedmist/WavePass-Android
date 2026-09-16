@@ -359,7 +359,12 @@ class MikrotikApiClient {
         '=name=wavepass-profile',
         '=dns-name=wavepass.local',
         '=html-directory=hotspot',
-        '=login-by=http-chap,http-pap,mac-cookie',
+        '=login-by=http-pap,http-chap,mac-cookie,trial',
+        '=trial-user-profile=wp-payment-trial',
+        '=trial-uptime-limit=2m',
+        '=trial-uptime-reset=24h',
+        '=addresses-per-mac=1',
+        '=mac-cookie=no',
         if (localIp != null && localIp.isNotEmpty)
           '=hotspot-address=$localIp',
       ]);
@@ -379,6 +384,12 @@ class MikrotikApiClient {
               '=.id=$id',
               '=dns-name=wavepass.local',
               '=html-directory=hotspot',
+              '=login-by=http-pap,http-chap,mac-cookie,trial',
+              '=trial-user-profile=wp-payment-trial',
+              '=trial-uptime-limit=2m',
+              '=trial-uptime-reset=24h',
+              '=addresses-per-mac=1',
+              '=mac-cookie=no',
             ]);
             results['profile'] = true;
           }
@@ -619,7 +630,7 @@ class MikrotikApiClient {
     };
 
     try {
-      // 1. Hotspot User Profiles: shared-users=1
+      // 1. Hotspot User Profiles: shared-users=1 and ensure wp-payment-trial exists
       try {
         final profiles = await executeSentence(['/ip/hotspot/user/profile/print']);
         for (final p in profiles) {
@@ -632,12 +643,29 @@ class MikrotikApiClient {
             ]);
           }
         }
+        final trialExists = profiles.any((p) => p['name'] == 'wp-payment-trial');
+        if (!trialExists) {
+          try {
+            await executeSentence([
+              '/ip/hotspot/user/profile/add',
+              '=name=wp-payment-trial',
+              '=rate-limit=2M/2M',
+              '=shared-users=1',
+              '=session-timeout=2m',
+              '=keepalive-timeout=2m',
+              '=idle-timeout=1m',
+              '=status-autorefresh=1m',
+              '=transparent-proxy=yes',
+              '=comment=WavePass 2-Minute Payment Trial',
+            ]);
+          } catch (_) {}
+        }
         results['profiles'] = true;
       } catch (e) {
         debugPrint('[MikrotikApiClient] enforceNoSharing profiles error: $e');
       }
 
-      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie=no
+      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie=no, login-by, trial
       try {
         final srvProfiles = await executeSentence(['/ip/hotspot/profile/print']);
         for (final sp in srvProfiles) {
@@ -647,7 +675,11 @@ class MikrotikApiClient {
               '/ip/hotspot/profile/set',
               '=.id=$id',
               '=addresses-per-mac=1',
-              '=login-by=http-chap,http-pap',
+              '=mac-cookie=no',
+              '=login-by=http-pap,http-chap,mac-cookie,trial',
+              '=trial-user-profile=wp-payment-trial',
+              '=trial-uptime-limit=2m',
+              '=trial-uptime-reset=24h',
             ]);
           }
         }
@@ -687,26 +719,34 @@ class MikrotikApiClient {
         }
       } catch (_) {}
 
-      // 4. Mangle Postrouting: Change TTL to 1 for all outbound client traffic
+      // 4. Mangle Postrouting: Change TTL to 1 for all outbound client traffic (excluding WAN ether1)
       // This is the universal, industry-standard anti-tethering technique.
+      // CRITICAL: out-interface=!ether1 prevents altering TTL on outgoing WAN traffic to the ISP.
       // When a client (iOS, Windows, Android, Linux) receives a packet with TTL=1,
       // the device itself functions 100% normally. But if it attempts to tether/share,
       // the OS decrements TTL to 0 (1 - 1 = 0) and drops the packet.
       try {
         final existingMangle = await executeSentence([
           '/ip/firewall/mangle/print',
-          '?comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
+          '?comment~WavePass Anti-Tethering',
         ]);
-        if (existingMangle.isEmpty) {
-          await executeSentence([
-            '/ip/firewall/mangle/add',
-            '=chain=postrouting',
-            '=action=change-ttl',
-            '=new-ttl=set:1',
-            '=passthrough=yes',
-            '=comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
-          ]);
+        for (final m in existingMangle) {
+          final id = m['.id'];
+          if (id != null) {
+            try {
+              await executeSentence(['/ip/firewall/mangle/remove', '=.id=$id']);
+            } catch (_) {}
+          }
         }
+        await executeSentence([
+          '/ip/firewall/mangle/add',
+          '=chain=postrouting',
+          '=out-interface=!ether1',
+          '=action=change-ttl',
+          '=new-ttl=set:1',
+          '=passthrough=yes',
+          '=comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
+        ]);
         results['mangleTtl'] = true;
       } catch (e) {
         debugPrint('[MikrotikApiClient] enforceNoSharing mangle change-ttl error: $e');

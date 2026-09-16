@@ -141,8 +141,17 @@ void main() {
           } else if (str.contains('/interface/wireless/set')) {
             receivedCommands.add('wireless_set');
             socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
+          } else if (str.contains('/ip/hotspot/user/profile/add')) {
+            receivedCommands.add('user_profile_add');
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
           } else if (str.contains('/interface/bridge/port/print')) {
             receivedCommands.add('bridge_port_print');
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
+          } else if (str.contains('/ip/firewall/mangle/print')) {
+            receivedCommands.add('mangle_print');
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]); // empty
+          } else if (str.contains('/ip/firewall/mangle/add')) {
+            receivedCommands.add('mangle_add');
             socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
           } else if (str.contains('/ip/firewall/filter/print')) {
             receivedCommands.add('filter_print');
@@ -164,14 +173,17 @@ void main() {
       expect(res['profiles'], isTrue);
       expect(res['serverProfiles'], isTrue);
       expect(res['isolation'], isTrue);
+      expect(res['mangleTtl'], isTrue);
       expect(res['firewallFilter'], isTrue);
 
       expect(receivedCommands, contains('user_profile_print'));
       expect(receivedCommands, contains('user_profile_set'));
+      expect(receivedCommands, contains('user_profile_add'));
       expect(receivedCommands, contains('srv_profile_print'));
       expect(receivedCommands, contains('srv_profile_set'));
       expect(receivedCommands, contains('wireless_print'));
       expect(receivedCommands, contains('wireless_set'));
+      expect(receivedCommands, contains('mangle_add'));
       expect(receivedCommands, contains('filter_add'));
     });
   });

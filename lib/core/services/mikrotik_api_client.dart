@@ -719,9 +719,28 @@ class MikrotikApiClient {
         }
       } catch (_) {}
 
-      // 4. Mangle Postrouting: Change TTL to 1 for all outbound client traffic (excluding WAN ether1)
+      // 4. Disable FastTrack connection rules because FastTrack bypasses mangle TTL change and firewall drops
+      try {
+        final ftRules = await executeSentence([
+          '/ip/firewall/filter/print',
+          '?action=fasttrack-connection',
+        ]);
+        for (final ft in ftRules) {
+          final id = ft['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/ip/firewall/filter/set',
+              '=.id=$id',
+              '=disabled=yes',
+            ]);
+          }
+        }
+      } catch (_) {}
+
+      // 5. Mangle Postrouting: Change TTL to 1 for all client destination subnets
       // This is the universal, industry-standard anti-tethering technique.
-      // CRITICAL: out-interface=!ether1 prevents altering TTL on outgoing WAN traffic to the ISP.
+      // Matching RFC 1918 client destinations (192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12)
+      // ensures that traffic towards internet (WAN) is NEVER modified, regardless of WAN interface name.
       // When a client (iOS, Windows, Android, Linux) receives a packet with TTL=1,
       // the device itself functions 100% normally. But if it attempts to tether/share,
       // the OS decrements TTL to 0 (1 - 1 = 0) and drops the packet.
@@ -738,22 +757,25 @@ class MikrotikApiClient {
             } catch (_) {}
           }
         }
-        await executeSentence([
-          '/ip/firewall/mangle/add',
-          '=chain=postrouting',
-          '=out-interface=!ether1',
-          '=action=change-ttl',
-          '=new-ttl=set:1',
-          '=passthrough=yes',
-          '=comment=WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
-        ]);
+
+        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        for (final subnet in subnets) {
+          await executeSentence([
+            '/ip/firewall/mangle/add',
+            '=chain=postrouting',
+            '=dst-address=$subnet',
+            '=action=change-ttl',
+            '=new-ttl=set:1',
+            '=passthrough=yes',
+            '=comment=WavePass Anti-Tethering: set TTL=1 for $subnet (blocks iOS, Windows, Android, Linux sharing)',
+          ]);
+        }
         results['mangleTtl'] = true;
       } catch (e) {
         debugPrint('[MikrotikApiClient] enforceNoSharing mangle change-ttl error: $e');
       }
 
-      // 5. Firewall Filter Drop tethered packets (TTL 63, 62, 127, 126) on ALL interfaces
-      // Removed in-interface restriction so bridged interfaces, Ethernet, and all Wi-Fi bands are covered.
+      // 6. Firewall Filter Drop tethered packets (TTL 63, 62, 127, 126) at top of forward chain
       try {
         final ttlsToDrop = [
           {'ttl': 'equal:63', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)'},
@@ -773,6 +795,7 @@ class MikrotikApiClient {
               '=chain=forward',
               '=action=drop',
               '=ttl=${rule['ttl']}',
+              '=place-before=0',
               '=comment=${rule['comment']}',
             ]);
           }
@@ -800,8 +823,42 @@ class MikrotikApiClient {
       await executeSentence(['/system/reboot']);
       return true;
     } catch (e) {
-      // Reboots disconnect the socket immediately, which is normal behavior
-      return true;
+      debugPrint('[MikrotikApiClient] rebootRouter error: $e');
+      return false;
+    }
+  }
+
+  /// Updates the password for a router system user.
+  Future<bool> updateUserPassword({
+    required String username,
+    required String newPassword,
+  }) async {
+    try {
+      final users = await executeSentence([
+        '/user/print',
+        '?name=$username',
+      ]);
+      if (users.isEmpty) {
+        await executeSentence([
+          '/user/set',
+          '=.id=$username',
+          '=password=$newPassword',
+        ]);
+        return true;
+      }
+      final id = users.first['.id'];
+      if (id != null) {
+        await executeSentence([
+          '/user/set',
+          '=.id=$id',
+          '=password=$newPassword',
+        ]);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[MikrotikApiClient] updateUserPassword error: $e');
+      return false;
     }
   }
 

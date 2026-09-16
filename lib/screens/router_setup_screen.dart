@@ -48,6 +48,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   final _tunnelCtrl = TextEditingController();
   final _userCtrl = TextEditingController(text: "admin");
   final _passCtrl = TextEditingController();
+  bool _obscureRouterPass = true;
 
   // Export script state
   bool _exportingScript = false;
@@ -278,15 +279,9 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   }
 
   Future<void> _enforceNoSharing() async {
-    if (_foundRouter == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("No router selected. Detect your router first."),
-          backgroundColor: AppColors.accentRed,
-        ),
-      );
-      return;
-    }
+    await _saveCredentials();
+    final enteredIp = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
+    final targetIp = _foundRouter?.ip ?? enteredIp;
 
     setState(() => _isConfiguring = true);
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
@@ -295,7 +290,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
     try {
       final res = await RouterDiscoveryService.enforceNoHotspotSharing(
-        ip: _foundRouter!.ip,
+        ip: targetIp,
         username: user,
         password: pass,
         endpoint: tunnel,
@@ -540,16 +535,21 @@ add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=
 /ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime-limit=2m trial-uptime-reset=24h
 /interface wireless set [find] default-forwarding=no
 
+# Disable FastTrack because FastTrack bypasses mangle TTL change and firewall filter drops
+/ip firewall filter set [find action=fasttrack-connection] disabled=yes
+
 /ip firewall mangle
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=postrouting out-interface=!ether1 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
+add chain=postrouting dst-address=192.168.0.0/16 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
+add chain=postrouting dst-address=10.0.0.0/8 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 10.x.x.x"
+add chain=postrouting dst-address=172.16.0.0/12 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 172.16.x.x"
 
 /ip firewall filter
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=forward action=drop ttl=equal:63 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)"
-add chain=forward action=drop ttl=equal:62 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)"
-add chain=forward action=drop ttl=equal:127 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
-add chain=forward action=drop ttl=equal:126 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
+add chain=forward action=drop ttl=equal:63 place-before=0 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)"
+add chain=forward action=drop ttl=equal:62 place-before=0 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)"
+add chain=forward action=drop ttl=equal:127 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
+add chain=forward action=drop ttl=equal:126 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
 
 # --------------------------------------------------------
 # 6. Active Session Expiry & 1-Minute User Limit Enforcer
@@ -1940,6 +1940,7 @@ $_rfc1321Md5Js
   }
 
   Future<void> _handleAutoUploadPortalFiles() async {
+    await _saveCredentials();
     setState(() => _uploadingPortalFiles = true);
     try {
       final suite = await _ensurePortalSuite();
@@ -2097,6 +2098,7 @@ $_rfc1321Md5Js
                           flex: 3,
                           child: TextField(
                             controller: _ipCtrl,
+                            onChanged: (_) => _saveCredentials(),
                             decoration: const InputDecoration(
                               labelText: "Gateway IP",
                               hintText: "192.168.88.1",
@@ -2110,6 +2112,7 @@ $_rfc1321Md5Js
                           flex: 2,
                           child: TextField(
                             controller: _userCtrl,
+                            onChanged: (_) => _saveCredentials(),
                             decoration: const InputDecoration(
                               labelText: "Username",
                               hintText: "admin",
@@ -2123,17 +2126,27 @@ $_rfc1321Md5Js
                     const SizedBox(height: 8),
                     TextField(
                       controller: _passCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
+                      obscureText: _obscureRouterPass,
+                      onChanged: (_) => _saveCredentials(),
+                      decoration: InputDecoration(
                         labelText: "Password (leave empty if fresh)",
                         hintText: "••••••••",
                         isDense: true,
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureRouterPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 18,
+                            color: AppColors.textLight,
+                          ),
+                          onPressed: () => setState(() => _obscureRouterPass = !_obscureRouterPass),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _tunnelCtrl,
+                      onChanged: (_) => _saveCredentials(),
                       decoration: const InputDecoration(
                         labelText: "Cloud Tunnel Endpoint (Optional)",
                         hintText: "http://10.8.0.2:80 or tunnel.nexawavepass.com",

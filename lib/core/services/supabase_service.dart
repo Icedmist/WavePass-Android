@@ -43,6 +43,15 @@ class SupabaseService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getVenues() async {
+    try {
+      final res = await client.from('Venue').select('*');
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Plans queries — no mock fallback, returns empty on error for prod parity
   Future<List<Map<String, dynamic>>> getActivePlans(String venueId) async {
     final res = await client.from('Plan').select('*').eq('venueId', venueId).eq('active', true).order('priceMinor', ascending: true);

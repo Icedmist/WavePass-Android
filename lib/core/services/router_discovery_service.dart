@@ -1785,7 +1785,30 @@ class RouterDiscoveryService {
         }
       } catch (_) {}
 
-      // WAN-Safe Mangle: Change TTL to 1 for all outbound client traffic (excluding WAN ether1)
+      // Disable FastTrack connection rules because FastTrack bypasses mangle and filter rules
+      try {
+        final ftRes = await client.get(
+          Uri.parse("$target/rest/ip/firewall/filter?action=fasttrack-connection"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 3));
+        if (ftRes.statusCode == 200) {
+          final list = jsonDecode(ftRes.body);
+          if (list is List) {
+            for (final ft in list) {
+              final id = ft['.id'];
+              if (id != null) {
+                await client.patch(
+                  Uri.parse("$target/rest/ip/firewall/filter/$id"),
+                  headers: headers,
+                  body: jsonEncode({'disabled': 'true'}),
+                ).timeout(const Duration(seconds: 2));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // WAN-Safe Mangle: Change TTL to 1 for all client destination subnets
       try {
         final mangleRes = await client.get(
           Uri.parse("$target/rest/ip/firewall/mangle"),
@@ -1808,18 +1831,22 @@ class RouterDiscoveryService {
             }
           }
         }
-        await client.put(
-          Uri.parse("$target/rest/ip/firewall/mangle"),
-          headers: headers,
-          body: jsonEncode({
-            'chain': 'postrouting',
-            'out-interface': '!ether1',
-            'action': 'change-ttl',
-            'new-ttl': 'set:1',
-            'passthrough': 'true',
-            'comment': 'WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)',
-          }),
-        ).timeout(const Duration(seconds: 3));
+
+        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        for (final subnet in subnets) {
+          await client.put(
+            Uri.parse("$target/rest/ip/firewall/mangle"),
+            headers: headers,
+            body: jsonEncode({
+              'chain': 'postrouting',
+              'dst-address': subnet,
+              'action': 'change-ttl',
+              'new-ttl': 'set:1',
+              'passthrough': 'true',
+              'comment': 'WavePass Anti-Tethering: set TTL=1 for $subnet (blocks iOS, Windows, Android, Linux sharing)',
+            }),
+          ).timeout(const Duration(seconds: 3));
+        }
         results['mangleTtl'] = true;
       } catch (_) {}
 
@@ -1857,6 +1884,91 @@ class RouterDiscoveryService {
     }
 
     return results;
+  }
+
+  /// Updates the router admin password both on the hardware (if reachable) and locally in SharedPreferences.
+  static Future<Map<String, dynamic>> updateRouterAdminPassword({
+    required String newPassword,
+    String? currentPassword,
+    String? ip,
+    String? username,
+    String? endpoint,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final effectiveIp = (ip != null && ip.isNotEmpty) ? ip : (prefs.getString(keyRouterLocalIp) ?? '192.168.88.1');
+    final effectiveUser = (username != null && username.isNotEmpty) ? username : (prefs.getString(keyRouterUsername) ?? 'admin');
+    final effectivePass = (currentPassword != null) ? currentPassword : (prefs.getString(keyRouterPassword) ?? '');
+    final effectiveEndpoint = endpoint ?? prefs.getString(keyRouterTunnelEndpoint);
+
+    bool hardwareUpdated = false;
+    String? hardwareError;
+
+    // 1. Try updating via Port 8728 API
+    try {
+      var hostOnly = (effectiveEndpoint != null && effectiveEndpoint.isNotEmpty) ? effectiveEndpoint : effectiveIp;
+      hostOnly = hostOnly.replaceAll('http://', '').replaceAll('https://', '').split(':').first.split('/').first;
+      if (hostOnly.isEmpty) hostOnly = effectiveIp;
+
+      final client8728 = MikrotikApiClient(host: hostOnly, port: 8728, timeout: const Duration(seconds: 4));
+      if (await client8728.connect()) {
+        if (await client8728.login(effectiveUser, effectivePass)) {
+          hardwareUpdated = await client8728.updateUserPassword(username: effectiveUser, newPassword: newPassword);
+        }
+        await client8728.disconnect();
+      }
+    } catch (e) {
+      hardwareError = e.toString();
+    }
+
+    // 2. Try REST API if 8728 didn't succeed
+    if (!hardwareUpdated) {
+      final client = createRouterClient();
+      try {
+        var target = (effectiveEndpoint != null && effectiveEndpoint.trim().isNotEmpty) ? effectiveEndpoint.trim() : 'http://$effectiveIp';
+        if (!target.startsWith('http://') && !target.startsWith('https://')) target = 'http://$target';
+        if (target.endsWith('/')) target = target.substring(0, target.length - 1);
+
+        final authHeader = 'Basic ${base64Encode(utf8.encode('$effectiveUser:$effectivePass'))}';
+        final headers = {'Authorization': authHeader, 'Content-Type': 'application/json'};
+
+        final userRes = await client.get(
+          Uri.parse('$target/rest/user?name=$effectiveUser'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+
+        if (userRes.statusCode == 200) {
+          final list = jsonDecode(userRes.body);
+          if (list is List && list.isNotEmpty) {
+            final id = list.first['.id'];
+            if (id != null) {
+              final patchRes = await client.patch(
+                Uri.parse('$target/rest/user/$id'),
+                headers: headers,
+                body: jsonEncode({'password': newPassword}),
+              ).timeout(const Duration(seconds: 3));
+              if (patchRes.statusCode >= 200 && patchRes.statusCode < 300) {
+                hardwareUpdated = true;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        hardwareError ??= e.toString();
+      } finally {
+        client.close();
+      }
+    }
+
+    // 3. Always save locally to SharedPreferences so all app screens and background services immediately use the new password!
+    await prefs.setString(keyRouterPassword, newPassword);
+    await prefs.setString(keyRouterUsername, effectiveUser);
+    await prefs.setString(keyRouterLocalIp, effectiveIp);
+
+    return {
+      'ok': true,
+      'hardwareUpdated': hardwareUpdated,
+      'hardwareError': hardwareError,
+    };
   }
 
   /// Native Dart FTP client to upload files directly to MikroTik router on port 21.

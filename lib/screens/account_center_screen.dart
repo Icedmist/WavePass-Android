@@ -7,6 +7,7 @@ import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/theme/app_theme.dart';
@@ -28,6 +29,13 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+
+  // Router Hardware Admin Credentials
+  final _routerIpController = TextEditingController(text: '192.168.88.1');
+  final _routerUserController = TextEditingController(text: 'admin');
+  final _routerPassController = TextEditingController();
+  bool _obscureRouterPass = true;
+  bool _savingRouterCreds = false;
 
   final _venueNameController = TextEditingController();
   final _venueSlugController = TextEditingController();
@@ -60,6 +68,9 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     _confirmPasswordController.dispose();
     _venueNameController.dispose();
     _venueSlugController.dispose();
+    _routerIpController.dispose();
+    _routerUserController.dispose();
+    _routerPassController.dispose();
     super.dispose();
   }
 
@@ -123,6 +134,15 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       if (mounted && venue != null) {
         _venueNameController.text = venue['name']?.toString() ?? 'My Venue';
         _venueSlugController.text = venue['slug']?.toString() ?? 'venue';
+      }
+
+      final savedRouterIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final savedRouterUser = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final savedRouterPass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+      if (mounted) {
+        _routerIpController.text = savedRouterIp;
+        _routerUserController.text = savedRouterUser;
+        _routerPassController.text = savedRouterPass;
       }
     } catch (_) {
     } finally {
@@ -213,6 +233,33 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       if (mounted) _showToast('Failed to change password: $e', isError: true);
     } finally {
       if (mounted) setState(() => _changingPassword = false);
+    }
+  }
+
+  Future<void> _handleUpdateRouterCredentials() async {
+    final ip = _routerIpController.text.trim().isNotEmpty ? _routerIpController.text.trim() : '192.168.88.1';
+    final user = _routerUserController.text.trim().isNotEmpty ? _routerUserController.text.trim() : 'admin';
+    final pass = _routerPassController.text.trim();
+
+    setState(() => _savingRouterCreds = true);
+    try {
+      final res = await RouterDiscoveryService.updateRouterAdminPassword(
+        newPassword: pass,
+        ip: ip,
+        username: user,
+      );
+
+      if (mounted) {
+        if (res['hardwareUpdated'] == true) {
+          _showToast('Router password successfully updated on hardware & saved in app!');
+        } else {
+          _showToast('Router password saved! All active device & voucher features will use this password.');
+        }
+      }
+    } catch (e) {
+      if (mounted) _showToast('Failed to update router password: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _savingRouterCreds = false);
     }
   }
 
@@ -604,7 +651,84 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
                           child: _changingPassword
                               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : const Text('Update Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                              : const Text('Update Account Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // SECTION: MIKROTIK ROUTER HARDWARE ADMIN CREDENTIALS
+                _cardSection(
+                  title: 'ROUTER HARDWARE ADMIN CREDENTIALS',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Credentials used by WavePass to communicate with your MikroTik router gateway on the local network (Port 8728 / REST API / FTP). Changing this updates your hardware and app credentials.',
+                        style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _inputLabel('GATEWAY IP'),
+                                TextField(
+                                  controller: _routerIpController,
+                                  decoration: const InputDecoration(hintText: '192.168.88.1'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 2,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _inputLabel('ADMIN USER'),
+                                TextField(
+                                  controller: _routerUserController,
+                                  decoration: const InputDecoration(hintText: 'admin'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _inputLabel('ROUTER ADMIN PASSWORD'),
+                      TextField(
+                        controller: _routerPassController,
+                        obscureText: _obscureRouterPass,
+                        decoration: InputDecoration(
+                          hintText: 'Leave blank if fresh router',
+                          helperText: 'Changing this updates router hardware and saves app credentials',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureRouterPass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                              color: AppColors.textLight,
+                              size: 18,
+                            ),
+                            onPressed: () => setState(() => _obscureRouterPass = !_obscureRouterPass),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: _savingRouterCreds ? null : _handleUpdateRouterCredentials,
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                          child: _savingRouterCreds
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('Save & Sync Router Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     ],

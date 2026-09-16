@@ -176,5 +176,22 @@ void main() {
       expect(html, contains('disabled title="Paystack not available"'));
       expect(html, contains('Need Internet to Pay?'));
     });
+
+    test('Captive portal suite caches active voucher credentials and provides 1-tap reconnect', () {
+      final hostedHtml = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', null, true, true);
+      expect(hostedHtml, contains("localStorage.setItem('wp-active-voucher'"));
+      expect(hostedHtml, contains("localStorage.getItem('wp-active-voucher')"));
+      expect(hostedHtml, contains('btn_offline_connect'));
+
+      final standaloneHtml = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', null, true, false);
+      expect(standaloneHtml, contains('savedVoucherBox'));
+      expect(standaloneHtml, contains('Reconnect Active Voucher'));
+      expect(standaloneHtml, contains('1-Tap Reconnect Now'));
+      expect(standaloneHtml, contains("localStorage.setItem('wp-active-voucher'"));
+
+      final statusHtml = RouterSetupScreen.generateStatusHtml('Apex Lounge', 'apex-lounge');
+      expect(statusHtml, contains("localStorage.setItem('wp-active-voucher'"));
+      expect(statusHtml, contains(r'var u = "$(username)";'));
+    });
   });
 }

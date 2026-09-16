@@ -308,6 +308,8 @@ class SystemAdminService {
     int quota = 1,
     String? expiresAt,
     List<String>? venueIds,
+    String? kind,
+    int? durationDays,
   }) async {
     try {
       final headers = await _getAuthHeaders();
@@ -319,6 +321,8 @@ class SystemAdminService {
       };
       if (expiresAt != null) payload['expiresAt'] = expiresAt;
       if (venueIds != null && venueIds.isNotEmpty) payload['venueIds'] = venueIds;
+      if (kind != null) payload['kind'] = kind;
+      if (durationDays != null) payload['durationDays'] = durationDays;
       final res = await http
           .post(
             Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-codes/generate'),

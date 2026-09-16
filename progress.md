@@ -460,3 +460,9 @@
 - [x] **Complete Tab**: Notifications screen syncs backend alerts on open; mark-all-read syncs to backend.
 - [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
 - [x] PR [#87](https://github.com/Icedmist/WavePass-Android/pull/87) merged to `main`.
+
+### 32. Activation Generation by Kind & Duration (Issue #88, PR #89)
+- [x] **Generate Dialog**: kind picker (LICENSE monthly / MASTER multi-use / TRIAL short) with duration presets, custom days input (0 = lifetime), venue assignment.
+- [x] **List**: kind badge + expiry per code, EXPIRED filter/count.
+- [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
+- [x] PR [#89](https://github.com/Icedmist/WavePass-Android/pull/89) merged to `main`.

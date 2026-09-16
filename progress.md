@@ -453,3 +453,10 @@
   - Exposes `RouterSetupScreen.generateStatusHtml` and `RouterSetupScreen.generateLogoutHtml`.
   - All 59 unit/widget tests passing; `flutter analyze` 0 issues.
   - PR [#83](https://github.com/Icedmist/WavePass-Android/pull/83) merged to `main` (`e9ad316`).
+
+### 31. Payment Modal Parity & Complete Notifications Tab (Issue #86, PR #87)
+- [x] **Single Modal Renderer**: `_buildModal` shared by foreground `show()` and background poll alerts via a messenger key bound in `main.dart` — payment alerts look exactly like "Voucher In Use" modals.
+- [x] **Silent First Fill**: initial poll populates feed only; subsequent polls modal + system bar for new payments.
+- [x] **Complete Tab**: Notifications screen syncs backend alerts on open; mark-all-read syncs to backend.
+- [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
+- [x] PR [#87](https://github.com/Icedmist/WavePass-Android/pull/87) merged to `main`.

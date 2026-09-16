@@ -28,6 +28,13 @@ class AppNotifier {
   Timer? _pollTimer;
   String? _pollVenueId;
   final Set<String> _seenRemoteIds = {};
+  GlobalKey<ScaffoldMessengerState>? _messengerKey;
+
+  /// Bound once from main.dart so background pollers can render the exact
+  /// same in-app modal as foreground callers without a BuildContext.
+  void bindMessenger(GlobalKey<ScaffoldMessengerState> key) {
+    _messengerKey = key;
+  }
 
   int get unread => feed.value.where((n) => !n.read).length;
 
@@ -40,6 +47,47 @@ class AppNotifier {
   /// In-feed only (no snackbar) — used by backend payment polling.
   void push({required NotifyType type, required String title, required String message, String? remoteId, DateTime? at}) {
     _add(AppNotification(type: type, title: title, message: message, remoteId: remoteId, at: at));
+  }
+
+  /// The single in-app modal renderer (floating white SnackBar). Both
+  /// foreground `show()` and background poll alerts use this, so a payment
+  /// alert looks exactly like the "Voucher In Use" modal.
+  SnackBar _buildModal({
+    required NotifyType type,
+    required String title,
+    required String message,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    final colors = {
+      NotifyType.success: AppColors.accentGreen,
+      NotifyType.error: AppColors.accentRed,
+      NotifyType.warning: const Color(0xFFD97706),
+      NotifyType.info: AppColors.primary,
+    };
+    final icons = {
+      NotifyType.success: Icons.check_circle,
+      NotifyType.error: Icons.error,
+      NotifyType.warning: Icons.warning_amber_rounded,
+      NotifyType.info: Icons.info,
+    };
+    return SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+      backgroundColor: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: colors[type]!.withValues(alpha: 0.2))),
+      duration: const Duration(seconds: 4),
+      content: Row(children: [
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: colors[type]!.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(icons[type], color: colors[type], size: 20)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: colors[type])),
+          Text(message, style: const TextStyle(fontSize: 12, color: AppColors.textLight), maxLines: 2, overflow: TextOverflow.ellipsis),
+        ])),
+      ]),
+      action: actionLabel != null ? SnackBarAction(label: actionLabel, textColor: colors[type], onPressed: () => onAction?.call()) : null,
+    );
   }
   void markAllRead() {
     for (final n in feed.value) {
@@ -56,35 +104,19 @@ class AppNotifier {
       VoidCallback? onAction}) {
     final n = AppNotification(type: type, title: title, message: message);
     _add(n);
-    final colors = {
-      NotifyType.success: AppColors.accentGreen,
-      NotifyType.error: AppColors.accentRed,
-      NotifyType.warning: const Color(0xFFD97706),
-      NotifyType.info: AppColors.primary,
-    };
-    final icons = {
-      NotifyType.success: Icons.check_circle,
-      NotifyType.error: Icons.error,
-      NotifyType.warning: Icons.warning_amber_rounded,
-      NotifyType.info: Icons.info,
-    };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-      backgroundColor: Colors.white,
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: colors[type]!.withValues(alpha: 0.2))),
-      duration: const Duration(seconds: 4),
-      content: Row(children: [
-        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: colors[type]!.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(icons[type], color: colors[type], size: 20)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: colors[type])),
-          Text(message, style: const TextStyle(fontSize: 12, color: AppColors.textLight), maxLines: 2, overflow: TextOverflow.ellipsis),
-        ])),
-      ]),
-      action: actionLabel != null ? SnackBarAction(label: actionLabel, textColor: colors[type], onPressed: () => onAction?.call()) : null,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
+    );
+  }
+
+  /// Same modal as [show], for callers without a BuildContext (payment poll).
+  /// No-op when the messenger key is not bound yet.
+  void showViaKey({required NotifyType type, required String title, required String message}) {
+    try {
+      _messengerKey?.currentState?.showSnackBar(
+        _buildModal(type: type, title: title, message: message),
+      );
+    } catch (_) {}
   }
   void success(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction}) => show(c, type: NotifyType.success, title: title, message: msg, actionLabel: action, onAction: onAction);
   void error(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction}) => show(c, type: NotifyType.error, title: title, message: msg, actionLabel: action, onAction: onAction);
@@ -125,14 +157,15 @@ class AppNotifier {
     } catch (_) {}
   }
 
-  /// Polls GET /notifications for the active venue and surfaces payment alerts
-  /// in both the in-app feed and the Android notification bar.
+  /// Polls GET /notifications for the active venue. New alerts land in the
+  /// in-app feed (Notifications tab) and — except on the silent first fill —
+  /// render the identical in-app modal plus the Android notification bar.
   void startPaymentPolling(String venueId, {Duration interval = const Duration(seconds: 30)}) {
     if (_pollVenueId == venueId && _pollTimer?.isActive == true) return;
     stopPaymentPolling();
     _pollVenueId = venueId;
-    _pollTimer = Timer.periodic(interval, (_) => refreshPayments(venueId, showBar: true));
-    refreshPayments(venueId, showBar: false);
+    _pollTimer = Timer.periodic(interval, (_) => refreshPayments(venueId, showBar: true, showModal: true));
+    refreshPayments(venueId, showBar: false, showModal: false);
   }
 
   void stopPaymentPolling() {
@@ -141,7 +174,7 @@ class AppNotifier {
     _pollVenueId = null;
   }
 
-  Future<void> refreshPayments(String venueId, {bool showBar = true}) async {
+  Future<void> refreshPayments(String venueId, {bool showBar = true, bool showModal = true}) async {
     try {
       final rows = await WavePassApi.instance.listNotifications(venueId);
       for (final r in rows) {
@@ -157,8 +190,9 @@ class AppNotifier {
           if (r['createdAt'] != null) at = DateTime.parse(r['createdAt'].toString());
         } catch (_) {}
         push(type: type, title: title, message: message, remoteId: id, at: at);
-        if (showBar && typeRaw == 'PAYMENT') {
-          await _showBar(title: title, message: message);
+        if (typeRaw == 'PAYMENT') {
+          if (showModal) showViaKey(type: type, title: title, message: message);
+          if (showBar) await _showBar(title: title, message: message);
         }
       }
     } catch (_) {}

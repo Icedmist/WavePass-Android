@@ -337,5 +337,19 @@
     - `flutter analyze`: **0 issues found** (clean).
     - PR [#71](https://github.com/Icedmist/WavePass-Android/pull/71) merged into `main` (`45b1744`).
 
+### 25. WAN-Safe Anti-Sharing Enforcement & Automated Trial Profile Configuration (Issue #72, PR #73)
+- [x] **WAN-Safe Anti-Sharing & Anti-Tethering Enforcement**:
+  - Restored and secured postrouting TTL mangle rule (`action=change-ttl new-ttl=set:1`) with explicit `out-interface=!ether1` filter across `RouterSetupScreen`, `RouterDiscoveryService.enforceNoHotspotSharing`, and `MikrotikApiClient.enforceNoHotspotSharing`.
+  - Guaranteed that WAN traffic from the router to the ISP's upstream hop is untouched (avoiding TTL=0 packet drops that kill the venue's internet uplink), while client-bound packets arrive with TTL=1, immediately blocking secondary Wi-Fi and Bluetooth tethering.
+  - Automatically cleans up any legacy mangle rules lacking the `!ether1` safety constraint upon router setup, fleet push, or portal upload.
+- [x] **Automated 2-Minute Payment Trial Profile**:
+  - Added `wp-payment-trial` profile (`rate-limit=2M/2M`, `session-timeout=2m`, `shared-users=1`, `transparent-proxy=yes`) to `RouterDiscoveryService.standardDurationProfiles`.
+  - Automatically configured during both HTTP REST and Port 8728 binary API router provisioning, portal file uploads, and fleet anti-sharing enforcement.
+  - Configured hotspot server profile with `addresses-per-mac=1`, `mac-cookie=no`, `login-by=http-pap,http-chap,mac-cookie,trial`, `trial-user-profile=wp-payment-trial`, `trial-uptime-limit=2m`, and `trial-uptime-reset=24h`.
+- [x] **Verification**:
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 58 tests passed** (including unit tests for anti-sharing mangle, profile addition, and trial settings).
+  - PR [#73](https://github.com/Icedmist/WavePass-Android/pull/73) merged into `main` (`5f241dd`).
+
 
 

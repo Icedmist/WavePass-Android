@@ -1340,6 +1340,25 @@ class RouterDiscoveryService {
         (results['errors'] as List<String>).add('Identity: $e');
       }
 
+      // Ensure wp-payment-trial user profile exists BEFORE creating/updating wavepass-profile
+      try {
+        await client.put(
+          Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/user/profile"),
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wp-payment-trial',
+            'rate-limit': '2M/2M',
+            'shared-users': '1',
+            'session-timeout': '2m',
+            'keepalive-timeout': '2m',
+            'idle-timeout': '1m',
+            'status-autorefresh': '1m',
+            'transparent-proxy': 'true',
+            'comment': 'WavePass 2-Minute Payment Trial',
+          }),
+        ).timeout(const Duration(seconds: 3));
+      } catch (_) {}
+
       // 2. Add / Update Hotspot Profile: wavepass-profile
       try {
         final profUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot/profile");
@@ -1352,8 +1371,7 @@ class RouterDiscoveryService {
             'hotspot-address': hostOnly,
             'login-by': 'http-pap,http-chap,mac-cookie,trial',
             'trial-user-profile': 'wp-payment-trial',
-            'trial-uptime-limit': '2m',
-            'trial-uptime-reset': '24h',
+            'trial-uptime': '2m/24h',
             'addresses-per-mac': '1',
             'mac-cookie': 'false',
             'html-directory': 'hotspot',
@@ -1750,8 +1768,7 @@ class RouterDiscoveryService {
                     'mac-cookie': 'false',
                     'login-by': 'http-pap,http-chap,mac-cookie,trial',
                     'trial-user-profile': 'wp-payment-trial',
-                    'trial-uptime-limit': '2m',
-                    'trial-uptime-reset': '24h',
+                    'trial-uptime': '2m/24h',
                   }),
                 ).timeout(const Duration(seconds: 2));
               }
@@ -1850,25 +1867,67 @@ class RouterDiscoveryService {
         results['mangleTtl'] = true;
       } catch (_) {}
 
-      // Firewall Filter Drop tethered packets (TTL 63, 62, 127, 126)
+      // Block IPv6 bypass across RouterOS (HotSpot only controls IPv4; Linux automatically shares IPv6 if active)
       try {
-        final ttlsToDrop = [
-          {'ttl': 'equal:63', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)'},
-          {'ttl': 'equal:62', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)'},
-          {'ttl': 'equal:127', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)'},
-          {'ttl': 'equal:126', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)'},
-        ];
-        for (final rule in ttlsToDrop) {
+        await client.patch(
+          Uri.parse("$target/rest/ipv6/settings"),
+          headers: headers,
+          body: jsonEncode({'disable-ipv6': 'true'}),
+        ).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await client.put(
+          Uri.parse("$target/rest/ipv6/firewall/raw"),
+          headers: headers,
+          body: jsonEncode({
+            'chain': 'prerouting',
+            'action': 'drop',
+            'comment': 'WavePass Anti-Sharing: Block IPv6 bypass',
+          }),
+        ).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await client.put(
+          Uri.parse("$target/rest/ipv6/firewall/filter"),
+          headers: headers,
+          body: jsonEncode({
+            'chain': 'forward',
+            'action': 'drop',
+            'comment': 'WavePass Anti-Sharing: Block IPv6 hotspot bypass',
+          }),
+        ).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+
+      // Firewall Filter Drop tethered packets for all client subnets
+      // Drops routed packets from Linux, Android, and iOS tethering (TTL < 64)
+      // and Windows tethering (TTL equal 127, 126, 125)
+      try {
+        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        for (final subnet in subnets) {
           await client.put(
             Uri.parse("$target/rest/ip/firewall/filter"),
             headers: headers,
             body: jsonEncode({
               'chain': 'forward',
+              'src-address': subnet,
               'action': 'drop',
-              'ttl': rule['ttl'],
-              'comment': rule['comment'],
+              'ttl': 'less-than:64',
+              'comment': 'WavePass Anti-Tethering: drop secondary hop ttl<64 for $subnet (Android/iOS/Linux)',
             }),
           ).timeout(const Duration(seconds: 2));
+          for (final wTtl in ['127', '126', '125']) {
+            await client.put(
+              Uri.parse("$target/rest/ip/firewall/filter"),
+              headers: headers,
+              body: jsonEncode({
+                'chain': 'forward',
+                'src-address': subnet,
+                'action': 'drop',
+                'ttl': 'equal:$wTtl',
+                'comment': 'WavePass Anti-Tethering: drop secondary Windows hop ttl=$wTtl for $subnet',
+              }),
+            ).timeout(const Duration(seconds: 2));
+          }
         }
         results['firewallFilter'] = true;
       } catch (_) {}
@@ -2107,25 +2166,7 @@ class RouterDiscoveryService {
 
     // Proactively configure hotspot profile to accept HTTP-PAP alongside HTTP-CHAP and trial so plain, MD5, and trial logins work
     try {
-      await client.patch(
-        Uri.parse('$target/rest/ip/hotspot/profile/wavepass-profile'),
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'login-by': 'http-pap,http-chap,mac-cookie,trial',
-          'trial-user-profile': 'wp-payment-trial',
-          'trial-uptime-limit': '2m',
-          'trial-uptime-reset': '24h',
-          'addresses-per-mac': '1',
-          'mac-cookie': 'false',
-        }),
-      ).timeout(const Duration(seconds: 2));
-    } catch (_) {}
-
-    // Proactively ensure wp-payment-trial profile exists
-    try {
+      // Ensure wp-payment-trial profile exists first
       await client.put(
         Uri.parse('$target/rest/ip/hotspot/user/profile'),
         headers: {
@@ -2144,22 +2185,27 @@ class RouterDiscoveryService {
           'comment': 'WavePass 2-Minute Payment Trial',
         }),
       ).timeout(const Duration(seconds: 2));
+
+      await client.patch(
+        Uri.parse('$target/rest/ip/hotspot/profile/wavepass-profile'),
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'login-by': 'http-pap,http-chap,mac-cookie,trial',
+          'trial-user-profile': 'wp-payment-trial',
+          'trial-uptime': '2m/24h',
+          'addresses-per-mac': '1',
+          'mac-cookie': 'false',
+        }),
+      ).timeout(const Duration(seconds: 2));
     } catch (_) {}
 
     try {
       final api = MikrotikApiClient(host: ftpHost);
       if (await api.connectAndLogin(username, password)) {
         await api.executeSentence(['/ip/service/set', '=.id=ftp', '=disabled=no']);
-        await api.executeSentence([
-          '/ip/hotspot/profile/set',
-          '=[find]',
-          '=login-by=http-pap,http-chap,mac-cookie,trial',
-          '=trial-user-profile=wp-payment-trial',
-          '=trial-uptime-limit=2m',
-          '=trial-uptime-reset=24h',
-          '=addresses-per-mac=1',
-          '=mac-cookie=no',
-        ]);
         try {
           await api.executeSentence([
             '/ip/hotspot/user/profile/add',
@@ -2174,6 +2220,15 @@ class RouterDiscoveryService {
             '=comment=WavePass 2-Minute Payment Trial',
           ]);
         } catch (_) {}
+        await api.executeSentence([
+          '/ip/hotspot/profile/set',
+          '=[find]',
+          '=login-by=http-pap,http-chap,mac-cookie,trial',
+          '=trial-user-profile=wp-payment-trial',
+          '=trial-uptime=2m/24h',
+          '=addresses-per-mac=1',
+          '=mac-cookie=no',
+        ]);
         await api.close();
       }
     } catch (_) {}

@@ -351,5 +351,25 @@
   - `flutter test`: **All 58 tests passed** (including unit tests for anti-sharing mangle, profile addition, and trial settings).
   - PR [#73](https://github.com/Icedmist/WavePass-Android/pull/73) merged into `main` (`5f241dd`).
 
-
-
+### 26. Zero Unsecure Warnings, FastTrack Anti-Sharing, Venue Activation Lock Persistence & Router Admin Password Sync (Issue #74, PR #75)
+- [x] **Eliminated Cross-Origin Insecure Form Warning**:
+  - Replaced cross-origin `<form action="http://192.168.88.1/login" method="POST">` from HTTPS hosted portal with direct top-level navigation via `window.location.replace(fullLoginUrl)`.
+  - Router `login.html` trampoline captures query credentials and submits the local, same-origin `<form name="sendin">` directly on the router with CHAP MD5 hashing, completely eliminating browser *"The information you’re about to submit is not secure"* alerts.
+- [x] **Unbreakable Anti-Sharing & FastTrack Prevention**:
+  - Automatically disables RouterOS FastTrack (`/ip firewall filter set [find action=fasttrack-connection] disabled=yes`) across binary API (8728), REST, and script exports, preventing established TCP streams from bypassing mangle and firewall filter rules.
+  - Converted mangle anti-tethering to explicitly target client RFC 1918 destination subnets (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`), ensuring outgoing WAN traffic to the ISP is 100% untouched regardless of WAN interface naming, while all packets delivered to hotspot clients are strictly set to TTL=1.
+  - Positioned forward filter drop rules for TTL 63, 62, 127, 126 at index 0 (`place-before=0`) so secondary tethering hops are immediately dropped at the very top of the forward chain.
+- [x] **Permanent Venue Activation Gate Persistence**:
+  - Enhanced `ActivationCodeService.isAccountActivated()` with global device persistence (`wavepass_venue_activated_globally`), Supabase venue ownership verification, and email fallbacks.
+  - Authenticated accounts that already configured a venue or have an active venue are permanently recognized as activated and will never be kicked back to `activateVenue` upon app reload, logout, or reconnect.
+  - Hardened `clearCache()` so legitimate global venue activations are never wiped on simple account switches.
+- [x] **Synchronized Router Hardware Admin Password**:
+  - Added dedicated **"ROUTER HARDWARE ADMIN CREDENTIALS"** card in `AccountCenterScreen` with Gateway IP, Admin User, Router Admin Password, visibility toggler, and live "Save & Sync Router Password" button.
+  - Implemented `RouterDiscoveryService.updateRouterAdminPassword()` and `MikrotikApiClient.updateUserPassword()` to update user credentials directly on RouterOS hardware via Port 8728 and REST API, while persisting immediately to `RouterDiscoveryService.keyRouterPassword`.
+  - Added real-time `onChanged` credential saving in `RouterSetupScreen` and ensured `_saveCredentials()` is invoked before portal file uploads, anti-sharing enforcement, and script exports.
+- [x] **Verification**:
+  - `wavepass-web`: `pnpm build` clean (30 static pages, 9 route handlers, 0 errors). PR [#8](https://github.com/Icedmist/WavePass-Web/pull/8) merged into `main` (`4635210`).
+  - `wavepass-android`:
+    - `flutter analyze`: **0 issues found** (clean).
+    - `flutter test`: **All 58 tests passed**.
+    - PR [#75](https://github.com/Icedmist/WavePass-Android/pull/75) merged into `main` (`7ff8552`).

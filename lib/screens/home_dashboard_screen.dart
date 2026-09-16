@@ -45,6 +45,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   @override
   void dispose() {
     VoucherHistoryService.instance.stopMonitoring();
+    AppNotifier.instance.stopPaymentPolling();
     VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
     super.dispose();
   }
@@ -62,6 +63,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         _venueName = v['name']?.toString() ?? 'Your Venue';
         _venueSub = v['slug'] != null ? '${v['slug']}.nexawavepass.com' : '—';
       });
+      final vid = v['id']?.toString();
+      if (vid != null && vid.isNotEmpty) {
+        AppNotifier.instance.startPaymentPolling(vid);
+      }
     }
   }
 

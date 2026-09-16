@@ -425,20 +425,15 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       );
       return;
     }
-    final logoUrl = _uploadedLogoUrl ?? _logoCtrl.text.trim();
-    if (logoUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload or provide a venue logo.')),
-      );
-      return;
-    }
+    final logoUrl = (_uploadedLogoUrl ?? _logoCtrl.text.trim()).trim();
+    // Logo optional on edit — omit when empty so backend keeps existing logo.
 
     setState(() => _savingVenue = true);
     try {
       await VenueStateService.instance.updateVenue(
         name: _nameCtrl.text.trim(),
         slug: slug,
-        logoUrl: logoUrl,
+        logoUrl: logoUrl.isEmpty ? null : logoUrl,
       );
       if (!mounted) return;
       setState(() {

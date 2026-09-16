@@ -52,8 +52,12 @@ class WavePassApi {
     return _get('/api/v1/venues/default');
   }
 
-  Future<Map<String, dynamic>> createVenue({required String name, required String slug, required String logoUrl}) {
-    return _post('/api/v1/venues', {'name': name, 'slug': slug, 'logoUrl': logoUrl});
+  Future<Map<String, dynamic>> createVenue({required String name, required String slug, String? logoUrl}) {
+    final body = {'name': name, 'slug': slug};
+    if (logoUrl != null && logoUrl.trim().isNotEmpty) {
+      body['logoUrl'] = logoUrl.trim();
+    }
+    return _post('/api/v1/venues', body);
   }
 
   Future<Map<String, dynamic>> getVenueBySubdomain(String sub) {
@@ -160,6 +164,30 @@ class WavePassApi {
 
   Future<Map<String, dynamic>> adminStats() {
     return _get('/api/v1/admin/stats');
+  }
+
+  // ── Notifications (venue-owner payment bar) ──────────────────────────
+  Future<List<dynamic>> listNotifications(String venueId, {bool unreadOnly = false}) async {
+    final res = await http
+        .get(
+          Uri.parse('$_base/api/v1/notifications?venueId=${Uri.encodeComponent(venueId)}${unreadOnly ? '&unreadOnly=true' : ''}'),
+          headers: _jsonHeaders,
+        )
+        .timeout(_timeout);
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is List) return decoded;
+      if (decoded is Map && decoded['data'] is List) return decoded['data'];
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> markNotificationRead(String id) {
+    return _patch('/api/v1/notifications/$id/read', {});
+  }
+
+  Future<Map<String, dynamic>> markAllNotificationsRead(String venueId) {
+    return _post('/api/v1/notifications/venue/$venueId/read-all', {});
   }
 
   // ── Router endpoints ──────────────────────────────────────────────────

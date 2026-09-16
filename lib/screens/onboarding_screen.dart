@@ -84,9 +84,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     {
       'tag': '08 / YOUR VENUE',
       'title': 'Create Your Venue',
-      'subtitle': 'Pick a subdomain, upload logo and set your pricing — required to go live.',
+      'subtitle': 'Pick a subdomain and set your pricing — logo optional, go live in seconds.',
       'icon': Icons.store_rounded,
-      'badge': 'Subdomain • Logo • Pricing Required',
+      'badge': 'Subdomain • Pricing Required',
     },
   ];
 
@@ -130,21 +130,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _createVenueAndFinish() async {
-    final logoUrl = _uploadedLogoUrl ?? _venueLogo.text.trim();
-    if (_venueName.text.trim().isEmpty || _venueSlug.text.trim().isEmpty || logoUrl.isEmpty) {
-      setState(() => _venueError = 'Venue name, subdomain (slug) and logo image are required — your subdomain will be {slug}.nexawavepass.com with your pricing & logo.');
+    final name = _venueName.text.trim();
+    final slug = _venueSlug.text.trim().toLowerCase();
+    // Logo is optional — backend defaults to https://nexawavepass.com/logo.png.
+    // Never block venue creation on image upload (storage/RLS failures fall back silently).
+    final logoUrl = (_uploadedLogoUrl ?? _venueLogo.text.trim()).trim();
+    final logoToSend = logoUrl.isEmpty || logoUrl == 'https://nexawavepass.com/logo.png' ? null : logoUrl;
+    if (name.isEmpty || slug.isEmpty) {
+      setState(() => _venueError = 'Venue name and subdomain (slug) are required — your portal will be $slug.nexawavepass.com. Logo is optional.');
       return;
     }
-    if (_pickedLogo == null && _uploadedLogoUrl == null && _venueLogo.text.trim().isEmpty) {
-      setState(() => _venueError = 'Please upload a venue logo image.');
+    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+      setState(() => _venueError = 'Subdomain must be lowercase a-z, 0-9 and hyphens only (e.g. my-venue).');
       return;
     }
     setState(() { _creatingVenue = true; _venueError = null; });
     try {
-      final res = await WavePassApi.instance.createVenue(name: _venueName.text.trim(), slug: _venueSlug.text.trim().toLowerCase(), logoUrl: logoUrl);
-      final vId = res['id']?.toString() ?? _venueSlug.text.trim().toLowerCase();
-      final vName = _venueName.text.trim();
-      final vSlug = _venueSlug.text.trim().toLowerCase();
+      final res = await WavePassApi.instance.createVenue(name: name, slug: slug, logoUrl: logoToSend);
+      if (res.containsKey('message') && res['id'] == null) {
+        // Backend returned an error payload without throwing (e.g. 400/409 decoded as map)
+        final msg = res['message']?.toString() ?? 'Venue creation failed';
+        if (msg.toLowerCase().contains('already exists') || msg.toLowerCase().contains('taken')) {
+          setState(() => _venueError = 'Subdomain "$slug" is already taken — try another.');
+        } else {
+          setState(() => _venueError = 'Failed: $msg');
+        }
+        return;
+      }
+      final vId = res['id']?.toString() ?? slug;
+      final vName = name;
+      final vSlug = slug;
+      final effectiveLogo = logoToSend ?? 'https://nexawavepass.com/logo.png';
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
       await prefs.setString('wavepass_active_venue_id', vId);
@@ -153,14 +169,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await prefs.setString('venueName', vName);
       await prefs.setString('wavepass_active_venue_slug', vSlug);
       await prefs.setString('venueSlug', vSlug);
-      await prefs.setString('wavepass_active_venue_logo', logoUrl);
-      await prefs.setString('venueLogo', logoUrl);
+      await prefs.setString('wavepass_active_venue_logo', effectiveLogo);
+      await prefs.setString('venueLogo', effectiveLogo);
 
       VenueStateService.instance.venueNotifier.value = {
         'id': vId,
         'name': vName,
         'slug': vSlug,
-        'logoUrl': logoUrl,
+        'logoUrl': effectiveLogo,
       };
 
       if (!mounted) return;
@@ -308,9 +324,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             const SizedBox(height: 10),
                             TextField(controller: _venueSlug, decoration: InputDecoration(hintText: 'my-venue', labelText: 'Subdomain (slug) *', helperText: _venueSlug.text.isEmpty ? 'your-venue.nexawavepass.com' : '${_venueSlug.text.toLowerCase()}.nexawavepass.com'), onChanged: (_) => setState(() {})),
                             const SizedBox(height: 10),
-                            // Venue logo upload (not URL)
+                            // Venue logo upload (optional)
                             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              const Text('Venue Logo *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)),
+                              const Text('Venue Logo (optional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)),
                               const SizedBox(height: 6),
                               InkWell(
                                 onTap: _pickVenueLogo,
@@ -327,7 +343,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                               if (_uploadingLogo) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
                               const SizedBox(height: 4),
-                              const Text('Required — shown on your subdomain portal', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                              const Text('Optional — shown on your subdomain portal', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
                             ]),
                             if (_venueError != null) ...[
                               const SizedBox(height: 10),

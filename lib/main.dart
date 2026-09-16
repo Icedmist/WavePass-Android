@@ -3,7 +3,10 @@ import 'core/theme/app_theme.dart';
 import 'core/services/supabase_service.dart';
 import 'core/services/venue_state_service.dart';
 import 'core/services/activation_code_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/router/app_router.dart';
+
+final GlobalKey<ScaffoldMessengerState> rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +29,8 @@ void main() async {
     debugPrint('ActivationCodeService warm cache: $e');
   }
 
+  AppNotifier.instance.bindMessenger(rootMessengerKey);
+
   runApp(const WavePassApp());
 }
 
@@ -38,6 +43,7 @@ class WavePassApp extends StatelessWidget {
       title: 'Wavepass',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      scaffoldMessengerKey: rootMessengerKey,
       routerConfig: AppRouter.router,
     );
   }

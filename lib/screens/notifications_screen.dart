@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/services/notification_service.dart';
+import '../core/services/venue_state_service.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -10,10 +12,36 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NState extends State<NotificationsScreen> {
   @override
+  void initState() {
+    super.initState();
+    // Pull latest device notifications so the tab is complete even after a
+    // restart or before the background poll runs. Silent: no modal/bar burst.
+    _syncFromBackend();
+  }
+
+  Future<void> _syncFromBackend() async {
+    try {
+      final vid = VenueStateService.instance.currentVenueId;
+      if (vid == null || vid.isEmpty) return;
+      await AppNotifier.instance.refreshPayments(vid, showBar: false, showModal: false);
+    } catch (_) {}
+  }
+
+  Future<void> _markAllRead() async {
+    AppNotifier.instance.markAllRead();
+    try {
+      final vid = VenueStateService.instance.currentVenueId;
+      if (vid != null && vid.isNotEmpty) {
+        await WavePassApi.instance.markAllNotificationsRead(vid);
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.white,
-      appBar: AppBar(backgroundColor: AppColors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18), onPressed: () => Navigator.of(context).maybePop()), title: const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)), actions: [TextButton(onPressed: AppNotifier.instance.markAllRead, child: const Text('Mark all read')), IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.textLight), onPressed: () { AppNotifier.instance.feed.value = []; }, tooltip: 'Clear all')]),
+      appBar: AppBar(backgroundColor: AppColors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18), onPressed: () => Navigator.of(context).maybePop()), title: const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary)), actions: [TextButton(onPressed: _markAllRead, child: const Text('Mark all read')), IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.textLight), onPressed: () { AppNotifier.instance.feed.value = []; }, tooltip: 'Clear all')]),
       body: ValueListenableBuilder<List<AppNotification>>(
         valueListenable: AppNotifier.instance.feed,
         builder: (c, items, _) {

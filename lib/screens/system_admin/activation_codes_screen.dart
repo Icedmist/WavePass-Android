@@ -41,9 +41,21 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
 
   Future<void> _showGenerateDialog() async {
     int count = 1;
+    String kind = 'LICENSE';
     final noteCtrl = TextEditingController(text: "Venue License");
     final venueCtrl = TextEditingController();
-    DateTime expiry = DateTime.now().add(const Duration(days: 30));
+    final durationCtrl = TextEditingController(text: "30");
+
+    String durationHint() {
+      switch (kind) {
+        case 'MASTER':
+          return "Days valid (0 = lifetime)";
+        case 'TRIAL':
+          return "Days valid (default 7)";
+        default:
+          return "Days valid (default 30, monthly)";
+      }
+    }
 
     final result = await showDialog<bool>(
       context: context,
@@ -88,32 +100,34 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                   decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "One code per venue; leave empty for unassigned", isDense: true),
                 ),
                 const SizedBox(height: 12),
-                const Text("EXPIRY DATE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const Text("CODE TYPE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
                 const SizedBox(height: 6),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: expiry,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 730)),
-                    );
-                    if (picked != null) setDialogState(() => expiry = picked);
+                DropdownButtonFormField<String>(
+                  initialValue: kind,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                  items: const [
+                    DropdownMenuItem(value: 'LICENSE', child: Text("LICENSE — 1 venue, monthly")),
+                    DropdownMenuItem(value: 'MASTER', child: Text("MASTER — multi-use, any venue")),
+                    DropdownMenuItem(value: 'TRIAL', child: Text("TRIAL — short-lived, 1 use")),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        kind = val;
+                        if (val == 'TRIAL') durationCtrl.text = "7";
+                        if (val == 'LICENSE') durationCtrl.text = "30";
+                        if (val == 'MASTER') durationCtrl.text = "0";
+                      });
+                    }
                   },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(border: Border.all(color: AppColors.cardBorder), borderRadius: BorderRadius.circular(4)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_month_rounded, size: 16, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          "${expiry.year}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}",
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
-                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(durationHint(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: durationCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "e.g. 30", isDense: true),
                 ),
               ],
             ),
@@ -133,11 +147,13 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
     if (result == true) {
       setState(() => _isGenerating = true);
       final venueIds = venueCtrl.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final durationDays = int.tryParse(durationCtrl.text.trim());
       final generated = await SystemAdminService.instance.generateActivationCodes(
         count: count,
         note: noteCtrl.text.trim(),
-        quota: 1,
-        expiresAt: expiry.toIso8601String(),
+        quota: kind == 'MASTER' ? 5 : 1,
+        kind: kind,
+        durationDays: durationDays,
         venueIds: venueIds.isEmpty ? null : venueIds,
       );
       await _loadCodes();
@@ -301,6 +317,7 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                           final venueId = item['venueId']?.toString();
                           final notes = item['notes']?.toString();
                           final expiresAt = item['expiresAt']?.toString();
+                          final kindLabel = (item['kind']?.toString() ?? 'LICENSE').toUpperCase();
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -342,16 +359,32 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
                                         ),
                                       ],
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        status,
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: statusColor),
-                                      ),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            status,
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: statusColor),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.08),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            kindLabel,
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primary),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

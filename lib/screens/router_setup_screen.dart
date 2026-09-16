@@ -916,8 +916,15 @@ $_rfc1321Md5Js
       var c = params.get('code') || params.get('voucher');
       var u = params.get('username') || params.get('user');
       var p = params.get('password') || params.get('pass');
+      var trial = params.get('trial');
 
-      if (c) {
+      if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
+        loggedIn = true;
+        var trialUser = u || c || ('T-' + '\$(mac)');
+        document.getElementById('dst_user').value = trialUser;
+        document.getElementById('dst_pass').value = '';
+        document.sendin.submit();
+      } else if (c) {
         loggedIn = true;
         executeLogin(c.toUpperCase(), c.toUpperCase());
       } else if (u && p) {
@@ -1503,8 +1510,15 @@ $_rfc1321Md5Js
         var u = params.get('username') || params.get('user');
         var p = params.get('password') || params.get('pass');
         var mode = params.get('mode') || params.get('tab');
+        var trial = params.get('trial');
 
-        if (c) {
+        if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
+          var trialUser = u || c || ('T-' + '\$(mac)');
+          document.getElementById('dst_user').value = trialUser;
+          document.getElementById('dst_pass').value = '';
+          document.sendin.submit();
+          return;
+        } else if (c) {
           document.getElementById('voucher_input').value = c.toUpperCase();
           executeLogin(c.toUpperCase(), c.toUpperCase());
         } else if (u && p) {

@@ -159,6 +159,9 @@ void main() {
           } else if (str.contains('/ip/firewall/filter/add')) {
             receivedCommands.add('filter_add');
             socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
+          } else if (str.contains('/ipv6')) {
+            receivedCommands.add('ipv6_cmd');
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
           }
         });
       });
@@ -185,6 +188,7 @@ void main() {
       expect(receivedCommands, contains('wireless_set'));
       expect(receivedCommands, contains('mangle_add'));
       expect(receivedCommands, contains('filter_add'));
+      expect(receivedCommands, contains('ipv6_cmd'));
     });
   });
 }

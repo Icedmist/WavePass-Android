@@ -532,8 +532,13 @@ add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=
 # 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
 # --------------------------------------------------------
 /ip hotspot user profile set [find] shared-users=1
-/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime-limit=2m trial-uptime-reset=24h
+/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
 /interface wireless set [find] default-forwarding=no
+
+# Disable IPv6 bypass (HotSpot is IPv4-only; Linux automatically shares IPv6 if active)
+/ipv6 settings set disable-ipv6=yes
+/ipv6 firewall raw add chain=prerouting action=drop place-before=0 comment="WavePass Anti-Sharing: Block IPv6 hotspot bypass"
+/ipv6 firewall filter add chain=forward action=drop place-before=0 comment="WavePass Anti-Sharing: Block IPv6 hotspot bypass"
 
 # Disable FastTrack because FastTrack bypasses mangle TTL change and firewall filter drops
 /ip firewall filter set [find action=fasttrack-connection] disabled=yes
@@ -546,10 +551,12 @@ add chain=postrouting dst-address=172.16.0.0/12 action=change-ttl new-ttl=set:1 
 
 /ip firewall filter
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=forward action=drop ttl=equal:63 place-before=0 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)"
-add chain=forward action=drop ttl=equal:62 place-before=0 comment="WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)"
-add chain=forward action=drop ttl=equal:127 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
-add chain=forward action=drop ttl=equal:126 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
+add chain=forward src-address=192.168.0.0/16 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (Android/iOS/Linux)"
+add chain=forward src-address=10.0.0.0/8 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (10.x)"
+add chain=forward src-address=172.16.0.0/12 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (172.x)"
+add chain=forward src-address=192.168.0.0/16 ttl=equal:127 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
+add chain=forward src-address=192.168.0.0/16 ttl=equal:126 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
+add chain=forward src-address=192.168.0.0/16 ttl=equal:125 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 3 (Windows)"
 
 # --------------------------------------------------------
 # 6. Active Session Expiry & 1-Minute User Limit Enforcer
@@ -920,10 +927,11 @@ $_rfc1321Md5Js
 
       if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
         loggedIn = true;
-        var trialUser = u || c || ('T-' + '\$(mac)');
-        document.getElementById('dst_user').value = trialUser;
-        document.getElementById('dst_pass').value = '';
-        document.sendin.submit();
+        var targetTrialUser = (u && u.indexOf('T-') === 0) ? u : ((c && c.indexOf('T-') === 0) ? c : ('T-' + '\$(mac-esc)'));
+        var trialDst = params.get('dst') || '\$(link-orig-esc)';
+        var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + targetTrialUser;
+        window.location.replace(trialUrl);
+        return;
       } else if (c) {
         loggedIn = true;
         executeLogin(c.toUpperCase(), c.toUpperCase());
@@ -1513,10 +1521,10 @@ $_rfc1321Md5Js
         var trial = params.get('trial');
 
         if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
-          var trialUser = u || c || ('T-' + '\$(mac)');
-          document.getElementById('dst_user').value = trialUser;
-          document.getElementById('dst_pass').value = '';
-          document.sendin.submit();
+          var targetTrialUser = (u && u.indexOf('T-') === 0) ? u : ((c && c.indexOf('T-') === 0) ? c : ('T-' + '\$(mac-esc)'));
+          var trialDst = params.get('dst') || '\$(link-orig-esc)';
+          var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + targetTrialUser;
+          window.location.replace(trialUrl);
           return;
         } else if (c) {
           document.getElementById('voucher_input').value = c.toUpperCase();

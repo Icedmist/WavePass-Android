@@ -267,7 +267,7 @@ void main() {
       final profileSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/profile/add'));
       expect(profileSentence, contains('login-by=http-pap,http-chap,mac-cookie,trial'));
       expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
-      expect(profileSentence, contains('trial-uptime-limit=2m'));
+      expect(profileSentence, contains('trial-uptime=2m/24h'));
       expect(profileSentence, contains('addresses-per-mac=1'));
       expect(profileSentence, contains('mac-cookie=no'));
     });

@@ -352,6 +352,28 @@ class MikrotikApiClient {
       (results['errors'] as List<String>).add('Identity: $e');
     }
 
+    // Ensure wp-payment-trial user profile exists BEFORE creating/updating wavepass-profile
+    try {
+      final existingTrial = await executeSentence([
+        '/ip/hotspot/user/profile/print',
+        '?name=wp-payment-trial',
+      ]);
+      if (existingTrial.isEmpty) {
+        await executeSentence([
+          '/ip/hotspot/user/profile/add',
+          '=name=wp-payment-trial',
+          '=rate-limit=2M/2M',
+          '=shared-users=1',
+          '=session-timeout=2m',
+          '=keepalive-timeout=2m',
+          '=idle-timeout=1m',
+          '=status-autorefresh=1m',
+          '=transparent-proxy=yes',
+          '=comment=WavePass 2-Minute Payment Trial',
+        ]);
+      }
+    } catch (_) {}
+
     // 2. Hotspot Profile: wavepass-profile (local DNS hostname to prevent SSL warnings and allow cloud portal access)
     try {
       await executeSentence([
@@ -361,8 +383,7 @@ class MikrotikApiClient {
         '=html-directory=hotspot',
         '=login-by=http-pap,http-chap,mac-cookie,trial',
         '=trial-user-profile=wp-payment-trial',
-        '=trial-uptime-limit=2m',
-        '=trial-uptime-reset=24h',
+        '=trial-uptime=2m/24h',
         '=addresses-per-mac=1',
         '=mac-cookie=no',
         if (localIp != null && localIp.isNotEmpty)
@@ -386,8 +407,7 @@ class MikrotikApiClient {
               '=html-directory=hotspot',
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
-              '=trial-uptime-limit=2m',
-              '=trial-uptime-reset=24h',
+              '=trial-uptime=2m/24h',
               '=addresses-per-mac=1',
               '=mac-cookie=no',
             ]);
@@ -678,8 +698,7 @@ class MikrotikApiClient {
               '=mac-cookie=no',
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
-              '=trial-uptime-limit=2m',
-              '=trial-uptime-reset=24h',
+              '=trial-uptime=2m/24h',
             ]);
           }
         }
@@ -775,28 +794,71 @@ class MikrotikApiClient {
         debugPrint('[MikrotikApiClient] enforceNoSharing mangle change-ttl error: $e');
       }
 
-      // 6. Firewall Filter Drop tethered packets (TTL 63, 62, 127, 126) at top of forward chain
+      // 6. Block IPv6 bypass across RouterOS (HotSpot only controls IPv4; Linux automatically shares IPv6 if active)
       try {
-        final ttlsToDrop = [
-          {'ttl': 'equal:63', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 1 (Android/iOS/Linux)'},
-          {'ttl': 'equal:62', 'comment': 'WavePass Anti-Tethering: drop secondary 64-ttl hop 2 (Android/iOS/Linux)'},
-          {'ttl': 'equal:127', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)'},
-          {'ttl': 'equal:126', 'comment': 'WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)'},
-        ];
+        await executeSentence([
+          '/ipv6/settings/set',
+          '=disable-ipv6=yes',
+        ]);
+      } catch (_) {}
+      try {
+        await executeSentence([
+          '/ipv6/firewall/raw/add',
+          '=chain=prerouting',
+          '=action=drop',
+          '=place-before=0',
+          '=comment=WavePass Anti-Sharing: Block IPv6 bypass',
+        ]);
+      } catch (_) {}
+      try {
+        await executeSentence([
+          '/ipv6/firewall/filter/add',
+          '=chain=forward',
+          '=action=drop',
+          '=place-before=0',
+          '=comment=WavePass Anti-Sharing: Block IPv6 hotspot bypass',
+        ]);
+      } catch (_) {}
 
-        for (final rule in ttlsToDrop) {
-          final existing = await executeSentence([
-            '/ip/firewall/filter/print',
-            '?comment=${rule['comment']}',
+      // 7. Firewall Filter Drop tethered packets for all client subnets
+      // Drops routed packets from Linux, Android, and iOS tethering (TTL < 64)
+      // and Windows tethering (TTL equal 127, 126, 125)
+      try {
+        final existingFilters = await executeSentence([
+          '/ip/firewall/filter/print',
+          '?comment~WavePass Anti-Tethering',
+        ]);
+        for (final f in existingFilters) {
+          final id = f['.id'];
+          if (id != null) {
+            try {
+              await executeSentence(['/ip/firewall/filter/remove', '=.id=$id']);
+            } catch (_) {}
+          }
+        }
+
+        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        for (final subnet in subnets) {
+          // Drop routed packets from Linux, Android, and iOS tethering (TTL < 64)
+          await executeSentence([
+            '/ip/firewall/filter/add',
+            '=chain=forward',
+            '=src-address=$subnet',
+            '=action=drop',
+            '=ttl=less-than:64',
+            '=place-before=0',
+            '=comment=WavePass Anti-Tethering: drop secondary hop ttl<64 for $subnet (Android/iOS/Linux)',
           ]);
-          if (existing.isEmpty) {
+          // Drop routed packets from Windows tethering
+          for (final wTtl in ['127', '126', '125']) {
             await executeSentence([
               '/ip/firewall/filter/add',
               '=chain=forward',
+              '=src-address=$subnet',
               '=action=drop',
-              '=ttl=${rule['ttl']}',
+              '=ttl=equal:$wTtl',
               '=place-before=0',
-              '=comment=${rule['comment']}',
+              '=comment=WavePass Anti-Tethering: drop secondary Windows hop ttl=$wTtl for $subnet',
             ]);
           }
         }

@@ -32,6 +32,12 @@ class RouterSetupScreen extends StatefulWidget {
         useHostedSubdomainPortal,
       );
 
+  static String generateStatusHtml(String venueName, String slug) =>
+      _RouterSetupScreenState._generateStatusHtml(venueName, slug);
+
+  static String generateLogoutHtml(String venueName, String slug) =>
+      _RouterSetupScreenState._generateLogoutHtml(venueName, slug);
+
   @override
   State<RouterSetupScreen> createState() => _RouterSetupScreenState();
 }
@@ -877,7 +883,7 @@ set name="WavePass-$slug"
         <input type="hidden" name="popup" value="true">
         <input type="hidden" name="password" id="dst_pass_offline">
         <input type="text" name="username" id="dst_user_offline" placeholder="e.g. 123456" autocomplete="off" autocorrect="off" autocapitalize="characters">
-        <button type="submit" class="btn-fallback" onclick="document.getElementById('dst_pass_offline').value=document.getElementById('dst_user_offline').value.trim();">Connect Directly &rarr;</button>
+        <button type="submit" id="btn_offline_connect" class="btn-fallback" onclick="document.getElementById('dst_pass_offline').value=document.getElementById('dst_user_offline').value.trim();">Connect Directly &rarr;</button>
       </form>
     </div>
 
@@ -934,9 +940,11 @@ $_rfc1321Md5Js
         return;
       } else if (c) {
         loggedIn = true;
+        try { localStorage.setItem('wp-active-voucher', c.toUpperCase()); } catch (e) {}
         executeLogin(c.toUpperCase(), c.toUpperCase());
       } else if (u && p) {
         loggedIn = true;
+        try { localStorage.setItem('wp-active-user', u); localStorage.setItem('wp-active-pass', p); } catch (e) {}
         executeLogin(u, p);
       }
     } catch (e) {}
@@ -952,7 +960,20 @@ $_rfc1321Md5Js
       // 2. Fail-safe timeout: If WAN dropped or DNS failed, surface local voucher form after 3.5s
       setTimeout(function() {
         var fb = document.getElementById('offlineFallback');
-        if (fb) fb.style.display = 'block';
+        if (fb) {
+          fb.style.display = 'block';
+          try {
+            var cachedV = localStorage.getItem('wp-active-voucher');
+            if (cachedV) {
+              var inputOffline = document.getElementById('dst_user_offline');
+              if (inputOffline && !inputOffline.value) {
+                inputOffline.value = cachedV;
+                var btnOffline = document.getElementById('btn_offline_connect');
+                if (btnOffline) btnOffline.innerText = 'Reconnect Voucher (' + cachedV + ') \u2192';
+              }
+            }
+          } catch(e) {}
+        }
       }, 3500);
     }
   </script>
@@ -1356,6 +1377,11 @@ $_rfc1321Md5Js
 
     <!-- Panel 1: Voucher Code -->
     <div id="panelVoucher">
+      <div id="savedVoucherBox" style="display:none; background:rgba(56, 239, 125, 0.12); border:1px solid #38EF7D; border-radius:12px; padding:12px; margin-bottom:14px; text-align:left;">
+        <div style="font-size:12px; font-weight:800; color:#38EF7D; margin-bottom:4px;">✨ Reconnect Active Voucher</div>
+        <div style="font-size:11px; color:#C9D1D9; margin-bottom:8px;">Found voucher from your previous session: <strong id="savedVoucherCode" style="color:#FFFFFF; letter-spacing:1px;"></strong></div>
+        <button type="button" class="btn-submit" style="padding:10px; font-size:13px;" onclick="submitVoucher()">1-Tap Reconnect Now &rarr;</button>
+      </div>
       <div class="form-group">
         <label for="voucher_input">Voucher Code (Numbers or Text)</label>
         <input type="text" id="voucher_input" class="input-upper" placeholder="e.g. 123456" autocomplete="off" autocorrect="off" autocapitalize="characters">
@@ -1501,12 +1527,14 @@ $_rfc1321Md5Js
 
     function submitVoucher() {
       var v = document.getElementById('voucher_input').value.trim().toUpperCase();
+      try { localStorage.setItem('wp-active-voucher', v); } catch(e){}
       executeLogin(v, v);
     }
 
     function submitCredentials() {
       var u = document.getElementById('cred_user').value.trim();
       var p = document.getElementById('cred_pass').value.trim();
+      try { localStorage.setItem('wp-active-user', u); localStorage.setItem('wp-active-pass', p); } catch(e){}
       executeLogin(u, p);
     }
 
@@ -1527,18 +1555,35 @@ $_rfc1321Md5Js
           window.location.replace(trialUrl);
           return;
         } else if (c) {
+          try { localStorage.setItem('wp-active-voucher', c.toUpperCase()); } catch(e){}
           document.getElementById('voucher_input').value = c.toUpperCase();
           executeLogin(c.toUpperCase(), c.toUpperCase());
         } else if (u && p) {
+          try { localStorage.setItem('wp-active-user', u); localStorage.setItem('wp-active-pass', p); } catch(e){}
           switchTab('creds');
           document.getElementById('cred_user').value = u;
           document.getElementById('cred_pass').value = p;
           executeLogin(u, p);
         } else if (u) {
+          try { localStorage.setItem('wp-active-user', u); } catch(e){}
           switchTab('creds');
           document.getElementById('cred_user').value = u;
         } else if (mode === 'plans' || mode === 'pay') {
           switchTab('plans');
+        } else {
+          try {
+            var savedV = localStorage.getItem('wp-active-voucher');
+            if (savedV) {
+              var vInp = document.getElementById('voucher_input');
+              if (vInp && !vInp.value) {
+                vInp.value = savedV;
+                var sBox = document.getElementById('savedVoucherBox');
+                if (sBox) sBox.style.display = 'block';
+                var sCode = document.getElementById('savedVoucherCode');
+                if (sCode) sCode.innerText = savedV;
+              }
+            }
+          } catch(e) {}
         }
       } catch (e) {}
     });
@@ -1547,7 +1592,7 @@ $_rfc1321Md5Js
 </html>""";
   }
 
-  String _generateStatusHtml(String venueName, String slug) {
+  static String _generateStatusHtml(String venueName, String slug) {
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1723,11 +1768,21 @@ $_rfc1321Md5Js
       Device MAC: \$(mac)
     </div>
   </div>
+
+  <script>
+    try {
+      var u = "\$(username)";
+      if (u && u !== "" && u.indexOf("\$(") === -1 && u.indexOf("T-") !== 0) {
+        localStorage.setItem('wp-active-voucher', u);
+        localStorage.setItem('wp-active-user', u);
+      }
+    } catch (e) {}
+  </script>
 </body>
 </html>""";
   }
 
-  String _generateLogoutHtml(String venueName, String slug) {
+  static String _generateLogoutHtml(String venueName, String slug) {
     return """<!DOCTYPE html>
 <html lang="en">
 <head>

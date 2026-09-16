@@ -413,4 +413,19 @@
   - `wavepass-web`: `pnpm build` clean (30 static pages, 9 route handlers). PR [#12](https://github.com/Icedmist/WavePass-Web/pull/12) merged to `main` (`2f1bd45`).
   - `wavepass-android`: `flutter analyze` clean (0 warnings, 0 errors); `flutter test` clean (all 58 tests passed). PR [#79](https://github.com/Icedmist/WavePass-Android/pull/79) merged to `main` (`b8766be`).
 
-
+### 29. Linux IPv6 Hotspot Anti-Sharing Enforcement & Native GET Trial Access (Issues #80 & #13; PRs #81 & #14)
+- [x] **Complete Linux Hotspot Tethering / Sharing Elimination**:
+  - **Identified IPv6 Bypass**: Linux NetworkManager Wi-Fi Hotspot sharing creates automated IPv6 router advertisements and forwarding. Because MikroTik HotSpot operates on IPv4, IPv6 traffic bypassed voucher auth, mangle TTL rewriting, and IPv4 drop filters.
+  - **IPv6 Lockdown**: Added RouterOS rules disabling IPv6 on the hotspot interface (`/ipv6/settings/set disable-ipv6=yes`), dropping incoming IPv6 prerouting traffic (`/ipv6/firewall/raw/add chain=prerouting action=drop`), and dropping all forwarded IPv6 packets (`/ipv6/firewall/filter/add chain=forward action=drop`).
+  - **Generalized Subnet TTL Drops**: Replaced static TTL=63/62 drops with client-subnet-scoped drop rules (`src-address=$subnet ttl=less-than:64 action=drop`) for all RFC 1918 subnets (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`), blocking secondary routed hops from Linux, Android, and iOS tethering regardless of hop count, alongside Windows tethering (`ttl=equal:127,126,125`).
+- [x] **2-Minute Trial Access & Payment Grace Period Reliability**:
+  - **Fixed CLI/API Syntax Error**: Corrected invalid RouterOS properties `trial-uptime-limit=2m` and `trial-uptime-reset=24h` to the official composite parameter `trial-uptime=2m/24h`.
+  - **Profile Dependency Ordering**: Ensured `wp-payment-trial` user profile is created prior to the server profile referencing it as `trial-user-profile=wp-payment-trial`.
+  - **Unencoded MAC Authentication in Hosted Portal (`WavePass-Web`)**: Updated `activateTrial()` to pass raw unencoded colons (`username=T-${mac}`) instead of `%3A`, preventing RouterOS username matching failure, and added fallback navigation to `/login?trial=yes` for QR camera scans.
+  - **Native HTTP GET Trampoline Execution**: Replaced passwordless HTTP POST form submission with native HTTP GET redirection (`window.location.replace('$(link-login-only)?dst=' + encodeURIComponent(dst) + '&username=' + targetTrialUser)`), resolving the *"invalid username or password"* rejection by RouterOS.
+- [x] **Verification**:
+  - `wavepass-web`: `pnpm build` clean (30 static pages, 9 route handlers, 0 errors). PR [#14](https://github.com/Icedmist/WavePass-Web/pull/14) merged to `main` (`58a8ae1`).
+  - `wavepass-android`:
+    - `flutter analyze`: **0 issues found** (clean).
+    - `flutter test`: **All 58 tests passed** (including mock socket tests for `trial-uptime=2m/24h` and IPv6 drop rules).
+    - PR [#81](https://github.com/Icedmist/WavePass-Android/pull/81) merged to `main` (`c069b81`).

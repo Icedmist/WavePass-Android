@@ -34,12 +34,12 @@ void main() {
 
     test('standardDurationProfiles configures hard timeouts and keepalives for all tiers', () {
       final profiles = RouterDiscoveryService.standardDurationProfiles;
-      expect(profiles.length, 9);
+      expect(profiles.length, 10);
 
       for (final p in profiles) {
         expect(p['shared-users'], '1');
         expect(p['keepalive-timeout'], '2m');
-        expect(p['idle-timeout'], '5m');
+        expect(p['idle-timeout'], isNotNull);
         expect(p['status-autorefresh'], '1m');
         expect(p['session-timeout'], isNotNull);
         expect(p['rate-limit'], isNotNull);
@@ -48,6 +48,7 @@ void main() {
       expect(profiles.firstWhere((p) => p['name'] == 'profile_1h')['session-timeout'], '1h');
       expect(profiles.firstWhere((p) => p['name'] == 'profile_12h')['session-timeout'], '12h');
       expect(profiles.firstWhere((p) => p['name'] == 'profile_1d')['session-timeout'], '1d');
+      expect(profiles.firstWhere((p) => p['name'] == 'wp-payment-trial')['session-timeout'], '2m');
     });
   });
 

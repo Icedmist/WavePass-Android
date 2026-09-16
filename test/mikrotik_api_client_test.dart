@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wavepass_mobile/core/services/mikrotik_api_client.dart';
+import 'package:wavepass_mobile/core/services/router_discovery_service.dart';
 
 void main() {
   group('MikrotikApiClient Encoding & Parsing Tests', () {
@@ -232,6 +233,43 @@ void main() {
       expect(success, isTrue);
       expect(setExecuted, isTrue);
       await client.close();
+    });
+
+    test('RouterDiscoveryService includes wp-payment-trial in standardDurationProfiles', () {
+      final trial = RouterDiscoveryService.standardDurationProfiles
+          .firstWhere((p) => p['name'] == 'wp-payment-trial');
+      expect(trial['rate-limit'], equals('2M/2M'));
+      expect(trial['session-timeout'], equals('2m'));
+      expect(trial['shared-users'], equals('1'));
+      expect(trial['transparent-proxy'], equals('yes'));
+    });
+
+    test('installHotspotConfig configures hotspot profile with trial support and addresses-per-mac=1', () async {
+      final executedWords = <String>[];
+      server.listen((socket) {
+        socket.listen((data) {
+          final str = utf8.decode(data, allowMalformed: true);
+          if (str.contains('/login')) {
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
+          } else {
+            executedWords.add(str);
+            socket.add([5, 0x21, 0x64, 0x6F, 0x6E, 0x65, 0]);
+          }
+        });
+      });
+
+      final client = MikrotikApiClient(host: '127.0.0.1', port: port);
+      await client.connectAndLogin('admin', 'pass123');
+      final res = await client.installHotspotConfig(slug: 'testvenue', venueName: 'Test Venue', localIp: '192.168.88.1');
+      await client.close();
+
+      expect(res['profile'], isTrue);
+      final profileSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/profile/add'));
+      expect(profileSentence, contains('login-by=http-pap,http-chap,mac-cookie,trial'));
+      expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
+      expect(profileSentence, contains('trial-uptime-limit=2m'));
+      expect(profileSentence, contains('addresses-per-mac=1'));
+      expect(profileSentence, contains('mac-cookie=no'));
     });
   });
 }

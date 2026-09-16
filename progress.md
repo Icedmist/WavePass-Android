@@ -429,3 +429,27 @@
     - `flutter analyze`: **0 issues found** (clean).
     - `flutter test`: **All 58 tests passed** (including mock socket tests for `trial-uptime=2m/24h` and IPv6 drop rules).
     - PR [#81](https://github.com/Icedmist/WavePass-Android/pull/81) merged to `main` (`c069b81`).
+
+### 30. Disconnected Device Active Voucher Retrieval & 1-Tap Reconnect (Issues #82, #25, #17; PRs #83, #26, #18)
+- [x] **Disconnection & Reconnection Root Cause Resolution**:
+  - Devices disconnected from Wi-Fi (sleep, idle, walking out of range) had their active session cleared from `/ip/hotspot/active` on RouterOS.
+  - When reconnecting, captive portals presented only blank inputs and pay buttons. Online Paystack customers (`username = MAC`) or cash voucher customers who misplaced paper slips could not reconnect without paying again or contacting staff.
+- [x] **Backend MAC-to-Voucher Active Session Resolution (`WavePass-Backend` #25, #26)**:
+  - Added `getDeviceActiveAccess(mac, ip)` in `src/modules/portal/portal.service.ts`:
+    - Queries active `Session`, redeemed `Voucher` (by `redeemedMac`), and active `Order` (by `customerRef`).
+    - Calculates real-time remaining duration, plan specifications, and credentials (`voucherCode`, `username`, `password`, `reconnectUrl`).
+  - Added `@Get('active-session')` and `@Get('device/:mac/active-voucher')` in `portal.controller.ts`.
+  - PR [#26](https://github.com/Icedmist/WavePass-Backend/pull/26) merged to `main` (`6912807`).
+- [x] **Hosted Portal Auto-Detection & 1-Tap Reconnect UI (`WavePass-Web` #17, #18)**:
+  - Created `app/api/portal/active-session/route.ts` proxying client requests by MAC/IP to the backend.
+  - Added live countdown banner and prominent card in `app/portal/page.tsx` displaying the active pass allocated to the device's MAC address with remaining time, copyable voucher code, and 1-tap "Reconnect Active Session Now" button.
+  - Caches redeemed vouchers to browser `localStorage` (`wp-active-voucher`, `wp-active-user`).
+  - PR [#18](https://github.com/Icedmist/WavePass-Web/pull/18) merged to `main` (`a0dec4e`).
+- [x] **Router Gateway Local Storage Caching & Offline Reconnect (`WavePass-Android` #82, #83)**:
+  - Router `login.html` hosted trampoline caches query-param vouchers (`c` or `u`) to `localStorage`.
+  - Router `status.html` automatically caches active session `$(username)` into `localStorage`.
+  - Router emergency offline fallback pre-fills cached voucher and transforms button into 1-tap reconnect.
+  - Standalone `login.html` presents dynamic `#savedVoucherBox` card when a cached active voucher is found.
+  - Exposes `RouterSetupScreen.generateStatusHtml` and `RouterSetupScreen.generateLogoutHtml`.
+  - All 59 unit/widget tests passing; `flutter analyze` 0 issues.
+  - PR [#83](https://github.com/Icedmist/WavePass-Android/pull/83) merged to `main` (`e9ad316`).

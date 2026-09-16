@@ -10,6 +10,7 @@ import '../core/services/activation_code_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/theme/app_theme.dart';
 
 class AccountCenterScreen extends StatefulWidget {
@@ -119,11 +120,11 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     try {
       final user = SupabaseService.instance.currentUser;
       final prefs = await SharedPreferences.getInstance();
-      final savedEmail = prefs.getString('sb-user-email') ?? user?.email ?? 'talk2icedmist@gmail.com';
+      final savedEmail = prefs.getString('sb-user-email') ?? user?.email ?? '';
       _emailController.text = savedEmail;
       _nameController.text = user?.userMetadata?['name']?.toString() ?? 'Venue Owner';
 
-      final isAdmin = await SystemAdminService.instance.isSystemAdmin(savedEmail);
+      final isAdmin = savedEmail.isNotEmpty && await SystemAdminService.instance.isSystemAdmin(savedEmail);
       if (mounted) {
         setState(() => _isSystemAdmin = isAdmin);
       }
@@ -406,8 +407,14 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
+      await prefs.remove('wavepass_voucher_history_v1');
+      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+      await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
+      await prefs.remove(RouterDiscoveryService.keyRouterUsername);
+      await prefs.remove(RouterDiscoveryService.keyRouterPassword);
       await VenueStateService.instance.clearVenue();
       await ActivationCodeService.instance.clearCache();
+      await VoucherHistoryService.instance.clearCache();
     } catch (_) {}
   }
 

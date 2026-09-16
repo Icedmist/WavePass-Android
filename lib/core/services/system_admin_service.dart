@@ -25,8 +25,16 @@ class SystemAdminService {
   /// Returns true if the logged in user is the System Administrator.
   Future<bool> isSystemAdmin([String? email]) async {
     final prefs = await SharedPreferences.getInstance();
-    final currentEmail = (email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
+    final savedEmail = prefs.getString('sb-user-email');
+    final authEmail = SupabaseService.instance.currentUser?.email;
+    final currentEmail = (email ?? savedEmail ?? authEmail ?? '').toLowerCase().trim();
+
     if (currentEmail == _superAdminEmail) return true;
+
+    // Explicit non-superadmin email check returns false
+    if (email != null && email.trim().isNotEmpty && email.toLowerCase().trim() != _superAdminEmail) {
+      return false;
+    }
 
     final token = prefs.getString(_keyAdminToken);
     return token != null && token.isNotEmpty;

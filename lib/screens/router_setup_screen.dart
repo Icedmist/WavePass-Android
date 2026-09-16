@@ -735,9 +735,10 @@ set name="WavePass-$slug"
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>$venueName | Fast Wi-Fi Access</title>
-  <!-- Instant 0-second browser redirect to hosted venue subdomain -->
-  <meta http-equiv="refresh" content="0; url=https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)">
+  <!-- Instant noscript fallback redirect to hosted venue subdomain (bypassed when JS handles programmatic auth) -->
+  <noscript>
+    <meta http-equiv="refresh" content="0; url=https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)">
+  </noscript>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -891,8 +892,8 @@ set name="WavePass-$slug"
     <form name="sendin" action="\$(link-login-only)" method="post" style="display:none;">
       <input type="hidden" name="username" id="dst_user">
       <input type="hidden" name="password" id="dst_pass">
-      <input type="hidden" name="dst" value="\$(link-orig)">
-      <input type="hidden" name="popup" value="true">
+      <input type="hidden" name="dst" id="dst_target" value="\$(link-orig)">
+      <input type="hidden" name="popup" value="false">
     </form>
 
     <div class="footer">
@@ -918,14 +919,20 @@ $_rfc1321Md5Js
         document.getElementById('dst_pass').value = p;
       }
 
+      var dstParam = (typeof params !== "undefined" && params) ? (params.get('dst') || params.get('link-orig')) : null;
+      if (dstParam) {
+        document.getElementById('dst_target').value = dstParam;
+      }
+
       document.sendin.submit();
     }
 
-    var portalUrl = "https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)";
+    var portalUrl = "https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)&logged-in=\$(logged-in)&session-time-left=\$(session-time-left)&router-user=\$(username)&error=\$(error-esc)";
 
     var loggedIn = false;
+    var params = null;
     try {
-      var params = new URLSearchParams(window.location.search);
+      params = new URLSearchParams(window.location.search);
       var c = params.get('code') || params.get('voucher');
       var u = params.get('username') || params.get('user');
       var p = params.get('password') || params.get('pass');
@@ -950,6 +957,12 @@ $_rfc1321Md5Js
     } catch (e) {}
 
     if (!loggedIn) {
+      // Check for RouterOS error returned after a failed login
+      var routerError = "\$(error-esc)";
+      if (routerError && routerError !== "" && routerError.indexOf("\$(") === -1) {
+        portalUrl += "&error=" + encodeURIComponent(routerError);
+      }
+
       // 1. Instant transparent navigation to hosted subdomain
       try {
         window.location.replace(portalUrl);

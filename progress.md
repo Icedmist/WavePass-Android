@@ -312,8 +312,30 @@
   - Updated `HomeDashboardScreen` and `AdminManagementScreen` to probe local LAN connectivity directly when in `local` mode rather than relying solely on cloud WAN pings against private RFC1918 IPs.
   - Automatically updates Supabase router record to `status: 'ONLINE'` and `lastSeen: now` when the phone communicates with the router on Wi-Fi.
 - [x] **Verification**:
-  - Added tests in `test/router_dual_connection_test.dart` for Port 8728 online reporting and dual link status.
-  - `flutter analyze`: **0 issues found** (clean).
-  - `flutter test`: **All 28 tests passed**.
+### 24. Voucher Confirmation, Credentials Login & Pure-JS CHAP MD5 Authentication (Issue #70, PR #71)
+- [x] **Root Cause Analysis**:
+  - `redeemVoucher()` on `wavepass-web` synchronously awaited cloud backend voucher validation. When `api.nexawavepass.com` was unreachable or DNS timed out, the request hung for 30+ seconds, browser user activation expired, and local router form submission was never executed.
+  - `loginWithCredentials()` on `wavepass-web` was missing form POST execution entirely, only performing `window.location.href = ...` (a GET request), which RouterOS Hotspot ignores.
+  - RouterOS Hotspot with `login-by=http-chap` rejected voucher and credentials submissions without RFC 1321 CHAP challenge responses.
+  - In `RouterSetupScreen`, the hosted trampoline redirector did not forward `$(chap-id)` or `$(chap-challenge)` in the redirect URL, and lacked on-box execution for query credentials (`?code=...` or `?username=...&password=...`), causing an infinite bounce loop.
+- [x] **Full-Stack Implementation & Fixes**:
+  - `wavepass-web/lib/md5.ts`: Added pure-JS RFC 1321 MD5 hash generator (0 external dependencies).
+  - `wavepass-web/app/portal/page.tsx`:
+    - Converted cloud voucher sync to fire-and-forget (`fetch(...).catch(() => {})`) to eliminate blocking delays.
+    - Implemented instant POST form submissions for both `redeemVoucher()` and `loginWithCredentials()` targeting the local gateway (`linkLogin || 'http://192.168.88.1/login'`).
+    - Added dynamic CHAP MD5 response hashing whenever `chap-id` and `chap-challenge` are present.
+    - Added `popup="true"` and `dst=linkOrig || window.location.href` to auto-close captive network assistants.
+  - `wavepass-web/app/api/vouchers/[code]/redeem/route.ts`: Added 3.5s `AbortController` timeout to prevent cloud hanging.
+  - `wavepass-android/lib/screens/router_setup_screen.dart`:
+    - Extracted static `_rfc1321Md5Js` constant reused across hosted trampoline and standalone portal suites.
+    - Forwarded `&chap-id=$(chap-id)&chap-challenge=$(chap-challenge)` in hosted trampoline URL.
+    - Embedded hidden `sendin` form, `executeLogin()`, and query-param detection in `login.html` to execute login directly on-router when query credentials are present.
+- [x] **Verification**:
+  - `wavepass-web`: Production build clean (`pnpm build`: 30 static pages, 9 route handlers, 0 errors).
+  - `wavepass-android`:
+    - `flutter test`: **All 56 tests passed**.
+    - `flutter analyze`: **0 issues found** (clean).
+    - PR [#71](https://github.com/Icedmist/WavePass-Android/pull/71) merged into `main` (`45b1744`).
+
 
 

@@ -60,39 +60,8 @@ void main() {
   });
 
   group('Captive Portal Suite & Venue Subpage Integration Tests', () {
-    test('Generated login.html defaults to instant hosted subdomain redirector with offline fail-safe', () {
+    test('Generated login.html defaults to full on-router standalone portal card with voucher redemption and Paystack', () {
       final html = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge');
-
-      // 1. Instant 0-second redirect to venue subdomain with device & CHAP parameters
-      expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
-      expect(html, contains('<meta http-equiv="refresh" content="0; url=https://apex-lounge.nexawavepass.com/portal'));
-      expect(html, contains(r'mac=$(mac)'));
-      expect(html, contains(r'ip=$(ip)'));
-      expect(html, contains(r'link-login=$(link-login-only)'));
-      expect(html, contains(r'chap-id=$(chap-id)'));
-      expect(html, contains(r'chap-challenge=$(chap-challenge)'));
-      expect(html, contains('window.location.replace(portalUrl)'));
-
-      // 2. Offline fail-safe form
-      expect(html, contains('id="offlineFallback"'));
-      expect(html, contains(r'action="$(link-login-only)"'));
-      expect(html, contains('placeholder="e.g. 123456"'));
-      expect(html, contains('setTimeout('));
-
-      // 3. Programmatic on-box execution for query credentials
-      expect(html, contains(r'form name="sendin"'));
-      expect(html, contains('executeLogin('));
-      expect(html, contains('hexMD5('));
-    });
-
-    test('Standalone mode login.html contains full on-router portal card with dual tabs and Paystack', () {
-      final html = RouterSetupScreen.generateLoginHtml(
-        'Apex Lounge',
-        'apex-lounge',
-        null,
-        true,
-        false, // useHostedSubdomainPortal = false
-      );
 
       // 1. Venue Hosted Subpage Integration
       expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
@@ -123,6 +92,37 @@ void main() {
       // 5. RouterOS Form
       expect(html, contains(r'action="$(link-login-only)"'));
       expect(html, contains(r'name="sendin"'));
+    });
+
+    test('Hosted mode login.html generates instant hosted subdomain redirector with offline fail-safe', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        null,
+        true,
+        true, // useHostedSubdomainPortal = true
+      );
+
+      // 1. Instant 0-second redirect to venue subdomain with device & CHAP parameters
+      expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
+      expect(html, contains('<meta http-equiv="refresh" content="0; url=https://apex-lounge.nexawavepass.com/portal'));
+      expect(html, contains(r'mac=$(mac)'));
+      expect(html, contains(r'ip=$(ip)'));
+      expect(html, contains(r'link-login=$(link-login-only)'));
+      expect(html, contains(r'chap-id=$(chap-id)'));
+      expect(html, contains(r'chap-challenge=$(chap-challenge)'));
+      expect(html, contains('window.location.replace(portalUrl)'));
+
+      // 2. Offline fail-safe form
+      expect(html, contains('id="offlineFallback"'));
+      expect(html, contains(r'action="$(link-login-only)"'));
+      expect(html, contains('placeholder="e.g. 123456"'));
+      expect(html, contains('setTimeout('));
+
+      // 3. Programmatic on-box execution for query credentials
+      expect(html, contains(r'form name="sendin"'));
+      expect(html, contains('executeLogin('));
+      expect(html, contains('hexMD5('));
     });
 
     test('Standalone mode login.html renders custom venue plans dynamically', () {

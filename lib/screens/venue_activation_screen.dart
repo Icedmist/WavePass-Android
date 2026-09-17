@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 
 class VenueActivationScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class VenueActivationScreen extends StatefulWidget {
 class _VenueActivationScreenState extends State<VenueActivationScreen> {
   final _codeCtrl = TextEditingController();
   final _reqNameCtrl = TextEditingController();
+  final _reqEmailCtrl = TextEditingController();
   final _reqPhoneCtrl = TextEditingController();
   final _reqVenueCtrl = TextEditingController();
   final _reqMsgCtrl = TextEditingController();
@@ -30,6 +32,14 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
   void initState() {
     super.initState();
     _forwardIfActivated();
+    _prefillEmail();
+  }
+
+  Future<void> _prefillEmail() async {
+    final email = await _currentEmail();
+    if (email.isNotEmpty && mounted) {
+      setState(() => _reqEmailCtrl.text = email);
+    }
   }
 
   /// Already licensed (e.g. bounced here by the router guard on cold start
@@ -51,6 +61,7 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
   void dispose() {
     _codeCtrl.dispose();
     _reqNameCtrl.dispose();
+    _reqEmailCtrl.dispose();
     _reqPhoneCtrl.dispose();
     _reqVenueCtrl.dispose();
     _reqMsgCtrl.dispose();
@@ -92,12 +103,20 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
   }
 
   Future<void> _handleRequestCode() async {
+    final inputEmail = _reqEmailCtrl.text.trim();
+    final savedEmail = inputEmail.isNotEmpty ? inputEmail : await _currentEmail();
+    if (savedEmail.isEmpty || !savedEmail.contains('@')) {
+      setState(() {
+        _requestSent = false;
+        _requestMessage = "Please enter a valid email address.";
+      });
+      return;
+    }
     setState(() {
       _isRequesting = true;
       _requestMessage = null;
     });
     try {
-      final savedEmail = await _currentEmail();
       final res = await ActivationCodeService.instance.requestActivationCode(
         email: savedEmail,
         name: _reqNameCtrl.text.trim(),
@@ -122,6 +141,8 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString('sb-user-email');
       if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+      final supabaseEmail = SupabaseService.instance.currentUser?.email;
+      if (supabaseEmail != null && supabaseEmail.trim().isNotEmpty) return supabaseEmail.trim();
     } catch (_) {}
     return '';
   }
@@ -360,6 +381,13 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
                         controller: _reqNameCtrl,
                         textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(hintText: "Your name", isDense: true, border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _reqEmailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        decoration: const InputDecoration(hintText: "Email address *", isDense: true, border: OutlineInputBorder()),
                       ),
                       const SizedBox(height: 8),
                       TextField(

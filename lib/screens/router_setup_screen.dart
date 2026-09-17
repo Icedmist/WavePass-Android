@@ -22,7 +22,7 @@ class RouterSetupScreen extends StatefulWidget {
     String slug, [
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
-    bool useHostedSubdomainPortal = true,
+    bool useHostedSubdomainPortal = false,
   ]) =>
       _RouterSetupScreenState._generateLoginHtml(
         venueName,
@@ -62,7 +62,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingPortalHtml = false;
   bool _uploadingPortalFiles = false;
   int _selectedPortalTabIndex = 0;
-  bool _useHostedSubdomainPortal = true;
+  bool _useHostedSubdomainPortal = false;
   Map<String, String>? _portalSuite;
 
   @override
@@ -727,7 +727,7 @@ set name="WavePass-$slug"
     String slug, [
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
-    bool useHostedSubdomainPortal = true,
+    bool useHostedSubdomainPortal = false,
   ]) {
     if (useHostedSubdomainPortal) {
       return """<!DOCTYPE html>
@@ -1376,7 +1376,7 @@ $_rfc1321Md5Js
     <div class="subpage-box">
       <div class="subpage-title">Visiting $venueName?</div>
       <p class="subpage-desc">Buy passes online with Card/Transfer or manage your active connection on our venue portal.</p>
-      <a href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug" class="btn-subpage">
+      <a href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)" class="btn-subpage">
         Launch Venue Portal &rarr;
       </a>
     </div>

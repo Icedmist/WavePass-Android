@@ -98,6 +98,17 @@ void main() {
       expect(result['ok'], isFalse);
       expect(result['error'], contains('Activation code is required'));
     });
+
+    test('requestActivationCode validates email presence and format', () async {
+      final service = ActivationCodeService.instance;
+      final resEmpty = await service.requestActivationCode(email: '');
+      expect(resEmpty['ok'], isFalse);
+      expect(resEmpty['error'], contains('valid email address'));
+
+      final resInvalid = await service.requestActivationCode(email: 'invalid-email');
+      expect(resInvalid['ok'], isFalse);
+      expect(resInvalid['error'], contains('valid email address'));
+    });
   });
 
   group('Voucher Purge Tests', () {

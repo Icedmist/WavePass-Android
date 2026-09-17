@@ -255,7 +255,6 @@ class ActivationCodeService {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('$_keyActivatedCodePrefix$targetEmail');
   }
-
   /// Gets the expiry date of the current activation, if any.
   Future<String?> getActivationExpiry([String? email]) async {
     final targetEmail = (email ?? await _getCurrentUserEmail()).toLowerCase().trim();
@@ -315,6 +314,44 @@ class ActivationCodeService {
         }
         return {'ok': false, 'error': data['error'] ?? data['message'] ?? 'Invalid or unauthorized activation code'};
       }
+    } catch (e) {
+      return {'ok': false, 'error': 'Failed to connect to activation server: $e'};
+    }
+  }
+
+  /// Sends a code request to the system admin for users without a code.
+  Future<Map<String, dynamic>> requestActivationCode({
+    required String email,
+    String? name,
+    String? phone,
+    String? venueName,
+    String? venueId,
+    String? message,
+  }) async {
+    final targetEmail = email.toLowerCase().trim();
+    if (targetEmail.isEmpty || !targetEmail.contains('@')) {
+      return {'ok': false, 'error': 'A valid email address is required'};
+    }
+    try {
+      final res = await http
+          .post(
+            Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-requests'),
+            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: jsonEncode({
+              'email': targetEmail,
+              if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+              if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+              if (venueName != null && venueName.trim().isNotEmpty) 'venueName': venueName.trim(),
+              if (venueId != null && venueId.trim().isNotEmpty) 'venueId': venueId.trim(),
+              if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true) {
+        return {'ok': true, 'message': data['message']?.toString() ?? 'Request sent.', 'duplicate': data['duplicate'] == true};
+      }
+      return {'ok': false, 'error': data['error']?.toString() ?? 'Failed to send request'};
     } catch (e) {
       return {'ok': false, 'error': 'Failed to connect to activation server: $e'};
     }

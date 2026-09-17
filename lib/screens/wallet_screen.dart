@@ -80,10 +80,17 @@ class _WalletScreenState extends State<WalletScreen> {
         }
       }
 
-      final va = await _api.getVirtualAccount(venueId);
-      final vaData = va['accountNumber'] != null
-          ? va
-          : await _api.ensureVirtualAccount(venueId);
+      // Always ensure: the backend self-heals stale mock/PENDING rows into
+      // live DVAs once real keys exist. Fall back to a plain read offline.
+      Map<String, dynamic> vaData;
+      try {
+        vaData = await _api.ensureVirtualAccount(venueId);
+        if (vaData['accountNumber'] == null) {
+          vaData = await _api.getVirtualAccount(venueId);
+        }
+      } catch (_) {
+        vaData = await _api.getVirtualAccount(venueId);
+      }
       final bal = await _api.venueBalance(venueId);
       final cashoutsRaw = await _api.listCashouts(venueId);
       final cashoutsList = cashoutsRaw is List
@@ -92,11 +99,11 @@ class _WalletScreenState extends State<WalletScreen> {
 
       final banksRaw = await _api.listBankAccounts(venueId);
       final banksList = banksRaw is List
-          ? (banksRaw as List<dynamic>)
+          ? banksRaw
           : (banksRaw['data'] as List<dynamic>? ?? []);
 
       final paymentsRaw = await _api.listStorePayments(venueId);
-      final paymentsList = paymentsRaw is List ? paymentsRaw : [];
+      final paymentsList = paymentsRaw;
 
       if (!mounted) return;
       setState(() {
@@ -125,8 +132,6 @@ class _WalletScreenState extends State<WalletScreen> {
 
   String get _acctNumber => _virtualAccount?['accountNumber']?.toString() ?? '—';
   String get _acctName => _virtualAccount?['accountName']?.toString() ?? '—';
-
-  bool get _isPaystackConfigured => true;
 
   bool get _hasActiveVirtualAccount {
     if (_virtualAccount == null) return false;
@@ -750,7 +755,6 @@ class _WalletScreenState extends State<WalletScreen> {
                       ..._storePayments.map((p) {
                         final amtNgn = (p['amountNGN'] as num?)?.toDouble() ?? (((p['amountMinor'] as num?)?.toDouble() ?? 0) / 100);
                         final plan = p['planName']?.toString() ?? 'Wi-Fi Pass';
-                        final ref = p['providerReference']?.toString() ?? p['id']?.toString() ?? '';
                         final mac = p['customerRef']?.toString() ?? '';
                         final dateStr = p['paidAt'] ?? p['createdAt'];
                         return Container(

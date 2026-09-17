@@ -489,3 +489,9 @@
 - [x] Wallet ensures (not just reads) on every load with read-fallback, so backend self-heal runs for existing venues.
 - [x] **Verification**: `flutter analyze` clean.
 - [x] PR [#99](https://github.com/Icedmist/WavePass-Android/pull/99) merged to `main`.
+
+### 37. Verify-Before-Present Vouchers (Issue #101, PR #102)
+- [x] Sell verifies router-pushed OR cloud-confirmed before success; failure state with retry; auto-print gated on provisioned.
+- [x] Batch uploads exact codes to cloud with router/cloud counts; UNSYNCED markers in history.
+- [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
+- [x] PR [#102](https://github.com/Icedmist/WavePass-Android/pull/102) merged to `main`.

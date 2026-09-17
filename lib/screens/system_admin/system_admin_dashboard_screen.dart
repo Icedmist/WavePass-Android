@@ -67,9 +67,13 @@ class _SystemAdminDashboardScreenState extends State<SystemAdminDashboardScreen>
               ),
             ),
             const SizedBox(width: 8),
-            const Text(
-              "System Administrator Hub",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
+            const Flexible(
+              child: Text(
+                "System Administrator Hub",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -225,14 +229,21 @@ class _SystemAdminDashboardScreenState extends State<SystemAdminDashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.5)),
+              Flexible(
+                child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: 4),
               Icon(icon, size: 16, color: color),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primary),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primary),
+            ),
           ),
         ],
       ),
@@ -275,9 +286,13 @@ class _SystemAdminDashboardScreenState extends State<SystemAdminDashboardScreen>
                 children: [
                   Row(
                     children: [
-                      Text(
-                        title,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.primary),
+                      Flexible(
+                        child: Text(
+                          title,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.primary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Container(

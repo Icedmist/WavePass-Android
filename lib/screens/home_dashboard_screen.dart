@@ -884,16 +884,39 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        "Recent Sales Today",
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
+                      const Flexible(
+                        child: Text(
+                          "Recent Sales Today",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      InkWell(
-                        onTap: () => _showSalesBreakdownSheet(context),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWell(
+                            onTap: () => context.push(AppRouter.salesHistory),
+                            borderRadius: BorderRadius.circular(6),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text(
+                                "View all",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _showSalesBreakdownSheet(context),
                         borderRadius: BorderRadius.circular(6),
                         child: const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -913,6 +936,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                             ],
                           ),
                         ),
+                      ),
+                        ],
                       ),
                     ],
                   ),

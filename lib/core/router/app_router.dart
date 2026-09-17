@@ -20,6 +20,7 @@ import '../../screens/wallet_screen.dart';
 import '../../screens/notifications_screen.dart';
 import '../../screens/account_center_screen.dart';
 import '../../screens/batch_vouchers_screen.dart';
+import '../../screens/sales_history_screen.dart';
 import '../../screens/venue_activation_screen.dart';
 import '../../screens/system_admin/system_admin_dashboard_screen.dart';
 import '../../screens/system_admin/system_monitor_screen.dart';
@@ -71,6 +72,7 @@ class AppRouter {
   static const privacy = '/privacy';
   static const barcodeScanner = '/barcode-scanner';
   static const batchVouchers = '/batch-vouchers';
+  static const salesHistory = '/sales-history';
   static const wallet = '/wallet';
   static const activateVenue = '/activate-venue';
   static const systemAdmin = '/system-admin';
@@ -128,6 +130,7 @@ class AppRouter {
       GoRoute(path: terms, pageBuilder: (c, s) => _slideFade(const TermsScreen(), s)),
       GoRoute(path: privacy, pageBuilder: (c, s) => _slideFade(const PrivacyScreen(), s)),
       GoRoute(path: barcodeScanner, pageBuilder: (c, s) => _slideFade(const BarcodeScannerScreen(), s)),
+      GoRoute(path: salesHistory, pageBuilder: (c, s) => _slideFade(const SalesHistoryScreen(), s)),
       GoRoute(path: activateVenue, pageBuilder: (c, s) => _slideFade(const VenueActivationScreen(), s)),
       GoRoute(path: systemAdmin, pageBuilder: (c, s) => _slideFade(const SystemAdminDashboardScreen(), s)),
       GoRoute(path: systemAdminMonitor, pageBuilder: (c, s) => _slideFade(const SystemMonitorScreen(), s)),

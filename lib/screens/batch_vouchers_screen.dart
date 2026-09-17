@@ -11,6 +11,7 @@ import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/voucher_history_service.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import 'voucher_history_sheet.dart';
 
@@ -228,6 +229,29 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         } catch (_) {}
       }
 
+      // Upload the exact codes to cloud so records match app + router.
+      // Best-effort: router-pushed codes work regardless; cloud enables
+      // portal redeem, retrieve-voucher, and success-page verification.
+      final Set<String> cloudConfirmed = {};
+      if (_selectedVenueId != null && _selectedPlanId != null) {
+        try {
+          final res = await WavePassApi.instance.uploadVoucherBatch(
+            venueId: _selectedVenueId!,
+            planId: _selectedPlanId!,
+            codes: compiled.map((e) => e['code'] as String).toList(),
+          ).timeout(const Duration(seconds: 15));
+          final list = res['vouchers'];
+          if (list is List) {
+            for (final v in list) {
+              final c = (v is Map ? v['code'] : null)?.toString().toUpperCase();
+              if (c != null && c.isNotEmpty) cloudConfirmed.add(c);
+            }
+          }
+        } catch (e) {
+          debugPrint('Cloud batch upload failed: $e');
+        }
+      }
+
       // Record batch vouchers in local history
       for (final item in compiled) {
         final code = item['code'] as String;
@@ -240,7 +264,19 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           durationSeconds: durationSec,
           directMode: routerMode,
           source: 'batch',
+          provisioned: cloudConfirmed.contains(code.toUpperCase()),
         );
+      }
+
+      // Mark router-pushed codes provisioned regardless of cloud outcome.
+      if (routerPushed > 0) {
+        for (final item in compiled) {
+          await VoucherHistoryService.instance.updateProvisioned(
+            item['code'] as String,
+            true,
+            directMode: routerMode,
+          );
+        }
       }
 
       if (!mounted) return;
@@ -250,12 +286,17 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
       if (mounted) {
         final routerInfo = routerPushed > 0
-            ? ' ($routerPushed live on router via ${routerMode == 'local' ? 'LAN Direct' : 'Tunnel'})'
+            ? " ($routerPushed live on router via ${routerMode == 'local' ? 'LAN Direct' : 'Tunnel'})"
             : '';
+        final cloudInfo = cloudConfirmed.isNotEmpty
+            ? ' (${cloudConfirmed.length} confirmed in cloud)'
+            : ' (cloud sync failed)';
+        final allLanded = routerPushed == compiled.length || cloudConfirmed.length == compiled.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Generated ${_generated.length} vouchers successfully!$routerInfo'),
-            backgroundColor: AppColors.accentGreen,
+            content: Text('Generated ${_generated.length} vouchers successfully!$routerInfo$cloudInfo'),
+            backgroundColor: allLanded ? AppColors.accentGreen : AppColors.accentRed,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

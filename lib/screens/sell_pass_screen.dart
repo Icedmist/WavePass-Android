@@ -1,16 +1,14 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../core/constants/api_constants.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/venue_state_service.dart';
+import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
 import '../core/widgets/qr_code_widget.dart';
@@ -30,6 +28,9 @@ class _SellPassScreenState extends State<SellPassScreen> {
   String? _generatedCode;
   String? _generatedPassword;
   bool _soldGenerated = false;
+  bool? _provisioned;
+  String? _provisionDetail;
+  bool _retryingProvision = false;
   bool _showCustomSettings = false;
   final _prefixCtrl = TextEditingController(text: '');
   final _passPrefixCtrl = TextEditingController(text: '');
@@ -193,23 +194,23 @@ class _SellPassScreenState extends State<SellPassScreen> {
       }
     }
 
-    // Optional cloud notification (non-blocking)
-    try {
-      if (_venueId != null && planId != null && planId.isNotEmpty) {
-        http.post(
-          Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/vouchers/batches'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'venueId': _venueId,
-            'planId': planId,
-            'quantity': 1,
-            'customCode': code,
-          }),
-        ).timeout(const Duration(seconds: 4)).catchError((_) => http.Response('{}', 500));
+    // 1. Upload the exact code to cloud so records match app + router.
+    bool cloudOk = false;
+    if (_venueId != null && planId != null && planId.isNotEmpty) {
+      try {
+        final res = await WavePassApi.instance.uploadVoucherBatch(
+          venueId: _venueId!,
+          planId: planId,
+          codes: [code],
+        ).timeout(const Duration(seconds: 8));
+        final created = (res['created'] as num?)?.toInt() ?? 0;
+        cloudOk = created > 0;
+      } catch (e) {
+        debugPrint('Cloud voucher upload failed: $e');
       }
-    } catch (_) {}
+    }
 
-    // Synchronously provision directly onto router hardware (LAN Direct / Cloud Tunnel)
+    // 2. Provision directly onto router hardware (LAN Direct / Cloud Tunnel)
     String? directMode;
     try {
       final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
@@ -226,6 +227,10 @@ class _SellPassScreenState extends State<SellPassScreen> {
       debugPrint('Direct router provisioning attempt: $e');
     }
 
+    // 3. Verify before presenting: router-pushed OR cloud-confirmed.
+    // Never present an unprovisioned code as valid.
+    final provisioned = directMode != null || cloudOk;
+
     if (!mounted) return;
 
     // Record voucher in local history
@@ -238,6 +243,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       durationSeconds: durationSec,
       directMode: directMode,
       source: 'pos',
+      provisioned: provisioned,
     );
 
     setState(() {
@@ -245,9 +251,26 @@ class _SellPassScreenState extends State<SellPassScreen> {
       _generatedCode = code;
       _generatedPassword = password;
       _soldGenerated = false;
+      _provisioned = provisioned;
+      _provisionDetail = directMode != null
+          ? "Live on router (${directMode == 'local' ? 'LAN Direct' : 'Tunnel'})${cloudOk ? ' + cloud' : ''}"
+          : cloudOk
+              ? 'Confirmed in cloud — router will sync'
+              : 'Not provisioned anywhere';
       _directProvisionMode = directMode;
       _directProvisionAttempted = true;
     });
+
+    if (!provisioned && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not provision this code on router or cloud. Tap Retry — do not hand it out yet.'),
+          backgroundColor: AppColors.accentRed,
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
 
     // Auto-print receipt if enabled in printer settings
     try {
@@ -256,6 +279,68 @@ class _SellPassScreenState extends State<SellPassScreen> {
         _handlePrint();
       }
     } catch (_) {}
+  }
+
+  /// Re-runs router + cloud provisioning for the currently displayed code.
+  Future<void> _retryProvision() async {
+    final code = _generatedCode;
+    if (code == null || _plans.isEmpty) return;
+    setState(() => _retryingProvision = true);
+    try {
+      final selectedPlan = (_selectedPlanIndex < _plans.length) ? _plans[_selectedPlanIndex] : _plans.first;
+      final planId = selectedPlan['id'] as String?;
+      final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
+
+      String? directMode;
+      try {
+        final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
+          code: code,
+          pass: _generatedPassword ?? code,
+          profile: RouterDiscoveryService.profileForDuration(durationSec),
+          sessionTimeoutSeconds: durationSec,
+        );
+        if (directRes['success'] == true) directMode = directRes['mode']?.toString();
+      } catch (e) {
+        debugPrint('Retry router provisioning: $e');
+      }
+
+      bool cloudOk = false;
+      if (_venueId != null && planId != null && planId.isNotEmpty) {
+        try {
+          final res = await WavePassApi.instance.uploadVoucherBatch(
+            venueId: _venueId!,
+            planId: planId,
+            codes: [code],
+          ).timeout(const Duration(seconds: 8));
+          cloudOk = ((res['created'] as num?)?.toInt() ?? 0) > 0;
+        } catch (e) {
+          debugPrint('Retry cloud upload: $e');
+        }
+      }
+
+      final provisioned = directMode != null || cloudOk;
+      await VoucherHistoryService.instance.updateProvisioned(code, provisioned, directMode: directMode);
+      if (!mounted) return;
+      setState(() {
+        _provisioned = provisioned;
+        _provisionDetail = directMode != null
+            ? "Live on router (${directMode == 'local' ? 'LAN Direct' : 'Tunnel'})${cloudOk ? ' + cloud' : ''}"
+            : cloudOk
+                ? 'Confirmed in cloud — router will sync'
+                : 'Not provisioned anywhere';
+        if (directMode != null) _directProvisionMode = directMode;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(provisioned ? 'Code provisioned successfully!' : 'Still not provisioned — check router connection and backend.'),
+            backgroundColor: provisioned ? AppColors.accentGreen : AppColors.accentRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _retryingProvision = false);
+    }
   }
 
   /// Thermal-style receipt preview: exactly what the Bluetooth print outputs.
@@ -1041,6 +1126,53 @@ class _SellPassScreenState extends State<SellPassScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Provision status: never hand out a code that landed nowhere
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: (_provisioned ?? false)
+                      ? AppColors.accentGreen.withValues(alpha: 0.12)
+                      : AppColors.accentRed.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: (_provisioned ?? false)
+                        ? AppColors.accentGreen.withValues(alpha: 0.4)
+                        : AppColors.accentRed.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      (_provisioned ?? false) ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                      size: 18,
+                      color: (_provisioned ?? false) ? AppColors.accentGreen : AppColors.accentRed,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        (_provisioned ?? false)
+                            ? 'Provisioned — ${_provisionDetail ?? ''}'
+                            : 'Not provisioned — ${_provisionDetail ?? 'tap Retry below'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: (_provisioned ?? false) ? AppColors.accentGreen : AppColors.accentRed,
+                        ),
+                      ),
+                    ),
+                    if (!(_provisioned ?? false))
+                      TextButton(
+                        onPressed: _retryingProvision ? null : _retryProvision,
+                        child: Text(
+                          _retryingProvision ? 'Retrying...' : 'Retry',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
               // Sold marker: staff distinguish handed-out passes from displayed ones
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -1110,6 +1242,8 @@ class _SellPassScreenState extends State<SellPassScreen> {
                     setState(() {
                       _generatedCode = null;
                       _soldGenerated = false;
+                      _provisioned = null;
+                      _provisionDetail = null;
                     });
                   },
                   child: const Text("Sell Another Pass"),

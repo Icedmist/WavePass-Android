@@ -408,6 +408,24 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                           ),
                                         ),
                                         const SizedBox(width: 6),
+                                        if (!item.provisioned)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            margin: const EdgeInsets.only(right: 6),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.accentRed.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text(
+                                              'UNSYNCED',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 0.5,
+                                                color: AppColors.accentRed,
+                                              ),
+                                            ),
+                                          ),
                                         InkWell(
                                           onTap: () async {
                                             final ok = await VoucherHistoryService.instance.markSold(item.code, !item.sold);

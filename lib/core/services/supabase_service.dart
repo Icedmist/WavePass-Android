@@ -24,7 +24,9 @@ class SupabaseService {
   }
 
   Future<void> signOut() async {
-    await client.auth.signOut();
+    try {
+      await client.auth.signOut();
+    } catch (_) {}
   }
 
   User? get currentUser {

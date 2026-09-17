@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/services/notification_service.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/theme/app_theme.dart';
 
 class VenueActivationScreen extends StatefulWidget {
@@ -163,28 +165,119 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
     }
   }
 
+  Future<bool> _showLogoutConfirmDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Log Out"),
+            content: const Text(
+              "Are you sure you want to log out and switch accounts?",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                key: const Key('venue_activation_confirm_logout_button'),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text("Log Out", style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _handleLogout({bool prompt = true}) async {
+    if (prompt) {
+      final confirmed = await _showLogoutConfirmDialog();
+      if (!confirmed || !mounted) return;
+    }
+
+    try {
+      await SupabaseService.instance.signOut();
+    } catch (_) {}
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('sb-user-email');
+      await prefs.remove('admin_token');
+      await prefs.remove('wavepass_voucher_history_v1');
+      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+      await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
+      await prefs.remove(RouterDiscoveryService.keyRouterUsername);
+      await prefs.remove(RouterDiscoveryService.keyRouterPassword);
+    } catch (_) {}
+
+    try {
+      await VenueStateService.instance.clearVenue();
+    } catch (_) {}
+
+    try {
+      await ActivationCodeService.instance.clearCache();
+    } catch (_) {}
+
+    if (mounted) {
+      context.go(AppRouter.login);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          await _handleLogout(prompt: true);
+        }
+      },
+      child: Scaffold(
         backgroundColor: AppColors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
-          onPressed: () => context.canPop() ? context.pop() : context.go(AppRouter.dashboard),
-        ),
-        title: const Text(
-          "Venue Activation",
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.primary,
+        appBar: AppBar(
+          backgroundColor: AppColors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.primary, size: 18),
+            onPressed: () async {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                await _handleLogout(prompt: true);
+              }
+            },
           ),
+          title: const Text(
+            "Venue Activation",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: AppColors.primary,
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              key: const Key('venue_activation_logout_button'),
+              onPressed: () => _handleLogout(prompt: true),
+              icon: const Icon(Icons.logout_rounded, size: 18, color: AppColors.accentRed),
+              label: const Text(
+                "Log Out",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.accentRed,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
-      ),
-      body: SafeArea(
-        child: Center(
+        body: SafeArea(
+          child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: Column(
@@ -458,11 +551,29 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 20),
+                Center(
+                  child: TextButton.icon(
+                    key: const Key('venue_activation_bottom_logout_button'),
+                    onPressed: () => _handleLogout(prompt: true),
+                    icon: const Icon(Icons.logout_rounded, size: 16, color: AppColors.textLight),
+                    label: const Text(
+                      "Wrong account? Log out and sign in differently",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textLight,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

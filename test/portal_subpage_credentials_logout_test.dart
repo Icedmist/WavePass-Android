@@ -1,8 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wavepass_mobile/core/services/activation_code_service.dart';
 import 'package:wavepass_mobile/core/services/venue_state_service.dart';
 import 'package:wavepass_mobile/screens/router_setup_screen.dart';
+import 'package:wavepass_mobile/screens/venue_activation_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -263,4 +266,146 @@ void main() {
       expect(html, contains('loadDynamicBankAccounts'));
     });
   });
+
+  group('VenueActivationScreen Logout & Navigation Tests', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({
+        'sb-user-email': 'unactivated@example.com',
+        'admin_token': 'secret-jwt',
+      });
+    });
+
+    testWidgets('VenueActivationScreen renders Log Out action and footer button', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/activate-venue',
+        routes: [
+          GoRoute(
+            path: '/activate-venue',
+            builder: (context, state) => const VenueActivationScreen(),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => const Scaffold(body: Text('Login Screen Destination')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('venue_activation_logout_button')), findsOneWidget);
+      expect(find.byKey(const Key('venue_activation_bottom_logout_button')), findsOneWidget);
+      expect(find.text("Log Out"), findsOneWidget);
+      expect(find.text("Wrong account? Log out and sign in differently"), findsOneWidget);
+    });
+
+    testWidgets('Tapping Log Out shows confirmation dialog, and cancelling retains screen', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/activate-venue',
+        routes: [
+          GoRoute(
+            path: '/activate-venue',
+            builder: (context, state) => const VenueActivationScreen(),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => const Scaffold(body: Text('Login Screen Destination')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // Tap Log Out in AppBar
+      await tester.tap(find.byKey(const Key('venue_activation_logout_button')));
+      await tester.pumpAndSettle();
+
+      // Dialog should be visible
+      expect(find.text("Are you sure you want to log out and switch accounts?"), findsOneWidget);
+      expect(find.text("Cancel"), findsOneWidget);
+
+      // Tap Cancel
+      await tester.tap(find.text("Cancel"));
+      await tester.pumpAndSettle();
+
+      // Dialog is dismissed, still on activation screen
+      expect(find.text("Are you sure you want to log out and switch accounts?"), findsNothing);
+      expect(find.text("Activation Code Required"), findsOneWidget);
+    });
+
+    testWidgets('Confirming Log Out clears user credentials and navigates to /login', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/activate-venue',
+        routes: [
+          GoRoute(
+            path: '/activate-venue',
+            builder: (context, state) => const VenueActivationScreen(),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => const Scaffold(body: Text('Login Screen Destination')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // Ensure bottom logout button is visible and tap it
+      await tester.ensureVisible(find.byKey(const Key('venue_activation_bottom_logout_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('venue_activation_bottom_logout_button')));
+      await tester.pumpAndSettle();
+
+      // Tap confirm "Log Out" in AlertDialog
+      final dialogLogoutBtn = find.byKey(const Key('venue_activation_confirm_logout_button'));
+      expect(dialogLogoutBtn, findsOneWidget);
+      await tester.tap(dialogLogoutBtn);
+      await tester.pumpAndSettle();
+
+      // Verify navigation to login screen
+      expect(find.text('Login Screen Destination'), findsOneWidget);
+
+      // Verify credentials were wiped
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('sb-user-email'), isNull);
+      expect(prefs.getString('admin_token'), isNull);
+    });
+
+    testWidgets('AppBar leading back button prompts logout when canPop is false', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/activate-venue',
+        routes: [
+          GoRoute(
+            path: '/activate-venue',
+            builder: (context, state) => const VenueActivationScreen(),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => const Scaffold(body: Text('Login Screen Destination')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // Tap leading back arrow button
+      await tester.tap(find.byIcon(Icons.arrow_back_ios_rounded));
+      await tester.pumpAndSettle();
+
+      // Because canPop is false, it prompts logout dialog
+      expect(find.text("Are you sure you want to log out and switch accounts?"), findsOneWidget);
+
+      // Confirm logout
+      final dialogLogoutBtn = find.byKey(const Key('venue_activation_confirm_logout_button'));
+      expect(dialogLogoutBtn, findsOneWidget);
+      await tester.tap(dialogLogoutBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Login Screen Destination'), findsOneWidget);
+    });
+  });
 }
+

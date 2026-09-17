@@ -245,8 +245,50 @@ class SystemAdminService {
     ];
   }
 
-  Future<void> logAudit({
-    required String action,
+  /// Manual review queue: refund-required, stuck provisioning, failed and
+  /// reversed payments consolidated for triage.
+  Future<Map<String, dynamic>> fetchReviewQueue({String? venueId}) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final qs = venueId != null && venueId.isNotEmpty
+          ? '?venueId=${Uri.encodeComponent(venueId)}'
+          : '';
+      final res = await http
+          .get(Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/review-queue$qs'), headers: headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[SystemAdminService] fetchReviewQueue error: $e');
+    }
+    return {
+      'counts': {'refundRequired': 0, 'stuckProvisioning': 0, 'failedPayments': 0, 'reversedPayments': 0, 'total': 0},
+      'refundRequired': [],
+      'stuckProvisioning': [],
+      'failedPayments': [],
+      'reversedPayments': [],
+    };
+  }
+
+  /// Re-verifies a payment reference server-side (used to resolve review items).
+  Future<Map<String, dynamic>> verifyPayment(String reference) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final res = await http
+          .get(
+            Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/verify/${Uri.encodeComponent(reference)}'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 8));
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[SystemAdminService] verifyPayment error: $e');
+      return {'verified': false, 'error': '$e'};
+    }
+  }
+
+  Future<void> logAudit({    required String action,
     String category = 'SYSTEM',
     String? actor,
     Map<String, dynamic>? details,

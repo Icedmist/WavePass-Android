@@ -28,6 +28,7 @@ import '../../screens/system_admin/system_control_screen.dart';
 import '../../screens/system_admin/system_audits_screen.dart';
 import '../../screens/system_admin/activation_codes_screen.dart';
 import '../../screens/system_admin/activation_requests_screen.dart';
+import '../../screens/system_admin/review_queue_screen.dart';
 import 'scaffold_with_nav.dart';
 
 CustomTransitionPage<T> _slideFade<T>(Widget child, GoRouterState s) => CustomTransitionPage<T>(
@@ -81,6 +82,7 @@ class AppRouter {
   static const systemAdminAudits = '/system-admin/audits';
   static const activationCodes = '/system-admin/activation-codes';
   static const activationRequests = '/system-admin/activation-requests';
+  static const reviewQueue = '/system-admin/review-queue';
 
   /// Routes reachable without an active venue license. Everything else
   /// requires activation — expired venues are paused until a fresh code is
@@ -138,6 +140,7 @@ class AppRouter {
       GoRoute(path: systemAdminAudits, pageBuilder: (c, s) => _slideFade(const SystemAuditsScreen(), s)),
       GoRoute(path: activationCodes, pageBuilder: (c, s) => _slideFade(const ActivationCodesScreen(), s)),
       GoRoute(path: activationRequests, pageBuilder: (c, s) => _slideFade(const ActivationRequestsScreen(), s)),
+      GoRoute(path: reviewQueue, pageBuilder: (c, s) => _slideFade(const ReviewQueueScreen(), s)),
     ],
   );
 }

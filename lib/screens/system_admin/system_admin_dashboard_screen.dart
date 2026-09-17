@@ -175,8 +175,7 @@ class _SystemAdminDashboardScreenState extends State<SystemAdminDashboardScreen>
 
                   // 4 Primary Navigation Cards
                   _buildNavCard(
-                    title: "Full System Monitor",
-                    subtitle: "Fleet overview, server metrics, database latency & memory telemetry",
+                    title: "Full System Monitor",                    subtitle: "Fleet overview, server metrics, database latency & memory telemetry",
                     icon: Icons.monitor_heart_rounded,
                     color: AppColors.primary,
                     badge: "REALTIME",
@@ -199,6 +198,15 @@ class _SystemAdminDashboardScreenState extends State<SystemAdminDashboardScreen>
                     color: AppColors.primary,
                     badge: "AUDITS",
                     onTap: () => context.push('/system-admin/audits'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildNavCard(
+                    title: "Payment Review Queue",
+                    subtitle: "Refunds, stuck provisioning, failed and reversed payments with live verify",
+                    icon: Icons.fact_check_rounded,
+                    color: AppColors.accentRed,
+                    badge: "REVIEW",
+                    onTap: () => context.push(AppRouter.reviewQueue),
                   ),
                   const SizedBox(height: 12),
                   _buildNavCard(

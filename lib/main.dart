@@ -30,6 +30,11 @@ void main() async {
   }
 
   AppNotifier.instance.bindMessenger(rootMessengerKey);
+  try {
+    await AppNotifier.instance.init();
+  } catch (e) {
+    debugPrint('AppNotifier initial init: $e');
+  }
 
   runApp(const WavePassApp());
 }

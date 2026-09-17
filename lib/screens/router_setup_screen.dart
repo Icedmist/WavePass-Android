@@ -23,6 +23,7 @@ class RouterSetupScreen extends StatefulWidget {
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
     bool useHostedSubdomainPortal = false,
+    List<Map<String, dynamic>>? bankAccounts,
   ]) =>
       _RouterSetupScreenState._generateLoginHtml(
         venueName,
@@ -30,6 +31,7 @@ class RouterSetupScreen extends StatefulWidget {
         plans,
         isPaystackConfigured,
         useHostedSubdomainPortal,
+        bankAccounts,
       );
 
   static String generateStatusHtml(String venueName, String slug) =>
@@ -728,6 +730,7 @@ set name="WavePass-$slug"
     List<Map<String, dynamic>>? plans,
     bool isPaystackConfigured = true,
     bool useHostedSubdomainPortal = false,
+    List<Map<String, dynamic>>? bankAccounts,
   ]) {
     if (useHostedSubdomainPortal) {
       return """<!DOCTYPE html>
@@ -1012,6 +1015,7 @@ $_rfc1321Md5Js
           ];
 
     final plansBuffer = StringBuffer();
+    final transferPlanOptionsBuffer = StringBuffer();
     for (final p in safePlans) {
       final pid = p['id']?.toString() ?? 'plan';
       final pname = p['name']?.toString() ?? 'Internet Pass';
@@ -1048,6 +1052,36 @@ $_rfc1321Md5Js
             <div class="plan-price">$pprice</div>
           </div>
           $payBtn
+        </div>''');
+
+      transferPlanOptionsBuffer.writeln(
+        '<option value="$pid" data-price="$pprice">$pname ($pduration) — $pprice</option>',
+      );
+    }
+
+    final bankAccountsBuffer = StringBuffer();
+    if (bankAccounts != null && bankAccounts.isNotEmpty) {
+      for (int i = 0; i < bankAccounts.length; i++) {
+        final b = bankAccounts[i];
+        final bName = b['bankName']?.toString() ?? b['bank_name']?.toString() ?? 'Bank';
+        final acctNum = b['accountNumber']?.toString() ?? b['account_number']?.toString() ?? '';
+        final acctName = b['accountName']?.toString() ?? b['account_name']?.toString() ?? venueName;
+        bankAccountsBuffer.writeln('''
+        <div class="bank-card">
+          <div class="bank-name">$bName</div>
+          <div class="bank-account-row">
+            <span class="bank-number" id="bank_num_$i">$acctNum</span>
+            <button type="button" class="btn-copy" onclick="copyText('$acctNum')">📋 Copy</button>
+          </div>
+          <div class="bank-holder">$acctName</div>
+        </div>''');
+      }
+    } else {
+      bankAccountsBuffer.writeln('''
+        <div id="dynamicBankAccounts">
+          <div class="status-notice" id="bankAccountsPlaceholder">
+            Loading venue bank account details...
+          </div>
         </div>''');
     }
 
@@ -1154,14 +1188,21 @@ $_rfc1321Md5Js
       padding: 4px;
       margin-bottom: 16px;
       border: 1px solid #262626;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      gap: 4px;
+    }
+    .tabs::-webkit-scrollbar {
+      display: none;
     }
     .tab-btn {
-      flex: 1;
-      padding: 9px 4px;
+      flex: 1 0 auto;
+      padding: 9px 8px;
       background: transparent;
       border: none;
       color: #71717A;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       border-radius: 8px;
       cursor: pointer;
@@ -1173,6 +1214,84 @@ $_rfc1321Md5Js
       color: #000000;
       box-shadow: 0 2px 6px rgba(255,255,255,0.2);
     }
+    .bank-card {
+      background: #141414;
+      border: 1.5px solid #27272A;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    .bank-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: #A1A1AA;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .bank-account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 4px 0;
+    }
+    .bank-number {
+      font-size: 18px;
+      font-weight: 900;
+      color: #FFFFFF;
+      letter-spacing: 1.5px;
+      font-family: monospace;
+    }
+    .bank-holder {
+      font-size: 12px;
+      font-weight: 600;
+      color: #D4D4D8;
+    }
+    .btn-copy {
+      padding: 5px 9px;
+      background: #27272A;
+      color: #FFFFFF;
+      border: 1px solid #3F3F46;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-copy:hover {
+      background: #3F3F46;
+    }
+    .select-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #050505;
+      border: 1.5px solid #262626;
+      border-radius: 10px;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+      margin-bottom: 14px;
+      transition: border-color 0.2s;
+    }
+    .select-input:focus {
+      border-color: #FFFFFF;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+    }
+    .select-input option {
+      background: #0C0C0C;
+      color: #FFFFFF;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top-color: #FFFFFF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 12px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .form-group {
       margin-bottom: 14px;
       text-align: left;
@@ -1397,10 +1516,12 @@ $_rfc1321Md5Js
       </a>
     </div>
 
-    <!-- Segmented Tab Switcher (Voucher, Buy Online, User & Pass) -->
+    <!-- Segmented Tab Switcher (Voucher, Buy Online, Transfer, Retrieve, User & Pass) -->
     <div class="tabs">
       <button type="button" id="tabVoucher" class="tab-btn active" onclick="switchTab('voucher')">🎟️ Voucher Code</button>
       <button type="button" id="tabPlans" class="tab-btn" onclick="switchTab('plans')">💳 Buy Pass</button>
+      <button type="button" id="tabTransfer" class="tab-btn" onclick="switchTab('transfer')">🏦 Bank Transfer</button>
+      <button type="button" id="tabRetrieve" class="tab-btn" onclick="switchTab('retrieve')">🔍 Retrieve Pass</button>
       <button type="button" id="tabCreds" class="tab-btn" onclick="switchTab('creds')">👤 Username &amp; Password</button>
     </div>
 
@@ -1450,6 +1571,59 @@ $_rfc1321Md5Js
       </div>
     </div>
 
+    <!-- Panel: Bank Transfer -->
+    <div id="panelTransfer" style="display:none;">
+      <div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px; text-align:left;">
+        Direct Bank Transfer
+      </div>
+      <div style="font-size:11px; color:#A1A1AA; margin-bottom:12px; text-align:left; line-height:1.4;">
+        Transfer pass amount to any venue account below. Once transferred, click &ldquo;Payment Completed&rdquo; to notify the venue owner for instant access approval.
+      </div>
+      <div id="bankAccountsContainer">
+        ${bankAccountsBuffer.toString()}
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label for="transfer_plan">Select Wi-Fi Plan</label>
+        <select id="transfer_plan" class="select-input">
+          ${transferPlanOptionsBuffer.toString()}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="transfer_sender">Sender Name (from bank narration / receipt)</label>
+        <input type="text" id="transfer_sender" placeholder="e.g. Alex Johnson" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="transfer_notes">Phone Number or Note (Optional)</label>
+        <input type="text" id="transfer_notes" placeholder="e.g. 08012345678">
+      </div>
+      <div id="transferStatusBox" style="display:none;" class="status-notice"></div>
+      <button type="button" id="btn_transfer_completed" class="btn-submit" onclick="submitTransferPayment()">
+        ✅ Payment Completed &rarr;
+      </button>
+    </div>
+
+    <!-- Panel: Voucher Retrieval -->
+    <div id="panelRetrieve" style="display:none;">
+      <div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px; text-align:left;">
+        Retrieve Active Pass
+      </div>
+      <div style="font-size:11px; color:#A1A1AA; margin-bottom:12px; text-align:left; line-height:1.4;">
+        Already transferred or bought a pass? Retrieve your active pass for this device or reconnect.
+      </div>
+      <div class="form-group">
+        <label for="retrieve_mac">Device MAC (Auto-detected)</label>
+        <input type="text" id="retrieve_mac" class="input-upper" value="\$(mac)" placeholder="00:00:00:00:00:00">
+      </div>
+      <div class="form-group">
+        <label for="retrieve_query">Or Phone / Transfer Reference / Code</label>
+        <input type="text" id="retrieve_query" placeholder="e.g. TRF-..., phone number, or voucher">
+      </div>
+      <div id="retrieveStatusBox" style="display:none;" class="status-notice"></div>
+      <button type="button" id="btn_retrieve" class="btn-submit" onclick="retrieveActivePass()">
+        🔍 Retrieve Pass &amp; Connect &rarr;
+      </button>
+    </div>
+
     <!-- Panel 3: Username & Password -->
     <div id="panelCreds" style="display:none;">
       <div class="form-group">
@@ -1480,21 +1654,235 @@ $_rfc1321Md5Js
   <script>
 $_rfc1321Md5Js
 
+    function copyText(val) {
+      if (!val) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(val).then(function() {
+          alert('Copied ' + val + ' to clipboard!');
+        }).catch(function() {
+          prompt('Copy account number:', val);
+        });
+      } else {
+        prompt('Copy account number:', val);
+      }
+    }
+
     function switchTab(mode) {
-      var tabV = document.getElementById('tabVoucher');
-      var tabP = document.getElementById('tabPlans');
-      var tabC = document.getElementById('tabCreds');
-      var panV = document.getElementById('panelVoucher');
-      var panP = document.getElementById('panelPlans');
-      var panC = document.getElementById('panelCreds');
+      var tabs = ['voucher', 'plans', 'transfer', 'retrieve', 'creds'];
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        var cap = t.charAt(0).toUpperCase() + t.slice(1);
+        var btn = document.getElementById('tab' + cap);
+        var pan = document.getElementById('panel' + cap);
+        if (btn) btn.className = (mode === t) ? 'tab-btn active' : 'tab-btn';
+        if (pan) pan.style.display = (mode === t) ? 'block' : 'none';
+      }
+    }
 
-      if (tabV) tabV.className = mode === 'voucher' ? 'tab-btn active' : 'tab-btn';
-      if (tabP) tabP.className = mode === 'plans' ? 'tab-btn active' : 'tab-btn';
-      if (tabC) tabC.className = mode === 'creds' ? 'tab-btn active' : 'tab-btn';
+    var transferPollTimer = null;
+    function submitTransferPayment() {
+      var sender = document.getElementById('transfer_sender') ? document.getElementById('transfer_sender').value.trim() : '';
+      if (!sender) {
+        alert('Please enter your sender name or bank narration so the venue owner can identify your transfer.');
+        return;
+      }
+      var planSelect = document.getElementById('transfer_plan');
+      var planId = planSelect ? planSelect.value : '';
+      var notes = document.getElementById('transfer_notes') ? document.getElementById('transfer_notes').value.trim() : '';
 
-      if (panV) panV.style.display = mode === 'voucher' ? 'block' : 'none';
-      if (panP) panP.style.display = mode === 'plans' ? 'block' : 'none';
-      if (panC) panC.style.display = mode === 'creds' ? 'block' : 'none';
+      var rawMac = "\$(mac)";
+      var mac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || '02:00:00:00:00:01');
+      try { localStorage.setItem('wp-device-mac', mac); } catch(e){}
+
+      var btn = document.getElementById('btn_transfer_completed');
+      var originalText = btn ? btn.innerText : 'Payment Completed';
+      if (btn) {
+        btn.innerText = 'Notifying Venue Owner...';
+        btn.disabled = true;
+      }
+
+      var statusBox = document.getElementById('transferStatusBox');
+      if (statusBox) {
+        statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">Sending transfer notification...</div>';
+        statusBox.style.display = 'block';
+      }
+
+      var payload = {
+        venueSlug: '$slug',
+        mac: mac,
+        planId: planId,
+        senderName: sender,
+        notes: notes
+      };
+
+      fetch('https://api.nexawavepass.com/api/v1/portal/transfer-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.ok) {
+          throw new Error((data && data.message) || 'Failed to submit transfer request');
+        }
+
+        if (statusBox) {
+          statusBox.innerHTML = '<div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px;">⏳ Request Sent to Venue Owner!</div>' +
+            '<div style="font-size:11px; color:#A1A1AA; line-height:1.4;">Notification sent with 1-tap approval button to the venue owner. Auto-checking for approval...</div>' +
+            '<div class="spinner" style="width:24px;height:24px;margin:10px auto 0;"></div>';
+          statusBox.style.display = 'block';
+        }
+
+        // Auto-poll retrieve-voucher every 3s
+        if (transferPollTimer) clearInterval(transferPollTimer);
+        transferPollTimer = setInterval(function() {
+          fetch('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?mac=' + encodeURIComponent(mac) + '&venueId=' + encodeURIComponent('$slug'))
+            .then(function(r) { return r.json(); })
+            .then(function(vRes) {
+              if (vRes && vRes.found && vRes.voucherCode) {
+                clearInterval(transferPollTimer);
+                if (statusBox) {
+                  statusBox.innerHTML = '<div style="font-size:13px; font-weight:800; color:#FFFFFF;">🎉 Access Approved!</div>' +
+                    '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Pass: <strong>' + vRes.voucherCode + '</strong>. Connecting to Wi-Fi...</div>';
+                }
+                try { localStorage.setItem('wp-active-voucher', vRes.voucherCode); } catch(e){}
+                setTimeout(function() {
+                  executeLogin(vRes.voucherCode, vRes.voucherCode);
+                }, 1200);
+              }
+            })
+            .catch(function() {});
+        }, 3000);
+      })
+      .catch(function(err) {
+        if (btn) {
+          btn.innerText = originalText;
+          btn.disabled = false;
+        }
+        if (statusBox) {
+          statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (err.message || 'Error submitting transfer request.') + '</div>';
+          statusBox.style.display = 'block';
+        }
+      });
+    }
+
+    var retrievePollTimer = null;
+    function retrieveActivePass() {
+      var macInp = document.getElementById('retrieve_mac') ? document.getElementById('retrieve_mac').value.trim() : '';
+      var qInp = document.getElementById('retrieve_query') ? document.getElementById('retrieve_query').value.trim() : '';
+      var rawMac = "\$(mac)";
+      var mac = (macInp && macInp.indexOf("\$(") === -1 && macInp.length >= 11) ? macInp : ((rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || ''));
+
+      var btn = document.getElementById('btn_retrieve');
+      var originalText = btn ? btn.innerText : 'Connect Active Pass';
+      if (btn) {
+        btn.innerText = 'Checking Access...';
+        btn.disabled = true;
+      }
+
+      var statusBox = document.getElementById('retrieveStatusBox');
+      if (statusBox) statusBox.style.display = 'none';
+
+      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent('$slug');
+      if (mac) url += '&mac=' + encodeURIComponent(mac);
+      if (qInp) url += '&q=' + encodeURIComponent(qInp);
+
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+          }
+
+          if (data && data.found && data.voucherCode) {
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">✅ Active Pass Found!</div>' +
+                '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Voucher: <strong>' + data.voucherCode + '</strong> (' + (data.planName || 'Wi-Fi') + '). Connecting...</div>';
+              statusBox.style.display = 'block';
+            }
+            try { localStorage.setItem('wp-active-voucher', data.voucherCode); } catch(e){}
+            setTimeout(function() {
+              executeLogin(data.voucherCode, data.voucherCode);
+            }, 1200);
+          } else if (data && data.pendingApproval) {
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">⏳ Transfer Awaiting Approval</div>' +
+                '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">' + (data.message || 'Waiting for venue owner approval...') + '</div>' +
+                '<div class="spinner" style="width:24px;height:24px;margin:10px auto 0;"></div>';
+              statusBox.style.display = 'block';
+            }
+
+            if (retrievePollTimer) clearInterval(retrievePollTimer);
+            retrievePollTimer = setInterval(function() {
+              fetch(url)
+                .then(function(pr) { return pr.json(); })
+                .then(function(pData) {
+                  if (pData && pData.found && pData.voucherCode) {
+                    clearInterval(retrievePollTimer);
+                    if (statusBox) {
+                      statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">🎉 Access Approved!</div>' +
+                        '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Connecting to Wi-Fi (' + pData.voucherCode + ')...</div>';
+                    }
+                    try { localStorage.setItem('wp-active-voucher', pData.voucherCode); } catch(e){}
+                    setTimeout(function() {
+                      executeLogin(pData.voucherCode, pData.voucherCode);
+                    }, 1200);
+                  }
+                })
+                .catch(function() {});
+            }, 3000);
+          } else {
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code.') + '</div>';
+              statusBox.style.display = 'block';
+            }
+          }
+        })
+        .catch(function(err) {
+          if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+          }
+          if (statusBox) {
+            statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ Could not connect to server. Please verify internet access.</div>';
+            statusBox.style.display = 'block';
+          }
+        });
+    }
+
+    function loadDynamicBankAccounts() {
+      var container = document.getElementById('dynamicBankAccounts');
+      if (!container) return;
+      fetch('https://api.nexawavepass.com/api/v1/portal/info?venue=' + encodeURIComponent('$slug'))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data && data.bankAccounts && data.bankAccounts.length > 0) {
+            var html = '';
+            for (var i = 0; i < data.bankAccounts.length; i++) {
+              var b = data.bankAccounts[i];
+              var num = b.accountNumber || '';
+              var name = b.bankName || 'Bank';
+              var holder = b.accountName || '$venueName';
+              html += '<div class="bank-card">' +
+                '<div class="bank-name">' + name + '</div>' +
+                '<div class="bank-account-row">' +
+                  '<span class="bank-number">' + num + '</span>' +
+                  '<button type="button" class="btn-copy" onclick="copyText(\'' + num + '\')">📋 Copy</button>' +
+                '</div>' +
+                '<div class="bank-holder">' + holder + '</div>' +
+              '</div>';
+            }
+            container.innerHTML = html;
+          } else {
+            var ph = document.getElementById('bankAccountsPlaceholder');
+            if (ph) ph.innerText = 'No bank accounts registered by this venue yet. Please use Card payment or Counter Voucher.';
+          }
+        })
+        .catch(function() {
+          var ph = document.getElementById('bankAccountsPlaceholder');
+          if (ph) ph.innerText = 'Venue bank accounts offline. Please ask counter for details.';
+        });
     }
 
     function payWithPaystack(planId, price) {
@@ -1650,6 +2038,10 @@ $_rfc1321Md5Js
           document.getElementById('cred_user').value = u;
         } else if (mode === 'plans' || mode === 'pay') {
           switchTab('plans');
+        } else if (mode === 'transfer' || mode === 'bank') {
+          switchTab('transfer');
+        } else if (mode === 'retrieve') {
+          switchTab('retrieve');
         } else {
           try {
             var savedV = localStorage.getItem('wp-active-voucher');
@@ -1665,6 +2057,7 @@ $_rfc1321Md5Js
             }
           } catch(e) {}
         }
+        loadDynamicBankAccounts();
       } catch (e) {}
     });
   </script>
@@ -2036,8 +2429,27 @@ $_rfc1321Md5Js
       isPaystackConfigured = false;
     }
 
+    List<Map<String, dynamic>> bankAccounts = [];
+    try {
+      final info = await WavePassApi.instance.getPortalVenueInfo(venueSlug: slug);
+      if (info['bankAccounts'] is List) {
+        bankAccounts = List<Map<String, dynamic>>.from(
+          (info['bankAccounts'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
+        );
+      }
+    } catch (_) {
+      try {
+        final venueId = venue['id']?.toString() ?? slug;
+        final res = await WavePassApi.instance.listBankAccounts(venueId);
+        final list = (res is Map && res['data'] is List) ? res['data'] : (res is List ? res : []);
+        bankAccounts = List<Map<String, dynamic>>.from(
+          list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
+        );
+      } catch (_) {}
+    }
+
     final suite = {
-      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured, _useHostedSubdomainPortal),
+      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured, _useHostedSubdomainPortal, bankAccounts),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
@@ -2769,7 +3181,55 @@ $_rfc1321Md5Js
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  InkWell(
+                    onTap: () async {
+                      final venue = VenueStateService.instance.currentVenue;
+                      final venueId = venue?['id']?.toString() ?? 'default';
+                      await context.push('/wallet', extra: venueId);
+                      setState(() => _portalSuite = null);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.account_balance_rounded, size: 18, color: AppColors.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Venue Bank Accounts on Portal",
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                ),
+                                Text(
+                                  "Add bank accounts to show on your portal for direct guest transfers.",
+                                  style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, color: AppColors.primary, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
 
                   // Architecture Selector: Hosted Subdomain vs Standalone Router
                   Container(

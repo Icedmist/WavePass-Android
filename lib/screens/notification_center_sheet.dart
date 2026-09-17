@@ -32,6 +32,21 @@ class NotificationCenterSheet extends StatelessWidget {
                       Text(n.message, style: const TextStyle(fontSize: 12, color: AppColors.textLight)),
                       const SizedBox(height: 4),
                       Text('${n.at.hour}:${n.at.minute.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+                      if (n.isApproval && !n.read) ...[
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.accentGreen,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          icon: const Icon(Icons.check_circle_rounded, size: 14),
+                          label: const Text('Approve Access', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                          onPressed: () async {
+                            await AppNotifier.instance.approveTransfer(n);
+                          },
+                        ),
+                      ],
                     ])),
                     if (!n.read) Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                   ]));

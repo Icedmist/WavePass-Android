@@ -68,6 +68,24 @@ class _NState extends State<NotificationsScreen> {
                     Text(n.message, style: const TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4)),
                     const SizedBox(height: 6),
                     Text('${n.at.hour.toString().padLeft(2, '0')}:${n.at.minute.toString().padLeft(2, '0')} • ${n.at.day}/${n.at.month}', style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+                    if (n.isApproval && !n.read) ...[
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accentGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.check_circle_rounded, size: 16),
+                        label: const Text('Approve Access', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        onPressed: () async {
+                          final ok = await AppNotifier.instance.approveTransfer(n);
+                          if (ok && context.mounted) {
+                            setState(() {});
+                          }
+                        },
+                      ),
+                    ],
                   ])),
                   if (!n.read) Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                 ]),

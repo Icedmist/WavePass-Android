@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
+import 'supabase_service.dart';
 
 /// Lightweight HTTP client for the WavePass NestJS backend (single-key
 /// Paystack with dedicated virtual accounts + password-confirmed cashouts).
@@ -143,6 +144,43 @@ class WavePassApi {
     return _get('/api/v1/cashouts/bank-accounts?venueId=${Uri.encodeComponent(venueId)}');
   }
 
+  Future<List<dynamic>> listStorePayments(String venueId, {int limit = 50}) async {
+    try {
+      final res = await _get('/api/v1/cashouts/payments/${Uri.encodeComponent(venueId)}?limit=$limit');
+      if (res['data'] is List) return List<dynamic>.from(res['data'] as List);
+      return [];
+    } catch (_) {
+      try {
+        final res = await SupabaseService.instance.client
+            .from('Payment')
+            .select('id, amountMinor, status, provider, providerReference, channel, paidAt, createdAt, Order!inner(venueId, customerRef, Plan(name))')
+            .eq('Order.venueId', venueId)
+            .eq('status', 'FULFILLED')
+            .order('createdAt', ascending: false)
+            .limit(limit);
+        return List<Map<String, dynamic>>.from(res).map((p) {
+          final order = p['Order'] as Map? ?? {};
+          final plan = order['Plan'] as Map? ?? {};
+          return {
+            'id': p['id'],
+            'amountMinor': p['amountMinor'],
+            'amountNGN': ((p['amountMinor'] as num?)?.toInt() ?? 0) / 100,
+            'status': p['status'],
+            'provider': p['provider'],
+            'providerReference': p['providerReference'],
+            'channel': p['channel'],
+            'paidAt': p['paidAt'],
+            'createdAt': p['createdAt'],
+            'planName': plan['name'] ?? 'Wi-Fi Pass',
+            'customerRef': order['customerRef'],
+          };
+        }).toList();
+      } catch (_) {
+        return [];
+      }
+    }
+  }
+
   Future<Map<String, dynamic>> requestCashout({
     required String venueId,
     required int amountMinor,
@@ -281,5 +319,63 @@ class WavePassApi {
       'email': email,
       'password': password,
     });
+  }
+
+  // ── Portal Transfer Approval & Voucher Retrieval ────────────────────────
+  Future<Map<String, dynamic>> approveAccess({
+    required String venueId,
+    String? orderId,
+    required String mac,
+    String? planId,
+    String? reference,
+  }) {
+    return _post('/api/v1/portal/approve-access', {
+      'venueId': venueId,
+      'orderId': ?orderId,
+      'mac': mac,
+      'planId': ?planId,
+      'reference': ?reference,
+    });
+  }
+
+  Future<Map<String, dynamic>> submitTransferRequest({
+    String? venueSlug,
+    String? venueId,
+    required String mac,
+    required String planId,
+    String? senderName,
+    int? amountMinor,
+    String? bankAccount,
+    String? notes,
+  }) {
+    return _post('/api/v1/portal/transfer-request', {
+      'venueSlug': ?venueSlug,
+      'venueId': ?venueId,
+      'mac': mac,
+      'planId': planId,
+      'senderName': ?senderName,
+      'amountMinor': ?amountMinor,
+      'bankAccount': ?bankAccount,
+      'notes': ?notes,
+    });
+  }
+
+  Future<Map<String, dynamic>> retrieveVoucher({
+    String? mac,
+    String? query,
+    String? venueId,
+  }) {
+    final qParams = <String>[];
+    if (mac != null) qParams.add('mac=${Uri.encodeComponent(mac)}');
+    if (query != null) qParams.add('query=${Uri.encodeComponent(query)}');
+    if (venueId != null) qParams.add('venueId=${Uri.encodeComponent(venueId)}');
+    final q = qParams.isNotEmpty ? '?${qParams.join('&')}' : '';
+    return _get('/api/v1/portal/retrieve-voucher$q');
+  }
+
+  Future<Map<String, dynamic>> getPortalVenueInfo({String? venueSlug, String? venueId}) {
+    final v = venueSlug ?? venueId;
+    final q = v != null ? '?venue=${Uri.encodeComponent(v)}' : '';
+    return _get('/api/v1/portal/info$q');
   }
 }

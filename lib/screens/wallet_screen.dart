@@ -34,6 +34,8 @@ class _WalletScreenState extends State<WalletScreen> {
   Map<String, dynamic>? _balance;
   List<dynamic> _cashouts = [];
   List<dynamic> _bankAccounts = [];
+  List<dynamic> _storePayments = [];
+  int _selectedHistoryTab = 0; // 0: All, 1: Paystack Store Sales, 2: Cashouts
 
   // New bank account form
   final _nameCtrl = TextEditingController();
@@ -93,12 +95,16 @@ class _WalletScreenState extends State<WalletScreen> {
           ? (banksRaw as List<dynamic>)
           : (banksRaw['data'] as List<dynamic>? ?? []);
 
+      final paymentsRaw = await _api.listStorePayments(venueId);
+      final paymentsList = paymentsRaw is List ? paymentsRaw : [];
+
       if (!mounted) return;
       setState(() {
         _virtualAccount = vaData;
         _balance = bal;
         _cashouts = List<dynamic>.from(cashoutsList);
         _bankAccounts = List<dynamic>.from(banksList);
+        _storePayments = List<dynamic>.from(paymentsList);
         _error = null;
       });
     } catch (e) {
@@ -542,6 +548,23 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'PAYSTACK STORE TRANSACTIONS • READY FOR CASHOUT',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textLight,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         FittedBox(
                           fit: BoxFit.scaleDown,
@@ -557,7 +580,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _buildMiniStat('Total Revenue', _hideBalance ? '₦ •••' : '₦${_earnedNgn.toStringAsFixed(2)}'),
+                            _buildMiniStat('Paystack Sales', _hideBalance ? '₦ •••' : '₦${_earnedNgn.toStringAsFixed(2)}'),
                             _buildMiniStat('Pending Payouts', _hideBalance ? '₦ •••' : '₦${_lockedNgn.toStringAsFixed(2)}'),
                             _buildMiniStat('Already Paid', _hideBalance ? '₦ •••' : '₦${_cashedOutNgn.toStringAsFixed(2)}'),
                           ],
@@ -674,104 +697,296 @@ class _WalletScreenState extends State<WalletScreen> {
                           )),
                   const SizedBox(height: 20),
 
-                  const Text(
-                    'CASHOUT HISTORY',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textLight,
-                      letterSpacing: 0.8,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'TRANSACTION HISTORY',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textLight,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      Text(
+                        '${_storePayments.length} Sales • ${_cashouts.length} Cashouts',
+                        style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
-                  if (_cashouts.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Text(
-                        'No cashouts yet.',
-                        style: TextStyle(color: AppColors.textLight),
-                      ),
-                    )
-                  else
-                    ..._cashouts.map((c) {
-                      final status = (c['status'] as String?) ?? 'PENDING';
-                      final amtMinor = (c['amountMinor'] as num?)?.toInt() ?? 0;
-                      final color = status == 'COMPLETED'
-                          ? AppColors.accentGreen
-                          : status == 'PENDING' || status == 'APPROVED'
-                              ? AppColors.warmSand
-                              : AppColors.accentRed;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: AppColors.cardBorder),
+
+                  // Segmented Filter
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.containerBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    padding: const EdgeInsets.all(3),
+                    child: Row(
+                      children: [
+                        _buildFilterTab(0, 'All'),
+                        _buildFilterTab(1, 'Paystack Sales (${_storePayments.length})'),
+                        _buildFilterTab(2, 'Cashouts (${_cashouts.length})'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (_selectedHistoryTab == 0 || _selectedHistoryTab == 1) ...[
+                    if (_storePayments.isNotEmpty) ...[
+                      const Text(
+                        'PAYSTACK STORE PAYMENTS (INFLOW)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.accentGreen,
+                          letterSpacing: 0.6,
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
+                      ),
+                      const SizedBox(height: 8),
+                      ..._storePayments.map((p) {
+                        final amtNgn = (p['amountNGN'] as num?)?.toDouble() ?? (((p['amountMinor'] as num?)?.toDouble() ?? 0) / 100);
+                        final plan = p['planName']?.toString() ?? 'Wi-Fi Pass';
+                        final ref = p['providerReference']?.toString() ?? p['id']?.toString() ?? '';
+                        final mac = p['customerRef']?.toString() ?? '';
+                        final dateStr = p['paidAt'] ?? p['createdAt'];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.arrow_downward_rounded, color: AppColors.accentGreen, size: 18),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '₦${(amtMinor / 100).toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.primary,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            plan,
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Text(
+                                          '+₦${amtNgn.toStringAsFixed(2)}',
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.accentGreen),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  Text(
-                                    status,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textLight,
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.08),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('Paystack', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        if (mac.isNotEmpty) ...[
+                                          Text(mac, style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace')),
+                                          const SizedBox(width: 6),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            _formatDate(dateStr),
+                                            style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                                            textAlign: TextAlign.end,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (status == 'PENDING' || status == 'APPROVED')
-                              GestureDetector(
-                                onTap: _submitting
-                                    ? null
-                                    : () => _adminConfirmCashout(c['id']),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accentGreen,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Text(
-                                    'Confirm',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                                  ],
                                 ),
                               ),
-                          ],
+                            ],
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                    ] else if (_selectedHistoryTab == 1) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            'No Paystack guest transactions found yet.',
+                            style: TextStyle(color: AppColors.textLight, fontSize: 12),
+                          ),
                         ),
-                      );
-                    }),
+                      ),
+                    ],
+                  ],
+
+                  if (_selectedHistoryTab == 0 || _selectedHistoryTab == 2) ...[
+                    if (_cashouts.isNotEmpty) ...[
+                      const Text(
+                        'CASHOUTS TO BANK (OUTFLOW)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textLight,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._cashouts.map((c) {
+                        final status = (c['status'] as String?) ?? 'PENDING';
+                        final amtMinor = (c['amountMinor'] as num?)?.toInt() ?? 0;
+                        final color = status == 'COMPLETED'
+                            ? AppColors.accentGreen
+                            : status == 'PENDING' || status == 'APPROVED'
+                                ? AppColors.warmSand
+                                : AppColors.accentRed;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Icons.arrow_upward_rounded, color: color, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'Payout (${status.toLowerCase()})',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                          ),
+                                        ),
+                                        Text(
+                                          '-₦${(amtMinor / 100).toStringAsFixed(2)}',
+                                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      c['bankAccount'] != null
+                                          ? '${c['bankAccount']['bankName'] ?? 'Bank'} • ${c['bankAccount']['accountNumber']}'
+                                          : status,
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (status == 'PENDING' || status == 'APPROVED')
+                                GestureDetector(
+                                  onTap: _submitting ? null : () => _adminConfirmCashout(c['id']),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(color: AppColors.accentGreen, borderRadius: BorderRadius.circular(8)),
+                                    child: const Text('Confirm', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ] else if (_selectedHistoryTab == 2) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            'No cashout requests found.',
+                            style: TextStyle(color: AppColors.textLight, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+
+                  if (_selectedHistoryTab == 0 && _storePayments.isEmpty && _cashouts.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No transactions recorded yet.',
+                          style: TextStyle(color: AppColors.textLight, fontSize: 12),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
     );
+  }
+
+  Widget _buildFilterTab(int index, String label) {
+    final active = _selectedHistoryTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedHistoryTab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: active ? AppColors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: active ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))] : null,
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              color: active ? AppColors.primary : AppColors.textLight,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(dynamic iso) {
+    if (iso == null) return '—';
+    try {
+      final dt = DateTime.parse(iso.toString()).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return iso.toString();
+    }
   }
 
   Widget _buildMiniStat(String label, String value) {

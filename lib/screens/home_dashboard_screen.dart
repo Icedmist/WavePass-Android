@@ -33,6 +33,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   String? _venueId;
   List<Map<String, dynamic>> _recentSales = [];
   bool _hideBalance = true; // Hidden by default
+  double _availableBalanceNgn = 0.0;
   int? _expiryDaysLeft;
   Map<String, dynamic>? _funnel;
   bool _loadingFunnel = false;
@@ -176,6 +177,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
             if (mounted) {
               setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
+            }
+          } catch (_) {}
+          try {
+            final bal = await WavePassApi.instance.venueBalance(vid);
+            if (mounted) {
+              setState(() {
+                _availableBalanceNgn = (bal['availableNGN'] as num?)?.toDouble() ?? (((bal['availableMinor'] as num?)?.toDouble() ?? 0) / 100);
+                final paystackEarned = (bal['totalEarnedNGN'] as num?)?.toInt() ?? (((bal['earnedMinor'] as num?)?.toInt() ?? 0) ~/ 100);
+                if (_todaySales == 0 && paystackEarned > 0) {
+                  _todaySales = paystackEarned;
+                }
+              });
             }
           } catch (_) {}
         }
@@ -648,17 +661,36 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            "${_recentSales.length} passes recorded",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textLight,
+                        if (_availableBalanceNgn > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            child: Text(
+                              _hideBalance
+                                  ? "Wallet: ₦•••"
+                                  : "Wallet: ₦${_availableBalanceNgn.toStringAsFixed(0)} (Paystack)",
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          )
+                        else
+                          Flexible(
+                            child: Text(
+                              "${_recentSales.length} passes recorded",
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textLight,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ],
@@ -1255,6 +1287,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         venueId: _venueId,
         initialRecentSales: _recentSales,
         todaySales: _todaySales,
+        availableBalanceNgn: _availableBalanceNgn,
       ),
     );
   }
@@ -1272,11 +1305,13 @@ class _SalesBreakdownSheet extends StatefulWidget {
   final String? venueId;
   final List<Map<String, dynamic>> initialRecentSales;
   final int todaySales;
+  final double availableBalanceNgn;
 
   const _SalesBreakdownSheet({
     this.venueId,
     required this.initialRecentSales,
     required this.todaySales,
+    this.availableBalanceNgn = 0.0,
   });
 
   @override
@@ -1301,7 +1336,7 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
     try {
       final res = await SupabaseService.instance.client
           .from('Order')
-          .select('id, customerRef, amountMinor, status, createdAt, Plan(name)')
+          .select('id, customerRef, amountMinor, status, paymentProvider, createdAt, Plan(name)')
           .eq('venueId', vid)
           .order('createdAt', ascending: false)
           .limit(200);
@@ -1338,6 +1373,51 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
       }
     }).toList();
   }
+
+  bool _isPaystack(Map<String, dynamic> o) {
+    final provider = (o['paymentProvider'] ?? '').toString().toLowerCase();
+    if (provider == 'cash' || provider == 'counter' || provider == 'manual') {
+      return false;
+    }
+    final ref = (o['customerRef'] ?? o['code'] ?? '').toString();
+    if (ref.startsWith('CTR-') || ref.startsWith('CASH-')) {
+      return false;
+    }
+    return true;
+  }
+
+  int get _paystackRevenueNgn {
+    final list = _filteredOrders;
+    int total = 0;
+    for (final o in list) {
+      if (!_isPaystack(o)) continue;
+      if (o.containsKey('amountMinor')) {
+        total += ((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100;
+      } else if (o.containsKey('amount')) {
+        final amtStr = o['amount'].toString().replaceAll(RegExp(r'[^\d]'), '');
+        total += int.tryParse(amtStr) ?? 0;
+      }
+    }
+    return total;
+  }
+
+  int get _counterRevenueNgn {
+    final list = _filteredOrders;
+    int total = 0;
+    for (final o in list) {
+      if (_isPaystack(o)) continue;
+      if (o.containsKey('amountMinor')) {
+        total += ((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100;
+      } else if (o.containsKey('amount')) {
+        final amtStr = o['amount'].toString().replaceAll(RegExp(r'[^\d]'), '');
+        total += int.tryParse(amtStr) ?? 0;
+      }
+    }
+    return total;
+  }
+
+  int get _paystackCount => _filteredOrders.where(_isPaystack).length;
+  int get _counterCount => _filteredOrders.where((o) => !_isPaystack(o)).length;
 
   int get _totalRevenueNgn {
     final list = _filteredOrders;
@@ -1523,6 +1603,175 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 18),
+                          // ─── REVENUE CLASSIFICATION: PAYSTACK VS COUNTER CASH ───
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.containerBg,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: AppColors.cardBorder),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      "REVENUE CLASSIFICATION",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textLight,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
+                                    if (widget.availableBalanceNgn > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentGreen.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          "Wallet: ₦${_formatNgn(widget.availableBalanceNgn.toInt())}",
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.accentGreen,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    // Paystack Online Store Sales
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.white,
+                                          borderRadius: BorderRadius.circular(14),
+                                          border: Border.all(color: AppColors.cardBorder),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: const BoxDecoration(
+                                                    color: AppColors.accentGreen,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Expanded(
+                                                  child: Text(
+                                                    "Paystack Store",
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: AppColors.textLight,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              "₦${_formatNgn(_paystackRevenueNgn)}",
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              "${_paystackCount} sales • In Wallet",
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.accentGreen,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    // Counter Cash Voucher Sales
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.white,
+                                          borderRadius: BorderRadius.circular(14),
+                                          border: Border.all(color: AppColors.cardBorder),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber.shade700,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Expanded(
+                                                  child: Text(
+                                                    "Counter Cash",
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: AppColors.textLight,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              "₦${_formatNgn(_counterRevenueNgn)}",
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              "${_counterCount} vouchers • In Hand",
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.amber.shade800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                           const SizedBox(height: 22),
                           const Text(
                             "PLAN DISTRIBUTION",
@@ -1657,6 +1906,7 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                           else
                             ...filtered.asMap().entries.map((e) {
                               final o = e.value;
+                              final isOnline = _isPaystack(o);
                               final code = o['customerRef'] ?? o['code'] ?? (o['id']?.toString().substring(0, 8).toUpperCase() ?? 'PASS');
                               final plan = o['Plan']?['name'] ?? o['plan'] ?? 'Pass';
                               final amt = o.containsKey('amountMinor')
@@ -1675,23 +1925,52 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          code.toString(),
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w800,
-                                            fontFamily: 'monospace',
-                                            color: AppColors.primary,
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  code.toString(),
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontFamily: 'monospace',
+                                                    color: AppColors.primary,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: isOnline
+                                                      ? AppColors.accentGreen.withValues(alpha: 0.12)
+                                                      : Colors.amber.withValues(alpha: 0.18),
+                                                  borderRadius: BorderRadius.circular(5),
+                                                ),
+                                                child: Text(
+                                                  isOnline ? "PAYSTACK" : "COUNTER CASH",
+                                                  style: TextStyle(
+                                                    fontSize: 8.5,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: isOnline ? AppColors.accentGreen : Colors.amber.shade900,
+                                                    letterSpacing: 0.3,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        Text(
-                                          plan.toString(),
-                                          style: const TextStyle(fontSize: 11, color: AppColors.textLight),
-                                        ),
-                                      ],
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            plan.toString(),
+                                            style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.end,

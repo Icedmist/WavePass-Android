@@ -193,5 +193,74 @@ void main() {
       expect(statusHtml, contains("localStorage.setItem('wp-active-voucher'"));
       expect(statusHtml, contains(r'var u = "$(username)";'));
     });
+
+    test('Standalone mode login.html renders venue bank accounts and transfer access request workflow', () {
+      final bankAccounts = [
+        {
+          'bankName': 'OPay',
+          'accountNumber': '8012345678',
+          'accountName': 'Apex Lounge Entertainment',
+        },
+        {
+          'bankName': 'GTBank',
+          'accountNumber': '0123456789',
+          'accountName': 'Apex Lounge Ltd',
+        }
+      ];
+
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        null,
+        true,
+        false,
+        bankAccounts,
+      );
+
+      // Tab and Panel checks
+      expect(html, contains('id="tabTransfer"'));
+      expect(html, contains('id="panelTransfer"'));
+      expect(html, contains('Direct Bank Transfer'));
+
+      // Bank accounts display
+      expect(html, contains('OPay'));
+      expect(html, contains('8012345678'));
+      expect(html, contains('Apex Lounge Entertainment'));
+      expect(html, contains('GTBank'));
+      expect(html, contains('0123456789'));
+
+      // Inputs and action button
+      expect(html, contains('id="transfer_plan"'));
+      expect(html, contains('id="transfer_sender"'));
+      expect(html, contains('id="btn_transfer_completed"'));
+      expect(html, contains('submitTransferPayment'));
+
+      // Backend API Integration
+      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/transfer-request'));
+      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher'));
+    });
+
+    test('Standalone mode login.html renders voucher retrieval panel and auto-login script', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+      );
+
+      // Tab and Panel checks
+      expect(html, contains('id="tabRetrieve"'));
+      expect(html, contains('id="panelRetrieve"'));
+      expect(html, contains('Retrieve Active Pass'));
+
+      // Input elements
+      expect(html, contains('id="retrieve_mac"'));
+      expect(html, contains(r'value="$(mac)"'));
+      expect(html, contains('id="retrieve_query"'));
+      expect(html, contains('id="btn_retrieve"'));
+      expect(html, contains('retrieveActivePass'));
+
+      // Endpoint check
+      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher'));
+      expect(html, contains('loadDynamicBankAccounts'));
+    });
   });
 }

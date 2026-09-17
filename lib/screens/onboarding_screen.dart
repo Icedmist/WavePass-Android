@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
+import '../core/services/notification_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
@@ -180,6 +181,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       };
 
       if (!mounted) return;
+      // Prompt user to enable device notifications for customer transfer approvals & sales
+      await AppNotifier.promptEnableNotifications(context);
+      if (!mounted) return;
+
       // If user already signed in, go to dashboard; else to login (which will then go to dashboard after auth)
       final user = SupabaseService.instance.currentUser;
       if (user != null) {

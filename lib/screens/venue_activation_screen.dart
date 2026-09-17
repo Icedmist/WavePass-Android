@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/notification_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 
@@ -92,6 +93,9 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
           duration: const Duration(seconds: 3),
         ),
       );
+      // Prompt user to enable device notifications for customer transfer approvals & sales
+      await AppNotifier.promptEnableNotifications(context);
+      if (!mounted) return;
       // Navigate to Router Setup or Dashboard
       context.go(AppRouter.routerSetup);
     } else {

@@ -484,3 +484,8 @@
 - [x] **Full History**: sales-history screen (100 orders + total) linked from Recent Sales; fixed header-row overflow.
 - [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
 - [x] PR [#94](https://github.com/Icedmist/WavePass-Android/pull/94) merged to `main`.
+
+### 36. Wallet Always Ensures DVA (Issue #98, PR #99)
+- [x] Wallet ensures (not just reads) on every load with read-fallback, so backend self-heal runs for existing venues.
+- [x] **Verification**: `flutter analyze` clean.
+- [x] PR [#99](https://github.com/Icedmist/WavePass-Android/pull/99) merged to `main`.

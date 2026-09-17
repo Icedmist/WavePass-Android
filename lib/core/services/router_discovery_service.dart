@@ -2298,4 +2298,81 @@ class RouterDiscoveryService {
     client.close();
     return results;
   }
+
+  /// Validates that a target host is actually a reachable MikroTik before it
+  /// is trusted for provisioning/monitoring. Prevents stale entries (e.g. an
+  /// ISP gateway at 192.168.1.1) from silently poisoning all router ops.
+  /// Returns {ok, identity, via, message}.
+  static Future<Map<String, dynamic>> validateRouterTarget({
+    required String ip,
+    required String username,
+    required String password,
+  }) async {
+    var host = ip.trim();
+    for (final prefix in ['http://', 'https://', 'api://']) {
+      if (host.startsWith(prefix)) host = host.substring(prefix.length);
+    }
+    if (host.contains('/')) host = host.split('/').first;
+    if (host.contains(':')) host = host.split(':').first;
+    if (host.isEmpty) {
+      return {'ok': false, 'message': 'Empty router address'};
+    }
+
+    // 1. Native RouterOS API (:8728) with identity proof.
+    try {
+      final api = MikrotikApiClient(host: host, port: 8728, timeout: const Duration(seconds: 5));
+      if (await api.connectAndLogin(username, password)) {
+        try {
+          final res = await api.getSystemResource();
+          final board = (res['board-name'] ?? res['platform'] ?? '').toString().trim();
+          if (board.isNotEmpty) {
+            return {'ok': true, 'identity': board, 'via': 'api-8728', 'host': host};
+          }
+        } finally {}
+      }
+    } catch (_) {}
+
+    // 2. REST identity probe as fallback.
+    try {
+      final creds = base64Encode(utf8.encode('$username:$password'));
+      final res = await http.get(
+        Uri.parse('http://$host/rest/system/resource'),
+        headers: {'Authorization': 'Basic $creds', 'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200 && !res.body.trim().startsWith('<')) {
+        final dynamic decoded = jsonDecode(res.body);
+        final Map<String, dynamic> data = decoded is List
+            ? (decoded.isNotEmpty ? Map<String, dynamic>.from(decoded.first as Map) : <String, dynamic>{})
+            : Map<String, dynamic>.from(decoded as Map);
+        final board = (data['board-name'] ?? data['platform'] ?? '').toString().trim();
+        if (board.isNotEmpty) {
+          return {'ok': true, 'identity': board, 'via': 'rest-80', 'host': host};
+        }
+      }
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        return {'ok': false, 'message': 'Reachable but credentials rejected — update username/password'};
+      }
+    } catch (_) {}
+
+    return {'ok': false, 'message': 'No MikroTik found at $host — check the address and Wi-Fi'};
+  }
+
+  /// Clears any saved router target so all router ops fall back to 192.168.88.1.
+  static Future<void> resetRouterTarget() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(keyRouterLocalIp);
+      await prefs.remove(keyRouterTunnelEndpoint);
+    } catch (_) {}
+  }
+
+  /// Effective router target currently in use (saved value or default).
+  static Future<String> effectiveRouterTarget() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(keyRouterLocalIp) ?? '192.168.88.1';
+    } catch (_) {
+      return '192.168.88.1';
+    }
+  }
 }

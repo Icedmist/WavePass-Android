@@ -29,6 +29,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
   bool _isGenerating = false;
   String? _generatedCode;
   String? _generatedPassword;
+  bool _soldGenerated = false;
   bool _showCustomSettings = false;
   final _prefixCtrl = TextEditingController(text: '');
   final _passPrefixCtrl = TextEditingController(text: '');
@@ -243,6 +244,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
       _isGenerating = false;
       _generatedCode = code;
       _generatedPassword = password;
+      _soldGenerated = false;
       _directProvisionMode = directMode;
       _directProvisionAttempted = true;
     });
@@ -256,9 +258,65 @@ class _SellPassScreenState extends State<SellPassScreen> {
     } catch (_) {}
   }
 
-  void _handlePrint() async {
+  /// Thermal-style receipt preview: exactly what the Bluetooth print outputs.
+  void _showPrintPreview() {
     if (_generatedCode == null || _plans.isEmpty) return;
     final selectedPlan = (_selectedPlanIndex < _plans.length) ? _plans[_selectedPlanIndex] : _plans.first;
+    final isDual = _generatedPassword != null && _generatedPassword != _generatedCode;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.cardBorder, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            const Text("Receipt Preview", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.primary)),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.black12)),
+              child: Column(
+                children: [
+                  Text((_venueName ?? 'WavePass Venue').toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                  Text('${_venueSlug ?? 'venue'}.nexawavepass.com', style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+                  const Divider(height: 20),
+                  Text(selectedPlan['title']?.toString() ?? 'Pass', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  Text(selectedPlan['price']?.toString() ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Text(_generatedCode!, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'monospace', letterSpacing: 2)),
+                  if (isDual) Text('PIN: $_generatedPassword', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'monospace')),
+                  const Divider(height: 20),
+                  const Text('Scan to connect — valid per plan duration', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _handlePrint();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                icon: const Icon(Icons.print, size: 18),
+                label: const Text("Print Receipt"),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handlePrint() async {
+    if (_generatedCode == null || _plans.isEmpty) return;    final selectedPlan = (_selectedPlanIndex < _plans.length) ? _plans[_selectedPlanIndex] : _plans.first;
     setState(() => _isPrinting = true);
 
     try {
@@ -972,6 +1030,42 @@ class _SellPassScreenState extends State<SellPassScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Sold marker: staff distinguish handed-out passes from displayed ones
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _soldGenerated ? AppColors.accentGreen.withValues(alpha: 0.12) : AppColors.containerBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _soldGenerated ? AppColors.accentGreen.withValues(alpha: 0.4) : AppColors.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _soldGenerated ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      size: 18,
+                      color: _soldGenerated ? AppColors.accentGreen : AppColors.textLight,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _soldGenerated ? 'Marked as SOLD' : 'Not yet sold',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _soldGenerated ? AppColors.accentGreen : AppColors.textLight),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (_generatedCode == null) return;
+                        final next = !_soldGenerated;
+                        final ok = await VoucherHistoryService.instance.markSold(_generatedCode!, next);
+                        if (ok && mounted) setState(() => _soldGenerated = next);
+                      },
+                      child: Text(_soldGenerated ? 'Undo' : 'Mark sold', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
               // Action 1: Print Thermal Receipt
               SizedBox(
                 height: 52,
@@ -986,6 +1080,17 @@ class _SellPassScreenState extends State<SellPassScreen> {
               ),
               const SizedBox(height: 12),
 
+              // Action 1b: Thermal receipt preview
+              SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showPrintPreview(),
+                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                  label: const Text("Preview Receipt"),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               // Action 2: Sell Another Pass
               SizedBox(
                 height: 48,
@@ -993,6 +1098,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                   onPressed: () {
                     setState(() {
                       _generatedCode = null;
+                      _soldGenerated = false;
                     });
                   },
                   child: const Text("Sell Another Pass"),

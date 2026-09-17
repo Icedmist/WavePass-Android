@@ -17,6 +17,7 @@ class VoucherRecord {
   final int durationSeconds;
   final DateTime createdAt;
   String status; // 'unused', 'in_use', 'expired'
+  bool sold;
   String? directMode;
   DateTime? usedAt;
   String? mac;
@@ -34,6 +35,7 @@ class VoucherRecord {
     required this.durationSeconds,
     required this.createdAt,
     this.status = 'unused',
+    this.sold = false,
     this.directMode,
     this.usedAt,
     this.mac,
@@ -77,6 +79,7 @@ class VoucherRecord {
         'durationSeconds': durationSeconds,
         'createdAt': createdAt.toIso8601String(),
         'status': status,
+        'sold': sold,
         'directMode': directMode,
         'usedAt': usedAt?.toIso8601String(),
         'mac': mac,
@@ -97,6 +100,7 @@ class VoucherRecord {
             ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
             : DateTime.now(),
         status: json['status']?.toString() ?? 'unused',
+        sold: json['sold'] == true,
         directMode: json['directMode']?.toString(),
         usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
         mac: json['mac']?.toString(),
@@ -151,6 +155,7 @@ class VoucherHistoryService {
     required int durationSeconds,
     String? directMode,
     String? source,
+    bool sold = false,
   }) async {
     try {
       final history = await getHistory();
@@ -165,6 +170,7 @@ class VoucherHistoryService {
         durationSeconds: durationSeconds,
         createdAt: DateTime.now(),
         status: 'unused',
+        sold: sold,
         directMode: directMode,
         source: source ?? 'local',
       );
@@ -179,6 +185,21 @@ class VoucherHistoryService {
       await _saveHistory(history);
     } catch (e) {
       debugPrint('Error recording voucher history: $e');
+    }
+  }
+
+  /// Toggles the sold marker staff use to distinguish handed-out passes.
+  Future<bool> markSold(String code, bool sold) async {
+    try {
+      final history = await getHistory();
+      final idx = history.indexWhere((v) => v.code.toUpperCase() == code.toUpperCase());
+      if (idx < 0) return false;
+      history[idx].sold = sold;
+      await _saveHistory(history);
+      return true;
+    } catch (e) {
+      debugPrint('Error marking voucher sold: $e');
+      return false;
     }
   }
 

@@ -407,6 +407,32 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                             ),
                                           ),
                                         ),
+                                        const SizedBox(width: 6),
+                                        InkWell(
+                                          onTap: () async {
+                                            final ok = await VoucherHistoryService.instance.markSold(item.code, !item.sold);
+                                            if (ok) {
+                                              setState(() => item.sold = !item.sold);
+                                            }
+                                          },
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: (item.sold ? AppColors.accentGreen : AppColors.textLight).withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              item.sold ? 'SOLD' : 'UNSOLD',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 0.5,
+                                                color: item.sold ? AppColors.accentGreen : AppColors.textLight,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 6),

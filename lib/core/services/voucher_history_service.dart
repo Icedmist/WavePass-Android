@@ -8,6 +8,7 @@ import 'router_discovery_service.dart';
 import 'supabase_service.dart';
 import 'system_admin_service.dart';
 import 'venue_state_service.dart';
+import 'wavepass_api.dart';
 
 class VoucherRecord {
   final String code;
@@ -525,6 +526,37 @@ class VoucherHistoryService {
             }
           }
         }
+      }
+
+      // 2b. Cloud fallback: router unreachable (wrong target, offline box) —
+      // confirm usage via cloud records so retrieval keeps working.
+      if (!routerConnected) {
+        try {
+          final venueId = currentVenue?['id']?.toString();
+          for (final record in history) {
+            if (record.status != 'unused' || (record.mac ?? '').isEmpty) continue;
+            final cloud = await WavePassApi.instance.retrieveVoucher(
+              mac: record.mac,
+              venueId: venueId,
+            ).timeout(const Duration(seconds: 6));
+            final found = cloud['found'] == true;
+            final status = (cloud['status']?.toString() ?? '').toUpperCase();
+            if (found && (status == 'ACTIVE' || status == 'REDEEMED')) {
+              record.status = 'in_use';
+              record.usedAt = record.usedAt ?? now;
+              stateChanged = true;
+              if (context != null && context.mounted) {
+                AppNotifier.instance.show(
+                  context,
+                  type: NotifyType.info,
+                  title: 'Voucher In Use (cloud)',
+                  message: 'Pass ${record.code} (${record.planTitle}) is active per cloud records. Router unreachable — check target IP.',
+                );
+              }
+              break;
+            }
+          }
+        } catch (_) {}
       }
 
       // 3. Detect expired vouchers from elapsed duration and delete from hardware

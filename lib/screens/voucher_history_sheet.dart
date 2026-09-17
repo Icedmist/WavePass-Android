@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/services/router_discovery_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/theme/app_theme.dart';
 
@@ -207,6 +209,8 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                             "$unusedCount inactive (available) • $activeCount in use • $expiredCount expired",
                             style: const TextStyle(fontSize: 12, color: AppColors.textLight),
                           ),
+                          const SizedBox(height: 6),
+                          _RouterTargetRow(onReset: _loadData),
                         ],
                       ),
                     ),
@@ -579,4 +583,118 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
       onSelected: (_) => setState(() => _filter = key),
     );
   }
+
 }
+
+/// Shows which router address voucher ops target, with validation state and
+/// one-tap reset. A stale address (e.g. an ISP gateway) silently breaks all
+/// router monitoring, retrieval, and provisioning.
+class _RouterTargetRow extends StatefulWidget {
+  const _RouterTargetRow({required this.onReset});
+  final VoidCallback onReset;
+
+  @override
+  State<_RouterTargetRow> createState() => _RouterTargetRowState();
+}
+
+class _RouterTargetRowState extends State<_RouterTargetRow> {
+  String _target = '192.168.88.1';
+  bool? _valid;
+  String? _identity;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final t = await RouterDiscoveryService.effectiveRouterTarget();
+    if (mounted) setState(() => _target = t);
+  }
+
+  Future<void> _validate() async {
+    setState(() {
+      _checking = true;
+      _valid = null;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final res = await RouterDiscoveryService.validateRouterTarget(
+        ip: _target,
+        username: prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin',
+        password: prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '',
+      );
+      if (mounted) {
+        setState(() {
+          _valid = res['ok'] == true;
+          _identity = res['identity']?.toString();
+          _checking = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _reset() async {
+    await RouterDiscoveryService.resetRouterTarget();
+    await _refresh();
+    setState(() {
+      _valid = null;
+      _identity = null;
+    });
+    widget.onReset();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Router target reset to 192.168.88.1'), backgroundColor: AppColors.accentGreen, duration: Duration(seconds: 2)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _valid == null
+        ? AppColors.textLight
+        : _valid!
+            ? AppColors.accentGreen
+            : AppColors.accentRed;
+    return InkWell(
+      onTap: _checking ? null : _validate,
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _valid == null ? Icons.router_outlined : _valid! ? Icons.check_circle_rounded : Icons.error_rounded,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              _valid == true && _identity != null ? 'Router $_target ($_identity)' : 'Router: $_target',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _checking ? 'checking…' : 'tap to verify',
+            style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+          ),
+          IconButton(
+            icon: const Icon(Icons.restart_alt_rounded, size: 15, color: AppColors.textLight),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Reset to 192.168.88.1',
+            onPressed: _reset,
+          ),
+        ],
+      ),
+    );
+  }
+}
+

@@ -64,7 +64,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingPortalHtml = false;
   bool _uploadingPortalFiles = false;
   int _selectedPortalTabIndex = 0;
-  bool _useHostedSubdomainPortal = false;
+  bool _useHostedSubdomainPortal = true;
   Map<String, String>? _portalSuite;
 
   @override
@@ -87,6 +87,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     final savedTunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
     final savedUser = prefs.getString(RouterDiscoveryService.keyRouterUsername);
     final savedPass = prefs.getString(RouterDiscoveryService.keyRouterPassword);
+    final savedHosted = prefs.getBool('wavepass_use_hosted_portal');
 
     if (mounted) {
       setState(() {
@@ -96,6 +97,9 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         if (savedPass != null && savedPass.isNotEmpty) {
           _passCtrl.text = savedPass;
           _showCustomSettings = true;
+        }
+        if (savedHosted != null) {
+          _useHostedSubdomainPortal = savedHosted;
         }
       });
     }
@@ -483,11 +487,16 @@ set api disabled=no port=8728
 # --------------------------------------------------------
 # 2. Hotspot Profile & Interface
 # --------------------------------------------------------
+/ip hotspot user profile
+add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=yes session-timeout=2m comment="WavePass 2-min Payment Trial"
+
 /ip hotspot profile
 add dns-name="wavepass.local" \\
     hotspot-address=192.168.88.1 \\
     html-directory=hotspot \\
-    login-by=http-pap,http-chap,mac-cookie \\
+    login-by=http-pap,http-chap,mac-cookie,trial \\
+    trial-user-profile="wp-payment-trial" \\
+    trial-uptime=2m/24h \\
     name="wavepass-profile"
 
 /ip hotspot
@@ -504,6 +513,8 @@ add address-pool=default-dhcp \\
 add comment="WavePass Root Portal" dst-host="nexawavepass.com"
 add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
+add comment="Google Fonts" dst-host="fonts.googleapis.com"
+add comment="Google Fonts Static" dst-host="fonts.gstatic.com"
 add comment="Paystack Checkout" dst-host="*.paystack.co"
 add comment="Paystack API" dst-host="api.paystack.co"
 add comment="Paystack Checkout UI" dst-host="checkout.paystack.com"
@@ -514,6 +525,8 @@ add comment="Supabase Auth" dst-host="*.supabase.co"
 add comment="WavePass Root Portal (HTTPS)" dst-host="nexawavepass.com" action=accept
 add comment="WavePass API (HTTPS)" dst-host="api.nexawavepass.com" action=accept
 add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
+add comment="Google Fonts (HTTPS)" dst-host="fonts.googleapis.com" action=accept
+add comment="Google Fonts Static (HTTPS)" dst-host="fonts.gstatic.com" action=accept
 add comment="Paystack Checkout (HTTPS)" dst-host="*.paystack.co" action=accept
 add comment="Paystack API (HTTPS)" dst-host="api.paystack.co" action=accept
 add comment="Paystack Checkout UI (HTTPS)" dst-host="checkout.paystack.com" action=accept
@@ -534,7 +547,6 @@ add name="profile_12h" rate-limit="15M/5M" shared-users=1 session-timeout=12h ke
 add name="profile_1d" rate-limit="20M/10M" shared-users=1 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
 add name="profile_7d" rate-limit="20M/10M" shared-users=1 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
 add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
-add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=yes session-timeout=2m comment="WavePass 2-min Payment Trial"
 
 # --------------------------------------------------------
 # 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
@@ -951,11 +963,11 @@ $_rfc1321Md5Js
       var p = params.get('password') || params.get('pass');
       var trial = params.get('trial');
 
-      if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
+      if (trial === 'yes' || trial === '1') {
         loggedIn = true;
-        var targetTrialUser = (u && u.indexOf('T-') === 0) ? u : ((c && c.indexOf('T-') === 0) ? c : ('T-' + '\$(mac-esc)'));
+        var targetTrialUser = 'T-' + '\$(mac-esc)';
         var trialDst = params.get('dst') || '\$(link-orig-esc)';
-        var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + targetTrialUser;
+        var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + encodeURIComponent(targetTrialUser);
         window.location.replace(trialUrl);
         return;
       } else if (c) {
@@ -1509,15 +1521,13 @@ $_rfc1321Md5Js
       <div class="plans-list" id="plansContainer">
         ${plansBuffer.toString()}
       </div>
-      <!-- 2-Minute Payment Trial Access (Direct POST Form) -->
+      <!-- 2-Minute Payment Trial Access -->
       <div class="trial-box">
         <div class="trial-title">⚡ Need Internet to Pay?</div>
         <div class="trial-desc">Get a 2-minute temporary connection window to open your bank app or complete Paystack checkout.</div>
-        <form name="trial_form" action="\$(link-login-only)" method="post">
+        <form name="trial_form" action="\$(link-login-only)" method="get">
           <input type="hidden" name="dst" value="\$(link-orig)">
-          <input type="hidden" name="popup" value="false">
           <input type="hidden" name="username" value="T-\$(mac-esc)">
-          <input type="hidden" name="password" value="">
           <button type="submit" class="btn-trial">Activate 2-Min Payment Trial &rarr;</button>
         </form>
       </div>
@@ -1839,7 +1849,7 @@ $_rfc1321Md5Js
                 '<div class="bank-name">' + name + '</div>' +
                 '<div class="bank-account-row">' +
                   '<span class="bank-number">' + num + '</span>' +
-                  '<button type="button" class="btn-copy" onclick="copyText(\'' + num + '\')">📋 Copy</button>' +
+                  '<button type="button" class="btn-copy" onclick="copyText("' + num + '")">📋 Copy</button>' +
                 '</div>' +
                 '<div class="bank-holder">' + holder + '</div>' +
               '</div>';
@@ -1987,10 +1997,10 @@ $_rfc1321Md5Js
         var mode = params.get('mode') || params.get('tab');
         var trial = params.get('trial');
 
-        if (trial === 'yes' || (u && u.indexOf('T-') === 0) || (c && c.indexOf('T-') === 0)) {
-          var targetTrialUser = (u && u.indexOf('T-') === 0) ? u : ((c && c.indexOf('T-') === 0) ? c : ('T-' + '\$(mac-esc)'));
+        if (trial === 'yes' || trial === '1') {
+          var targetTrialUser = 'T-' + '\$(mac-esc)';
           var trialDst = params.get('dst') || '\$(link-orig-esc)';
-          var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + targetTrialUser;
+          var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + encodeURIComponent(targetTrialUser);
           window.location.replace(trialUrl);
           return;
         } else if (c) {
@@ -3214,12 +3224,14 @@ $_rfc1321Md5Js
                       children: [
                         Expanded(
                           child: GestureDetector(
-                            onTap: () {
+                            onTap: () async {
                               if (!_useHostedSubdomainPortal) {
                                 setState(() {
                                   _useHostedSubdomainPortal = true;
                                   _portalSuite = null;
                                 });
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setBool('wavepass_use_hosted_portal', true);
                               }
                             },
                             child: Container(
@@ -3242,12 +3254,14 @@ $_rfc1321Md5Js
                         ),
                         Expanded(
                           child: GestureDetector(
-                            onTap: () {
+                            onTap: () async {
                               if (_useHostedSubdomainPortal) {
                                 setState(() {
                                   _useHostedSubdomainPortal = false;
                                   _portalSuite = null;
                                 });
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setBool('wavepass_use_hosted_portal', false);
                               }
                             },
                             child: Container(

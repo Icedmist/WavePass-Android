@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/theme/app_theme.dart';
@@ -14,9 +15,16 @@ class VenueActivationScreen extends StatefulWidget {
 
 class _VenueActivationScreenState extends State<VenueActivationScreen> {
   final _codeCtrl = TextEditingController();
+  final _reqNameCtrl = TextEditingController();
+  final _reqPhoneCtrl = TextEditingController();
+  final _reqVenueCtrl = TextEditingController();
+  final _reqMsgCtrl = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
   String? _expiryNotice;
+  bool _isRequesting = false;
+  String? _requestMessage;
+  bool _requestSent = false;
 
   @override
   void initState() {
@@ -42,6 +50,10 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
   @override
   void dispose() {
     _codeCtrl.dispose();
+    _reqNameCtrl.dispose();
+    _reqPhoneCtrl.dispose();
+    _reqVenueCtrl.dispose();
+    _reqMsgCtrl.dispose();
     super.dispose();
   }
 
@@ -77,6 +89,41 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _handleRequestCode() async {
+    setState(() {
+      _isRequesting = true;
+      _requestMessage = null;
+    });
+    try {
+      final savedEmail = await _currentEmail();
+      final res = await ActivationCodeService.instance.requestActivationCode(
+        email: savedEmail,
+        name: _reqNameCtrl.text.trim(),
+        phone: _reqPhoneCtrl.text.trim(),
+        venueName: _reqVenueCtrl.text.trim(),
+        message: _reqMsgCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _requestSent = res['ok'] == true;
+        _requestMessage = res['ok'] == true
+            ? res['message']?.toString() ?? 'Request sent.'
+            : res['error']?.toString() ?? 'Failed to send request.';
+      });
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+  }
+
+  Future<String> _currentEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('sb-user-email');
+      if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+    } catch (_) {}
+    return '';
   }
 
   Future<void> _contactAdmin() async {
@@ -288,7 +335,7 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
 
                 const SizedBox(height: 24),
 
-                // Request Activation Code from Admin
+                // Request a code from the system admin
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -297,22 +344,83 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
                     border: Border.all(color: AppColors.cardBorder.withValues(alpha: 0.6)),
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         "Don't have an activation code?",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textLight),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Send a request with your details — the system admin will grant you a code or direct access.",
+                        style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _reqNameCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(hintText: "Your name", isDense: true, border: OutlineInputBorder()),
                       ),
                       const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _contactAdmin,
-                        icon: const Icon(Icons.mail_outline_rounded, size: 16, color: AppColors.primary),
-                        label: const Text(
-                          "Request Code from System Admin",
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      TextField(
+                        controller: _reqPhoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(hintText: "Phone number", isDense: true, border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _reqVenueCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(hintText: "Venue name", isDense: true, border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _reqMsgCtrl,
+                        maxLines: 2,
+                        decoration: const InputDecoration(hintText: "Message for the admin (optional)", isDense: true, border: OutlineInputBorder()),
+                      ),
+                      if (_requestMessage != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _requestMessage!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _requestSent ? AppColors.accentGreen : AppColors.accentRed,
+                          ),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.primary),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ],
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _requestSent
+                            ? const Text(
+                                "✓ Request received — you will be notified once the admin reviews it.",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accentGreen),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: _isRequesting ? null : _handleRequestCode,
+                                icon: _isRequesting
+                                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.send_rounded, size: 16, color: AppColors.primary),
+                                label: Text(
+                                  _isRequesting ? "Sending..." : "Request Code from System Admin",
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: AppColors.primary),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: _contactAdmin,
+                          child: const Text(
+                            "Copy admin email instead",
+                            style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                          ),
                         ),
                       ),
                     ],

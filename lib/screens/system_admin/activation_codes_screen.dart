@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/router/app_router.dart';
 import '../../core/services/system_admin_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -227,6 +228,11 @@ class _ActivationCodesScreenState extends State<ActivationCodesScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primary),
         ),
         actions: [
+          IconButton(
+            onPressed: () => context.push(AppRouter.activationRequests),
+            icon: const Icon(Icons.mark_email_unread_outlined, color: AppColors.primary),
+            tooltip: "Code Requests",
+          ),
           IconButton(
             onPressed: _loadCodes,
             icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),

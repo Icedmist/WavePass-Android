@@ -364,8 +364,7 @@ class SystemAdminService {
     return result;
   }
 
-  Future<bool> authorizeActivationCode(String code, String status) async {
-    try {
+  Future<bool> authorizeActivationCode(String code, String status) async {    try {
       final headers = await _getAuthHeaders();
       final res = await http
           .post(
@@ -379,6 +378,80 @@ class SystemAdminService {
     } catch (e) {
       debugPrint('[SystemAdminService] authorizeActivationCode error: $e');
       return false;
+    }
+  }
+
+  // ── Activation Code Requests (users without codes) ───────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchActivationRequests({String? status}) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final qs = status != null && status.isNotEmpty ? '?status=$status' : '';
+      final res = await http
+          .get(Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-requests$qs'), headers: headers)
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (data['requests'] is List) {
+          return List<Map<String, dynamic>>.from(data['requests']);
+        }
+      }
+    } catch (e) {
+      debugPrint('[SystemAdminService] fetchActivationRequests error: $e');
+    }
+    return [];
+  }
+
+  /// Approve with a real code (kind + duration) or direct time-boxed access.
+  Future<Map<String, dynamic>> approveActivationRequest(
+    String id, {
+    String mode = 'code',
+    String kind = 'LICENSE',
+    int? durationDays,
+    String? reviewNote,
+  }) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final payload = <String, dynamic>{
+        'reviewedBy': _superAdminEmail,
+        'mode': mode,
+        'kind': kind,
+      };
+      if (durationDays != null) payload['durationDays'] = durationDays;
+      if (reviewNote != null && reviewNote.trim().isNotEmpty) payload['reviewNote'] = reviewNote.trim();
+      final res = await http
+          .post(
+            Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-requests/${Uri.encodeComponent(id)}/approve'),
+            headers: headers,
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return {'ok': res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true, ...data};
+    } catch (e) {
+      debugPrint('[SystemAdminService] approveActivationRequest error: $e');
+      return {'ok': false, 'error': '$e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> rejectActivationRequest(String id, {String? reviewNote}) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final res = await http
+          .post(
+            Uri.parse('${ApiConstants.cloudBaseUrl}/api/v1/admin/activation-requests/${Uri.encodeComponent(id)}/reject'),
+            headers: headers,
+            body: jsonEncode({
+              'reviewedBy': _superAdminEmail,
+              if (reviewNote != null && reviewNote.trim().isNotEmpty) 'reviewNote': reviewNote.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return {'ok': res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true, ...data};
+    } catch (e) {
+      debugPrint('[SystemAdminService] rejectActivationRequest error: $e');
+      return {'ok': false, 'error': '$e'};
     }
   }
 

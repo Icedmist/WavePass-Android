@@ -36,6 +36,8 @@ class _WalletScreenState extends State<WalletScreen> {
   List<dynamic> _bankAccounts = [];
   List<dynamic> _storePayments = [];
   int _selectedHistoryTab = 0; // 0: All, 1: Paystack Store Sales, 2: Cashouts
+  String? _vaError;
+  bool _refreshingVa = false;
 
   // New bank account form
   final _nameCtrl = TextEditingController();
@@ -82,14 +84,22 @@ class _WalletScreenState extends State<WalletScreen> {
 
       // Always ensure: the backend self-heals stale mock/PENDING rows into
       // live DVAs once real keys exist. Fall back to a plain read offline.
-      Map<String, dynamic> vaData;
+      // VA failures are tracked separately so the card can tell pending,
+      // mock-mode, and load errors apart instead of crying KYC for all.
+      Map<String, dynamic> vaData = {};
+      String? vaError;
       try {
         vaData = await _api.ensureVirtualAccount(venueId);
         if (vaData['accountNumber'] == null) {
           vaData = await _api.getVirtualAccount(venueId);
         }
-      } catch (_) {
-        vaData = await _api.getVirtualAccount(venueId);
+      } catch (e) {
+        try {
+          vaData = await _api.getVirtualAccount(venueId);
+        } catch (_) {}
+        if ((vaData['accountNumber'] as String?)?.isNotEmpty != true) {
+          vaError = e.toString().replaceFirst('Exception: ', '');
+        }
       }
       final bal = await _api.venueBalance(venueId);
       final cashoutsRaw = await _api.listCashouts(venueId);
@@ -108,6 +118,7 @@ class _WalletScreenState extends State<WalletScreen> {
       if (!mounted) return;
       setState(() {
         _virtualAccount = vaData;
+        _vaError = vaError;
         _balance = bal;
         _cashouts = List<dynamic>.from(cashoutsList);
         _bankAccounts = List<dynamic>.from(banksList);
@@ -133,6 +144,36 @@ class _WalletScreenState extends State<WalletScreen> {
   String get _acctNumber => _virtualAccount?['accountNumber']?.toString() ?? '—';
   String get _acctName => _virtualAccount?['accountName']?.toString() ?? '—';
 
+  bool get _isMockRow {
+    final v = _virtualAccount;
+    if (v == null) return false;
+    final meta = v['metadata'];
+    if (meta is Map && (meta['mock'] == true || meta['mock']?.toString() == 'true')) return true;
+    final bank = (v['bankName']?.toString() ?? '').toLowerCase();
+    return bank.contains('mock');
+  }
+
+  Future<void> _refreshDva() async {
+    setState(() {
+      _refreshingVa = true;
+      _vaError = null;
+    });
+    try {
+      var venueId = widget.venueId;
+      if (venueId == 'default') {
+        venueId = VenueStateService.instance.currentVenueId ?? 'default';
+      }
+      final vaData = await _api.ensureVirtualAccount(venueId);
+      if (!mounted) return;
+      setState(() => _virtualAccount = vaData);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _vaError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _refreshingVa = false);
+    }
+  }
+
   bool get _hasActiveVirtualAccount {
     if (_virtualAccount == null) return false;
     final meta = _virtualAccount?['metadata'];
@@ -144,6 +185,108 @@ class _WalletScreenState extends State<WalletScreen> {
     final acct = _virtualAccount?['accountNumber']?.toString() ?? '';
     if (acct.isEmpty || acct == '—' || acct == 'PENDING') return false;
     return true;
+  }
+
+  /// Truthful DVA status card: pending, test-mode, and load-failure states
+  /// each say what they are (never a blanket "KYC pending") with a retry.
+  Widget _buildDvaStatusCard() {
+    String badge;
+    Color badgeColor;
+    String title;
+    String message;
+    IconData icon;
+    if (_vaError != null) {
+      badge = 'LOAD FAILED';
+      badgeColor = AppColors.accentRed;
+      title = 'DIRECT BANK TRANSFER (DVA)';
+      message = 'Could not load your dedicated account: $_vaError. Your Paystack setup may be fine — retry to check again.';
+      icon = Icons.cloud_off_rounded;
+    } else if (_isMockRow) {
+      badge = 'TEST MODE';
+      badgeColor = AppColors.primary;
+      title = 'DIRECT BANK TRANSFER (DVA)';
+      message = 'Server is running without live Paystack keys, so this is a test account. Card/USSD checkout still works in mock mode — ask your admin to configure PAYSTACK_SECRET_KEY for live settlement.';
+      icon = Icons.science_outlined;
+    } else {
+      badge = 'PENDING ACTIVATION';
+      badgeColor = const Color(0xFFD97706);
+      title = 'DIRECT BANK TRANSFER (DVA)';
+      message = 'Dedicated NUBAN is pending Paystack activation. Online card/USSD payments and owner bank cashouts stay active meanwhile.';
+      icon = Icons.account_balance_wallet_outlined;
+    }
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.containerBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                          letterSpacing: 0.8,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      badge,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _refreshingVa ? null : _refreshDva,
+                  icon: _refreshingVa
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh_rounded, size: 15),
+                  label: Text(_refreshingVa ? 'Checking...' : 'Retry now'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _requestCashout() async {
@@ -473,66 +616,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         ]),
                       )
                     else
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.containerBg,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: AppColors.cardBorder),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.primary, size: 22),
-                            ),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          'DIRECT BANK TRANSFER (DVA)',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                            color: AppColors.primary,
-                                            letterSpacing: 0.8,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'KYC PENDING',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFFD97706),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    'Dedicated NUBAN is pending Paystack merchant KYC. Online card/USSD payments and owner bank cashouts are 100% active.',
-                                    style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildDvaStatusCard(),
                     const SizedBox(height: 16),
                     // BALANCE
                     Container(

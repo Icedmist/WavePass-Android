@@ -495,3 +495,9 @@
 - [x] Batch uploads exact codes to cloud with router/cloud counts; UNSYNCED markers in history.
 - [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
 - [x] PR [#102](https://github.com/Icedmist/WavePass-Android/pull/102) merged to `main`.
+
+### 38. Router Target Validation & Cloud Fallback (Issue #103, PR #104)
+- [x] **Cause**: router target IP persisted unconditionally — a stale 192.168.1.1 (ISP gateway) poisoned all router ops while UI showed nothing wrong.
+- [x] **Fix**: validateRouterTarget proves MikroTik identity (API-8728, REST fallback); Pass History shows effective target with tap-to-verify + one-tap reset to 192.168.88.1; monitoring falls back to cloud retrieve-voucher when router unreachable.
+- [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
+- [x] PR [#104](https://github.com/Icedmist/WavePass-Android/pull/104) merged to `main`.

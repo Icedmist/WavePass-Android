@@ -506,3 +506,8 @@
 - [x] approveTransfer throws real backend/network errors instead of silent false; Approve buttons show friendly snackbars (offline vs timeout vs server message).
 - [x] **Verification**: `flutter analyze` clean.
 - [x] PR [#105](https://github.com/Icedmist/WavePass-Android/pull/105) merged to `main`.
+
+### 40. Payment Review Queue Screen (PR #106, related to Backend #55)
+- [x] Review Queue screen: counts, filters, refund/stuck/failed/reversed cards with refs; Verify-live action per item; dashboard entry card.
+- [x] **Verification**: `flutter analyze` clean.
+- [x] PR [#106](https://github.com/Icedmist/WavePass-Android/pull/106) merged to `main`.

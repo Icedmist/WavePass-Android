@@ -33,6 +33,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   String? _venueId;
   List<Map<String, dynamic>> _recentSales = [];
   bool _hideBalance = true; // Hidden by default
+  int? _expiryDaysLeft;
+  Map<String, dynamic>? _funnel;
+  bool _loadingFunnel = false;
 
   @override
   void initState() {
@@ -86,6 +89,36 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         return;
       }
       await _checkVenueReadiness();
+      await _loadLicenseAndFunnel();
+    } catch (_) {}
+  }
+
+  /// Activation countdown + sales funnel for the sticky header and cards.
+  Future<void> _loadLicenseAndFunnel() async {
+    try {
+      final expiryIso = await ActivationCodeService.instance.getActivationExpiry();
+      int? daysLeft;
+      if (expiryIso != null && expiryIso.isNotEmpty) {
+        try {
+          daysLeft = DateTime.parse(expiryIso).difference(DateTime.now()).inDays;
+        } catch (_) {}
+      }
+      final vid = VenueStateService.instance.currentVenueId;
+      Map<String, dynamic>? funnel;
+      if (vid != null && vid.isNotEmpty && !_loadingFunnel) {
+        _loadingFunnel = true;
+        try {
+          final res = await WavePassApi.instance.fetchFunnel(vid, days: 7);
+          if (res.isNotEmpty) funnel = res;
+        } finally {
+          _loadingFunnel = false;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _expiryDaysLeft = daysLeft;
+        if (funnel != null) _funnel = funnel;
+      });
     } catch (_) {}
   }
 
@@ -439,11 +472,52 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: CustomScrollView(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _MoneySummaryHeader(
+              venueName: _venueName,
+              earningsLabel: _hideBalance
+                  ? "₦ • • • • • •"
+                  : "₦${_todaySales.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
+              activeUsers: _activeUsers,
+              expiryDaysLeft: _expiryDaysLeft,
+              onTap: () => _showSalesBreakdownSheet(context),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_expiryDaysLeft != null && _expiryDaysLeft! <= 7)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: (_expiryDaysLeft! <= 3 ? AppColors.accentRed : const Color(0xFFD97706)).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: (_expiryDaysLeft! <= 3 ? AppColors.accentRed : const Color(0xFFD97706)).withValues(alpha: 0.4)),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.timer_off_rounded, size: 18, color: _expiryDaysLeft! <= 3 ? AppColors.accentRed : const Color(0xFFD97706)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _expiryDaysLeft! <= 0
+                                ? 'Activation expired — redeem a new code to resume all activity.'
+                                : 'Activation expires in ${_expiryDaysLeft!} day${_expiryDaysLeft == 1 ? '' : 's'} — request a new code before you are paused.',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _expiryDaysLeft! <= 3 ? AppColors.accentRed : const Color(0xFF92400E)),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => context.push(AppRouter.activateVenue),
+                          child: const Text('Renew', style: TextStyle(fontSize: 11)),
+                        ),
+                      ]),
+                    ),
             if (!_hasRouter && !_loadingStats)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -930,8 +1004,13 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            _buildFunnelCard(),
           ],
         ),
+      ),
+          ),
+        ],
       ),
     );
   }
@@ -997,6 +1076,98 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFunnelCard() {
+    final funnel = _funnel;
+    if (funnel == null || funnel.isEmpty) return const SizedBox.shrink();
+    final orders = funnel['orders'] as Map? ?? {};
+    final payments = funnel['payments'] as Map? ?? {};
+    final vouchers = funnel['vouchers'] as Map? ?? {};
+    final rates = funnel['rates'] as Map? ?? {};
+    final initiated = (orders['initiated'] as num?)?.toInt() ?? 0;
+    final paid = (payments['fulfilled'] as num?)?.toInt() ?? 0;
+    final active = (orders['active'] as num?)?.toInt() ?? 0;
+    final revenue = (payments['revenueNGN'] as num?)?.toInt() ?? 0;
+    final paidPct = (rates['paidPct'] as num?)?.toInt() ?? 0;
+    final redeemPct = (rates['redeemPct'] as num?)?.toInt() ?? 0;
+    Widget step(String label, String value, bool done, bool last) {
+      return Expanded(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: done ? AppColors.accentGreen : AppColors.containerBg,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: done ? AppColors.accentGreen : AppColors.cardBorder),
+                    ),
+                    child: Icon(
+                      done ? Icons.check_rounded : Icons.circle_outlined,
+                      size: 15,
+                      color: done ? Colors.white : AppColors.textLight,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.primary)),
+                  Text(label, style: const TextStyle(fontSize: 9, color: AppColors.textLight)),
+                ],
+              ),
+            ),
+            if (!last)
+              Expanded(
+                child: Container(
+                  height: 2,
+                  margin: const EdgeInsets.only(bottom: 34),
+                  color: done ? AppColors.accentGreen.withValues(alpha: 0.5) : AppColors.cardBorder,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Sales Funnel • 7d", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.primary)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: AppColors.accentGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                child: Text("₦$revenue revenue", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.accentGreen)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              step("Started", "$initiated", initiated > 0, false),
+              step("Paid $paidPct%", "$paid", paid > 0, false),
+              step("Active", "$active", active > 0, true),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Voucher redemption: $redeemPct% • ${(vouchers['issued'] as num?)?.toInt() ?? 0} issued",
+            style: const TextStyle(fontSize: 11, color: AppColors.textLight),
+          ),
+        ],
       ),
     );
   }
@@ -1591,4 +1762,80 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
       ),
     );
   }
+}
+
+/// Pinned money strip: venue, today's earnings, online count, license countdown.
+class _MoneySummaryHeader extends SliverPersistentHeaderDelegate {
+  _MoneySummaryHeader({required this.venueName, required this.earningsLabel, required this.activeUsers, required this.expiryDaysLeft, this.onTap});
+  final String venueName;
+  final String earningsLabel;
+  final int activeUsers;
+  final int? expiryDaysLeft;
+  final VoidCallback? onTap;
+
+  @override
+  double get minExtent => 68;
+  @override
+  double get maxExtent => 84;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final expiryColor = expiryDaysLeft == null
+        ? null
+        : expiryDaysLeft! <= 3
+            ? AppColors.accentRed
+            : expiryDaysLeft! <= 7
+                ? const Color(0xFFD97706)
+                : AppColors.accentGreen;
+    return Container(
+      color: AppColors.white,
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.containerBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(venueName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textLight), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(earningsLabel, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.primary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: AppColors.accentGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                child: Text('$activeUsers online', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.accentGreen)),
+              ),
+              if (expiryColor != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: expiryColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                  child: Text(expiryDaysLeft! <= 0 ? 'expired' : '${expiryDaysLeft}d left', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: expiryColor)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _MoneySummaryHeader oldDelegate) =>
+      oldDelegate.venueName != venueName ||
+      oldDelegate.earningsLabel != earningsLabel ||
+      oldDelegate.activeUsers != activeUsers ||
+      oldDelegate.expiryDaysLeft != expiryDaysLeft;
 }

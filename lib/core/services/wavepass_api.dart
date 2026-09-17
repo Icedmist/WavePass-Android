@@ -195,6 +195,15 @@ class WavePassApi {
     return _post('/api/v1/notifications/venue/$venueId/read-all', {});
   }
 
+  // ── Venue sales funnel (initiated → paid → active + revenue) ──────────
+  Future<Map<String, dynamic>> fetchFunnel(String venueId, {int days = 7}) async {
+    try {
+      return await _get('/api/v1/admin/funnel?venueId=${Uri.encodeComponent(venueId)}&days=$days');
+    } catch (_) {
+      return {};
+    }
+  }
+
   // ── Router endpoints ──────────────────────────────────────────────────
   Future<List<dynamic>> listRouters({String? venueId}) async {
     final query = venueId != null ? '?venueId=$venueId' : '';

@@ -28,9 +28,9 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Check balance is hidden by default
+      // Check balance is hidden by default (sticky strip + earnings card)
       expect(find.text("TODAY'S WI-FI EARNINGS"), findsOneWidget);
-      expect(find.text("₦ • • • • • •"), findsOneWidget);
+      expect(find.text("₦ • • • • • •"), findsNWidgets(2));
       expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
 
       // Tap eye toggler to reveal
@@ -48,7 +48,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.visibility_outlined));
       await tester.pumpAndSettle();
 
-      expect(find.text("₦ • • • • • •"), findsOneWidget);
+      expect(find.text("₦ • • • • • •"), findsNWidgets(2));
       expect(prefs.getBool('hide_balance_preference'), isTrue);
     });
 

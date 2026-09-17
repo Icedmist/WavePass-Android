@@ -516,3 +516,8 @@
 - [x] Removed hardcoded Supabase key from ApiConstants (dart-define only, fail-closed guard); README documents key injection.
 - [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
 - [x] PR [#110](https://github.com/Icedmist/WavePass-Android/pull/110) merged to `main`.
+
+### 42. Wallet Error Surfacing (Issue #111, PR #112)
+- [x] Backend 4xx/5xx JSON error maps now surface message + retry instead of rendering as silent pending.
+- [x] **Verification**: `flutter analyze` clean.
+- [x] PR [#112](https://github.com/Icedmist/WavePass-Android/pull/112) merged to `main`.

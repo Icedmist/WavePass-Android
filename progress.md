@@ -472,3 +472,15 @@
 - [x] **Review Screen**: pending/granted/rejected filters, full requester details, grant-code (kind+days), direct-access (days), reject, copy granted code.
 - [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
 - [x] PR [#91](https://github.com/Icedmist/WavePass-Android/pull/91) merged to `main`.
+
+### 34. Sticky Summary, Expiry Countdown & Funnel (Issues #93, PR #95)
+- [x] **Sticky Strip**: pinned money summary (venue, earnings, online, license countdown) via slivers; 7/3-day expiry banner with Renew shortcut.
+- [x] **Funnel Card**: 7-day initiated → paid → active stepper + revenue from admin endpoint.
+- [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass (balance-duplication expectations updated).
+- [x] PR [#95](https://github.com/Icedmist/WavePass-Android/pull/95) merged to `main`.
+
+### 35. Print Preview, Sold Marking & Sales History (Issue #92, PR #94)
+- [x] **Receipt Preview**: thermal-style sheet with Print action on sell screen; sold/unsold marker persisted per voucher + toggle in history sheet.
+- [x] **Full History**: sales-history screen (100 orders + total) linked from Recent Sales; fixed header-row overflow.
+- [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
+- [x] PR [#94](https://github.com/Icedmist/WavePass-Android/pull/94) merged to `main`.

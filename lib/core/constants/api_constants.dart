@@ -1,6 +1,11 @@
 class ApiConstants {
-  static const String supabaseUrl = "https://vvoenmdzavyzlisykhks.supabase.co";
-  static const String supabaseAnonKey = "sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR";
+  // Project URL is not a secret. The anon key MUST be injected at build time
+  // (--dart-define=SUPABASE_ANON_KEY=...) and must never be hardcoded here.
+  static const String supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://vvoenmdzavyzlisykhks.supabase.co',
+  );
+  static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
   // Cloud API Endpoint (NestJS Backend)
   static const String cloudBaseUrl = "https://api.nexawavepass.com";

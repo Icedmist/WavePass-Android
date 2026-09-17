@@ -86,18 +86,31 @@ class _WalletScreenState extends State<WalletScreen> {
       // live DVAs once real keys exist. Fall back to a plain read offline.
       // VA failures are tracked separately so the card can tell pending,
       // mock-mode, and load errors apart instead of crying KYC for all.
+      // Backend error maps (4xx/5xx JSON) also surface as errors, not pending.
+      String? backendErrorOf(Map<String, dynamic> m) {
+        final code = (m['statusCode'] as num?)?.toInt() ?? (m['status'] as num?)?.toInt() ?? 0;
+        if (m['error'] == true || code >= 400) {
+          final msg = (m['message'] ?? m['error'] ?? 'Server error').toString();
+          return msg.isEmpty ? 'Server error.' : msg;
+        }
+        return null;
+      }
+
       Map<String, dynamic> vaData = {};
       String? vaError;
       try {
         vaData = await _api.ensureVirtualAccount(venueId);
-        if (vaData['accountNumber'] == null) {
+        vaError = backendErrorOf(vaData);
+        if (vaData['accountNumber'] == null && vaError == null) {
           vaData = await _api.getVirtualAccount(venueId);
+          vaError = backendErrorOf(vaData);
         }
       } catch (e) {
         try {
           vaData = await _api.getVirtualAccount(venueId);
+          vaError = backendErrorOf(vaData);
         } catch (_) {}
-        if ((vaData['accountNumber'] as String?)?.isNotEmpty != true) {
+        if ((vaData['accountNumber'] as String?)?.isNotEmpty != true && vaError == null) {
           vaError = e.toString().replaceFirst('Exception: ', '');
         }
       }

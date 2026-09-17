@@ -8,6 +8,11 @@ class SupabaseService {
   SupabaseClient get client => Supabase.instance.client;
 
   static Future<void> initialize() async {
+    if (ApiConstants.supabaseAnonKey.isEmpty) {
+      throw StateError(
+        'Missing SUPABASE_ANON_KEY — rebuild with --dart-define=SUPABASE_ANON_KEY=<key> (never hardcode keys in source).',
+      );
+    }
     await Supabase.initialize(
       url: ApiConstants.supabaseUrl,
       // ignore: deprecated_member_use

@@ -301,7 +301,9 @@ class AppNotifier {
   Future<bool> approveTransfer(AppNotification n) async {
     final venueId = n.venueId ?? _pollVenueId;
     final mac = n.mac;
-    if (venueId == null || mac == null) return false;
+    if (venueId == null || mac == null) {
+      throw Exception('Approval is missing venue or device details — reopen the notification and retry.');
+    }
 
     try {
       final res = await WavePassApi.instance.approveAccess(
@@ -311,6 +313,11 @@ class AppNotifier {
         planId: n.planId,
         reference: n.reference,
       );
+      if (res['ok'] == false) {
+        throw Exception(
+          res['error']?.toString() ?? res['message']?.toString() ?? 'Approval failed on server.',
+        );
+      }
 
       final vCode = res['voucherCode']?.toString() ?? 'ACTIVE';
 
@@ -332,7 +339,8 @@ class AppNotifier {
       return true;
     } catch (e) {
       debugPrint('Error approving transfer: $e');
-      return false;
+      // Surface the real reason so owners never see a dead button again.
+      rethrow;
     }
   }
 

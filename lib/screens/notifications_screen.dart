@@ -11,6 +11,18 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NState extends State<NotificationsScreen> {
+  /// Strips Dart exception wrappers so owners see the server's real message.
+  String _friendlyApproveError(Object e) {
+    var msg = e.toString().replaceFirst('Exception: ', '');
+    if (msg.contains('Failed host lookup') || msg.contains('Connection refused') || msg.contains('Connection timed out') || msg.contains('Network is unreachable')) {
+      return 'Could not reach the WavePass server. Check your internet connection and retry.';
+    }
+    if (msg.contains('TimeoutException') || msg.contains('timed out')) {
+      return 'Server took too long to respond. The approval may still go through — wait a moment and check again.';
+    }
+    return msg.isEmpty ? 'Approval failed. Please retry.' : msg;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,9 +91,21 @@ class _NState extends State<NotificationsScreen> {
                         icon: const Icon(Icons.check_circle_rounded, size: 16),
                         label: const Text('Approve Access', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                         onPressed: () async {
-                          final ok = await AppNotifier.instance.approveTransfer(n);
-                          if (ok && context.mounted) {
-                            setState(() {});
+                          try {
+                            final ok = await AppNotifier.instance.approveTransfer(n);
+                            if (ok && context.mounted) {
+                              setState(() {});
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(_friendlyApproveError(e)),
+                                  backgroundColor: AppColors.accentRed,
+                                  duration: const Duration(seconds: 5),
+                                ),
+                              );
+                            }
                           }
                         },
                       ),

@@ -609,7 +609,10 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Generator Parameters', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.primary)),
+                    const Flexible(
+                      child: Text('Generator Parameters', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.primary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(6)),
@@ -623,6 +626,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
                 // Venue Selection
                 DropdownButtonFormField<String>(
+                      isExpanded: true,
                   key: ValueKey('venue_$_selectedVenueId'),
                   initialValue: (_selectedVenueId != null && _venues.any((v) => v['id'] == _selectedVenueId))
                       ? _selectedVenueId
@@ -638,6 +642,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
                 // Plan Selection
                 DropdownButtonFormField<String>(
+                      isExpanded: true,
                   key: ValueKey('plan_$_selectedPlanId'),
                   initialValue: (_selectedPlanId != null && _plans.any((p) => p['id'] == _selectedPlanId))
                       ? _selectedPlanId
@@ -676,6 +681,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                         initialValue: _codeLength,
                         decoration: const InputDecoration(labelText: 'Length', border: OutlineInputBorder()),
                         items: const [
@@ -690,6 +696,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                         initialValue: _charPattern,
                         decoration: const InputDecoration(labelText: 'Charset', border: OutlineInputBorder()),
                         items: const [
@@ -706,6 +713,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
                 // User Mode Selector
                 DropdownButtonFormField<String>(
+                      isExpanded: true,
                   initialValue: _userMode,
                   decoration: const InputDecoration(labelText: 'User Mode', border: OutlineInputBorder()),
                   items: const [
@@ -737,6 +745,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                                 initialValue: _passLength,
                                 decoration: const InputDecoration(labelText: 'PIN Length', border: OutlineInputBorder()),
                                 items: const [
@@ -751,6 +760,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                                 initialValue: _passPattern,
                                 decoration: const InputDecoration(labelText: 'PIN Pattern', border: OutlineInputBorder()),
                                 items: const [

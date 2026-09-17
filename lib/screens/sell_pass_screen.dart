@@ -468,15 +468,21 @@ class _SellPassScreenState extends State<SellPassScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.tune_rounded, size: 16, color: AppColors.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Credentials: $_userMode ($_codeLength chars, $_charPattern)",
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
-                          ),
-                        ],
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.tune_rounded, size: 16, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                "Credentials: $_userMode ($_codeLength chars, $_charPattern)",
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       Icon(
                         _showCustomSettings ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
@@ -500,6 +506,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       DropdownButtonFormField<String>(
+                      isExpanded: true,
                         initialValue: _userMode,
                         decoration: const InputDecoration(labelText: 'Generation Mode', border: OutlineInputBorder()),
                         items: const [
@@ -522,6 +529,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                           Expanded(
                             flex: 3,
                             child: DropdownButtonFormField<int>(
+                      isExpanded: true,
                               initialValue: _codeLength,
                               decoration: const InputDecoration(labelText: 'Length', border: OutlineInputBorder()),
                               items: const [
@@ -537,6 +545,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                           Expanded(
                             flex: 4,
                             child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                               initialValue: _charPattern,
                               decoration: const InputDecoration(labelText: 'Pattern', border: OutlineInputBorder()),
                               items: const [
@@ -564,6 +573,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                             Expanded(
                               flex: 3,
                               child: DropdownButtonFormField<int>(
+                      isExpanded: true,
                                 initialValue: _passLength,
                                 decoration: const InputDecoration(labelText: 'PIN Length', border: OutlineInputBorder()),
                                 items: const [
@@ -579,6 +589,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                             Expanded(
                               flex: 4,
                               child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                                 initialValue: _passPattern,
                                 decoration: const InputDecoration(labelText: 'PIN Pattern', border: OutlineInputBorder()),
                                 items: const [

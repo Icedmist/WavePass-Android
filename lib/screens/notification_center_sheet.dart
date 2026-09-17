@@ -43,7 +43,19 @@ class NotificationCenterSheet extends StatelessWidget {
                           icon: const Icon(Icons.check_circle_rounded, size: 14),
                           label: const Text('Approve Access', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
                           onPressed: () async {
-                            await AppNotifier.instance.approveTransfer(n);
+                            try {
+                              await AppNotifier.instance.approveTransfer(n);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(e.toString().replaceFirst('Exception: ', '')),
+                                    backgroundColor: AppColors.accentRed,
+                                    duration: const Duration(seconds: 5),
+                                  ),
+                                );
+                              }
+                            }
                           },
                         ),
                       ],

@@ -139,6 +139,10 @@ class WavePassApi {
     });
   }
 
+  Future<dynamic> listBankAccounts(String venueId) {
+    return _get('/api/v1/cashouts/bank-accounts?venueId=${Uri.encodeComponent(venueId)}');
+  }
+
   Future<Map<String, dynamic>> requestCashout({
     required String venueId,
     required int amountMinor,

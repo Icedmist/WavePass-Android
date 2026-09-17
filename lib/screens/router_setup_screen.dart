@@ -743,7 +743,7 @@ set name="WavePass-$slug"
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #0D1117;
+      background: #000000;
       color: #FFFFFF;
       min-height: 100vh;
       display: flex;
@@ -754,21 +754,21 @@ set name="WavePass-$slug"
       text-align: center;
     }
     .card {
-      background: #161B22;
-      border: 1px solid #30363D;
+      background: #0C0C0C;
+      border: 1px solid #262626;
       border-radius: 20px;
       padding: 28px 24px;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
     }
     .badge {
       display: inline-block;
       padding: 4px 12px;
-      background: rgba(56, 239, 125, 0.15);
-      border: 1px solid #38EF7D;
+      background: #171717;
+      border: 1px solid #FFFFFF;
       border-radius: 20px;
-      color: #38EF7D;
+      color: #FFFFFF;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
@@ -778,8 +778,8 @@ set name="WavePass-$slug"
     .spinner {
       width: 42px;
       height: 42px;
-      border: 3.5px solid rgba(56, 239, 125, 0.2);
-      border-top-color: #38EF7D;
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top-color: #FFFFFF;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 16px auto;
@@ -793,23 +793,26 @@ set name="WavePass-$slug"
     }
     .subtitle {
       font-size: 13px;
-      color: #8B949E;
+      color: #A1A1AA;
       margin-bottom: 20px;
     }
     .btn-portal {
       display: block;
       width: 100%;
       padding: 13px;
-      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
-      color: #0D1117;
+      background: #FFFFFF;
+      color: #000000;
       text-decoration: none;
       font-size: 14px;
       font-weight: 800;
       border-radius: 10px;
       cursor: pointer;
       border: none;
-      box-shadow: 0 4px 14px rgba(56, 239, 125, 0.35);
-      transition: transform 0.15s;
+      box-shadow: 0 4px 14px rgba(255, 255, 255, 0.2);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .btn-portal:hover {
+      background: #E4E4E7;
     }
     .btn-portal:active {
       transform: scale(0.98);
@@ -817,26 +820,26 @@ set name="WavePass-$slug"
     .fallback-box {
       margin-top: 24px;
       padding-top: 20px;
-      border-top: 1px solid #30363D;
+      border-top: 1px solid #262626;
       text-align: left;
     }
     .fallback-title {
       font-size: 12px;
       font-weight: 700;
-      color: #FF7B72;
+      color: #FFFFFF;
       margin-bottom: 8px;
     }
     .fallback-desc {
       font-size: 11px;
-      color: #8B949E;
+      color: #A1A1AA;
       margin-bottom: 12px;
       line-height: 1.4;
     }
     input[type="text"] {
       width: 100%;
       padding: 11px 13px;
-      background: #0D1117;
-      border: 1.5px solid #30363D;
+      background: #050505;
+      border: 1.5px solid #262626;
       border-radius: 9px;
       color: #FFFFFF;
       font-size: 14px;
@@ -845,21 +848,28 @@ set name="WavePass-$slug"
       outline: none;
       margin-bottom: 10px;
     }
+    input[type="text"]:focus {
+      border-color: #FFFFFF;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+    }
     .btn-fallback {
       width: 100%;
       padding: 11px;
-      background: #238636;
+      background: #FFFFFF;
       border: none;
-      color: #FFFFFF;
+      color: #000000;
       font-size: 13px;
       font-weight: 800;
       border-radius: 9px;
       cursor: pointer;
     }
+    .btn-fallback:hover {
+      background: #E4E4E7;
+    }
     .footer {
       margin-top: 20px;
       font-size: 11px;
-      color: #8B949E;
+      color: #71717A;
     }
   </style>
 </head>
@@ -1047,11 +1057,12 @@ $_rfc1321Md5Js
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>$venueName | WavePass Wi-Fi</title>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #0D1117;
+      background: #000000;
       color: #FFFFFF;
       min-height: 100vh;
       display: flex;
@@ -1061,21 +1072,21 @@ $_rfc1321Md5Js
       padding: 16px;
     }
     .card {
-      background: #161B22;
-      border: 1px solid #30363D;
+      background: #0C0C0C;
+      border: 1px solid #262626;
       border-radius: 20px;
       padding: 24px;
       width: 100%;
       max-width: 420px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
     }
     .badge {
       display: inline-block;
       padding: 4px 12px;
-      background: rgba(56, 239, 125, 0.15);
-      border: 1px solid #38EF7D;
+      background: #171717;
+      border: 1px solid #FFFFFF;
       border-radius: 20px;
-      color: #38EF7D;
+      color: #FFFFFF;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
@@ -1093,13 +1104,13 @@ $_rfc1321Md5Js
     }
     .subtitle {
       font-size: 13px;
-      color: #8B949E;
+      color: #A1A1AA;
       text-align: center;
       margin-bottom: 18px;
     }
     .subpage-box {
-      background: linear-gradient(135deg, rgba(17, 153, 142, 0.15) 0%, rgba(56, 239, 125, 0.15) 100%);
-      border: 1px solid #38EF7D;
+      background: #141414;
+      border: 1px solid #333333;
       border-radius: 14px;
       padding: 16px;
       margin-bottom: 20px;
@@ -1108,12 +1119,12 @@ $_rfc1321Md5Js
     .subpage-title {
       font-size: 14px;
       font-weight: 700;
-      color: #38EF7D;
+      color: #FFFFFF;
       margin-bottom: 6px;
     }
     .subpage-desc {
       font-size: 12px;
-      color: #C9D1D9;
+      color: #A1A1AA;
       line-height: 1.4;
       margin-bottom: 12px;
     }
@@ -1121,8 +1132,8 @@ $_rfc1321Md5Js
       display: block;
       width: 100%;
       padding: 12px;
-      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
-      color: #0D1117;
+      background: #FFFFFF;
+      color: #000000;
       text-decoration: none;
       font-size: 14px;
       font-weight: 800;
@@ -1130,22 +1141,26 @@ $_rfc1321Md5Js
       text-align: center;
       border: none;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(56, 239, 125, 0.3);
+      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+      transition: background 0.15s;
+    }
+    .btn-subpage:hover {
+      background: #E4E4E7;
     }
     .tabs {
       display: flex;
-      background: #0D1117;
+      background: #000000;
       border-radius: 12px;
       padding: 4px;
       margin-bottom: 16px;
-      border: 1px solid #30363D;
+      border: 1px solid #262626;
     }
     .tab-btn {
       flex: 1;
       padding: 9px 4px;
       background: transparent;
       border: none;
-      color: #8B949E;
+      color: #71717A;
       font-size: 12px;
       font-weight: 700;
       border-radius: 8px;
@@ -1154,9 +1169,9 @@ $_rfc1321Md5Js
       white-space: nowrap;
     }
     .tab-btn.active {
-      background: #21262D;
-      color: #FFFFFF;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      background: #FFFFFF;
+      color: #000000;
+      box-shadow: 0 2px 6px rgba(255,255,255,0.2);
     }
     .form-group {
       margin-bottom: 14px;
@@ -1166,14 +1181,14 @@ $_rfc1321Md5Js
       display: block;
       font-size: 12px;
       font-weight: 600;
-      color: #C9D1D9;
+      color: #A1A1AA;
       margin-bottom: 6px;
     }
     input[type="text"], input[type="password"], input[type="email"] {
       width: 100%;
       padding: 12px 14px;
-      background: #0D1117;
-      border: 1.5px solid #30363D;
+      background: #050505;
+      border: 1.5px solid #262626;
       border-radius: 10px;
       color: #FFFFFF;
       font-size: 14px;
@@ -1182,7 +1197,8 @@ $_rfc1321Md5Js
       transition: border-color 0.2s;
     }
     input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus {
-      border-color: #38EF7D;
+      border-color: #FFFFFF;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
     }
     .input-upper {
       text-transform: uppercase;
@@ -1195,8 +1211,8 @@ $_rfc1321Md5Js
       margin-top: 10px;
     }
     .plan-item {
-      background: #0D1117;
-      border: 1.5px solid #30363D;
+      background: #080808;
+      border: 1.5px solid #262626;
       border-radius: 12px;
       padding: 12px 14px;
       display: flex;
@@ -1206,7 +1222,7 @@ $_rfc1321Md5Js
       transition: border-color 0.2s;
     }
     .plan-item:hover {
-      border-color: #38EF7D;
+      border-color: #FFFFFF;
     }
     .plan-info {
       text-align: left;
@@ -1214,7 +1230,7 @@ $_rfc1321Md5Js
     .plan-duration {
       font-size: 10px;
       font-weight: 700;
-      color: #38EF7D;
+      color: #A1A1AA;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -1231,9 +1247,9 @@ $_rfc1321Md5Js
     }
     .btn-pay {
       padding: 9px 12px;
-      background: #238636;
+      background: #FFFFFF;
       border: none;
-      color: #FFFFFF;
+      color: #000000;
       font-size: 12px;
       font-weight: 800;
       border-radius: 8px;
@@ -1242,21 +1258,21 @@ $_rfc1321Md5Js
       transition: background 0.2s;
     }
     .btn-pay:hover {
-      background: #2ea043;
+      background: #E4E4E7;
     }
     .btn-pay:disabled, .btn-pay.disabled {
-      background: #21262D !important;
-      color: #8B949E !important;
+      background: #27272A !important;
+      color: #71717A !important;
       cursor: not-allowed !important;
-      border: 1px solid #30363D !important;
+      border: 1px solid #3F3F46 !important;
       opacity: 0.7;
     }
     .paystack-status-banner {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #0D1117;
-      border: 1px solid #30363D;
+      background: #080808;
+      border: 1px solid #262626;
       border-radius: 10px;
       padding: 10px 14px;
       margin-bottom: 12px;
@@ -1272,27 +1288,27 @@ $_rfc1321Md5Js
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #38EF7D;
-      box-shadow: 0 0 8px #38EF7D;
+      background: #FFFFFF;
+      box-shadow: 0 0 8px #FFFFFF;
     }
     .status-dot.disabled {
-      background: #F85149;
-      box-shadow: 0 0 8px #F85149;
+      background: #71717A;
+      box-shadow: none;
     }
     .status-notice {
-      background: rgba(248, 81, 73, 0.1);
-      border: 1px solid #F85149;
+      background: #141414;
+      border: 1px solid #333333;
       border-radius: 10px;
       padding: 10px;
-      color: #FF7B72;
+      color: #E4E4E7;
       font-size: 12px;
       line-height: 1.4;
       margin-bottom: 12px;
       text-align: center;
     }
     .trial-box {
-      background: rgba(56, 189, 248, 0.08);
-      border: 1px solid #38BDF8;
+      background: #141414;
+      border: 1px solid #333333;
       border-radius: 12px;
       padding: 12px 14px;
       margin-top: 14px;
@@ -1301,12 +1317,12 @@ $_rfc1321Md5Js
     .trial-title {
       font-size: 13px;
       font-weight: 800;
-      color: #38BDF8;
+      color: #FFFFFF;
       margin-bottom: 4px;
     }
     .trial-desc {
       font-size: 11px;
-      color: #C9D1D9;
+      color: #A1A1AA;
       line-height: 1.4;
       margin-bottom: 10px;
     }
@@ -1314,25 +1330,25 @@ $_rfc1321Md5Js
       display: inline-block;
       width: 100%;
       padding: 10px;
-      background: #0284C7;
+      background: #27272A;
       color: #FFFFFF;
       font-size: 12px;
       font-weight: 800;
       border-radius: 8px;
       text-decoration: none;
       cursor: pointer;
-      border: none;
+      border: 1px solid #3F3F46;
       transition: background 0.2s;
     }
     .btn-trial:hover {
-      background: #0369A1;
+      background: #3F3F46;
     }
     .btn-submit {
       width: 100%;
       padding: 14px;
-      background: #238636;
+      background: #FFFFFF;
       border: none;
-      color: #FFFFFF;
+      color: #000000;
       font-size: 14px;
       font-weight: 800;
       border-radius: 10px;
@@ -1341,12 +1357,12 @@ $_rfc1321Md5Js
       transition: background 0.2s;
     }
     .btn-submit:hover {
-      background: #2ea043;
+      background: #E4E4E7;
     }
     .error-msg {
-      background: rgba(248, 81, 73, 0.15);
-      border: 1px solid #F85149;
-      color: #FF7B72;
+      background: #171717;
+      border: 1px solid #52525B;
+      color: #FFFFFF;
       padding: 10px 14px;
       border-radius: 10px;
       font-size: 12px;
@@ -1356,7 +1372,7 @@ $_rfc1321Md5Js
     .footer {
       margin-top: 18px;
       font-size: 11px;
-      color: #8B949E;
+      color: #71717A;
       text-align: center;
       line-height: 1.6;
     }
@@ -1390,9 +1406,9 @@ $_rfc1321Md5Js
 
     <!-- Panel 1: Voucher Code -->
     <div id="panelVoucher">
-      <div id="savedVoucherBox" style="display:none; background:rgba(56, 239, 125, 0.12); border:1px solid #38EF7D; border-radius:12px; padding:12px; margin-bottom:14px; text-align:left;">
-        <div style="font-size:12px; font-weight:800; color:#38EF7D; margin-bottom:4px;">✨ Reconnect Active Voucher</div>
-        <div style="font-size:11px; color:#C9D1D9; margin-bottom:8px;">Found voucher from your previous session: <strong id="savedVoucherCode" style="color:#FFFFFF; letter-spacing:1px;"></strong></div>
+      <div id="savedVoucherBox" style="display:none; background:#141414; border:1px solid #333333; border-radius:12px; padding:12px; margin-bottom:14px; text-align:left;">
+        <div style="font-size:12px; font-weight:800; color:#FFFFFF; margin-bottom:4px;">✨ Reconnect Active Voucher</div>
+        <div style="font-size:11px; color:#A1A1AA; margin-bottom:8px;">Found voucher from your previous session: <strong id="savedVoucherCode" style="color:#FFFFFF; letter-spacing:1px;"></strong></div>
         <button type="button" class="btn-submit" style="padding:10px; font-size:13px;" onclick="submitVoucher()">1-Tap Reconnect Now &rarr;</button>
       </div>
       <div class="form-group">
@@ -1408,7 +1424,7 @@ $_rfc1321Md5Js
         <span>Payment Gateway</span>
         <div class="status-indicator">
           <span class="status-dot ${isPaystackConfigured ? '' : 'disabled'}"></span>
-          <span style="color: ${isPaystackConfigured ? '#38EF7D' : '#FF7B72'};">
+          <span style="color: ${isPaystackConfigured ? '#FFFFFF' : '#71717A'};">
             ${isPaystackConfigured ? 'Paystack Online' : 'Paystack Not Available'}
           </span>
         </div>
@@ -1488,31 +1504,82 @@ $_rfc1321Md5Js
         return;
       }
       var email = document.getElementById('pay_email') ? document.getElementById('pay_email').value.trim() : '';
-      var mac = "\$(mac)";
+      var rawMac = "\$(mac)";
+      var mac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : "02:00:00:00:00:01";
       var btn = document.getElementById('btn_plan_' + planId);
+      var originalText = btn ? btn.innerText : 'Pay';
       if (btn) {
-        btn.innerText = 'Connecting...';
+        btn.innerText = 'Initializing...';
         btn.disabled = true;
       }
 
-      var portalPayUrl = 'https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-login=\$(link-login-only)&venue=$slug&plan=' + encodeURIComponent(planId);
+      var initPayload = {
+        mac: mac,
+        planId: planId,
+        email: email || undefined,
+        venueId: '$slug'
+      };
 
-      // 1. Attempt server-side Paystack payment initialization
-      fetch('https://$slug.nexawavepass.com/api/portal/init-payment', {
+      fetch('https://api.nexawavepass.com/api/v1/portal/init-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mac: mac, planId: planId, email: email, venueSlug: '$slug' })
+        body: JSON.stringify(initPayload)
       })
-      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        if (!res.ok) {
+          throw new Error('Server returned HTTP ' + res.status);
+        }
+        return res.json();
+      })
       .then(function(data) {
-        if (data && data.authorization_url) {
+        if (!data) throw new Error('Invalid payment initialization response');
+
+        // Check if Paystack Inline popup is loaded
+        if (window.PaystackPop) {
+          var handler = PaystackPop.setup({
+            key: 'pk_live_34438c1d62f92132561142576056470fbc70e4ce',
+            email: email || ('guest_' + mac.replace(/[:-]/g, '').toLowerCase() + '@nexawavepass.com'),
+            amount: data.amount || (parseInt(price.replace(/[^0-9]/g, '')) * 100),
+            ref: data.reference,
+            callback: function(response) {
+              if (btn) btn.innerText = 'Activating Wi-Fi...';
+              var ref = (response && response.reference) || data.reference;
+              fetch('https://api.nexawavepass.com/api/v1/portal/verify-payment?reference=' + encodeURIComponent(ref))
+                .then(function(vRes) { return vRes.json(); })
+                .then(function(vData) {
+                  var vCode = (vData && (vData.voucherCode || vData.code || (vData.voucher && vData.voucher.code))) || '';
+                  if (vCode) {
+                    try { localStorage.setItem('wp-active-voucher', vCode); } catch(e){}
+                    executeLogin(vCode, vCode);
+                  } else {
+                    executeLogin(mac, mac);
+                  }
+                })
+                .catch(function() {
+                  executeLogin(mac, mac);
+                });
+            },
+            onClose: function() {
+              if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+              }
+            }
+          });
+          handler.openIframe();
+        } else if (data.authorization_url) {
+          // Direct navigation to Paystack checkout page
           window.location.href = data.authorization_url;
         } else {
-          window.location.href = portalPayUrl;
+          throw new Error(data.message || 'No checkout URL returned.');
         }
       })
-      .catch(function() {
-        window.location.href = portalPayUrl;
+      .catch(function(err) {
+        if (btn) {
+          btn.innerText = originalText;
+          btn.disabled = false;
+        }
+        alert('Payment Error: ' + (err.message || 'Could not connect to payment gateway. Please verify internet access or use a cash voucher.'));
       });
     }
 
@@ -1616,7 +1683,7 @@ $_rfc1321Md5Js
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #0D1117;
+      background: #000000;
       color: #FFFFFF;
       min-height: 100vh;
       display: flex;
@@ -1626,13 +1693,13 @@ $_rfc1321Md5Js
       padding: 20px;
     }
     .card {
-      background: #161B22;
-      border: 1px solid #30363D;
+      background: #0C0C0C;
+      border: 1px solid #262626;
       border-radius: 20px;
       padding: 28px;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
       text-align: center;
     }
     .status-badge {
@@ -1640,10 +1707,10 @@ $_rfc1321Md5Js
       align-items: center;
       gap: 6px;
       padding: 6px 14px;
-      background: rgba(56, 239, 125, 0.15);
-      border: 1px solid #38EF7D;
+      background: #171717;
+      border: 1px solid #FFFFFF;
       border-radius: 20px;
-      color: #38EF7D;
+      color: #FFFFFF;
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
@@ -1654,8 +1721,8 @@ $_rfc1321Md5Js
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #38EF7D;
-      box-shadow: 0 0 8px #38EF7D;
+      background: #FFFFFF;
+      box-shadow: 0 0 8px #FFFFFF;
     }
     .logo {
       font-size: 22px;
@@ -1665,13 +1732,13 @@ $_rfc1321Md5Js
     }
     .subtitle {
       font-size: 13px;
-      color: #8B949E;
+      color: #A1A1AA;
       margin-bottom: 20px;
     }
     .stats-table {
       width: 100%;
-      background: #0D1117;
-      border: 1px solid #30363D;
+      background: #050505;
+      border: 1px solid #262626;
       border-radius: 12px;
       padding: 14px;
       margin-bottom: 20px;
@@ -1681,14 +1748,14 @@ $_rfc1321Md5Js
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #21262D;
+      border-bottom: 1px solid #1E1E22;
       font-size: 13px;
     }
     .stat-row:last-child {
       border-bottom: none;
     }
     .stat-label {
-      color: #8B949E;
+      color: #A1A1AA;
     }
     .stat-value {
       color: #FFFFFF;
@@ -1699,34 +1766,41 @@ $_rfc1321Md5Js
       display: block;
       width: 100%;
       padding: 14px;
-      background: rgba(248, 81, 73, 0.15);
-      border: 1px solid #F85149;
-      color: #FF7B72;
+      background: #18181B;
+      border: 1px solid #3F3F46;
+      color: #FFFFFF;
       text-decoration: none;
       font-size: 14px;
       font-weight: 700;
       border-radius: 12px;
       cursor: pointer;
       margin-bottom: 10px;
-      border: none;
+      transition: background 0.15s;
+    }
+    .btn-logout:hover {
+      background: #27272A;
     }
     .btn-refresh {
       display: block;
       width: 100%;
       padding: 12px;
-      background: #21262D;
-      border: 1px solid #30363D;
-      color: #C9D1D9;
+      background: #FFFFFF;
+      border: none;
+      color: #000000;
       text-decoration: none;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 800;
       border-radius: 12px;
       text-align: center;
+      transition: background 0.15s;
+    }
+    .btn-refresh:hover {
+      background: #E4E4E7;
     }
     .footer {
       margin-top: 16px;
       font-size: 11px;
-      color: #484F58;
+      color: #71717A;
     }
   </style>
 </head>
@@ -1806,7 +1880,7 @@ $_rfc1321Md5Js
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #0D1117;
+      background: #000000;
       color: #FFFFFF;
       min-height: 100vh;
       display: flex;
@@ -1816,22 +1890,22 @@ $_rfc1321Md5Js
       padding: 20px;
     }
     .card {
-      background: #161B22;
-      border: 1px solid #30363D;
+      background: #0C0C0C;
+      border: 1px solid #262626;
       border-radius: 20px;
       padding: 28px;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
       text-align: center;
     }
     .icon-box {
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: rgba(248, 81, 73, 0.15);
-      border: 1px solid #F85149;
-      color: #FF7B72;
+      background: #171717;
+      border: 1px solid #333333;
+      color: #FFFFFF;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1846,14 +1920,14 @@ $_rfc1321Md5Js
     }
     .subtitle {
       font-size: 13px;
-      color: #8B949E;
+      color: #A1A1AA;
       margin-bottom: 24px;
       line-height: 1.5;
     }
     .stats-table {
       width: 100%;
-      background: #0D1117;
-      border: 1px solid #30363D;
+      background: #050505;
+      border: 1px solid #262626;
       border-radius: 12px;
       padding: 14px;
       margin-bottom: 24px;
@@ -1863,14 +1937,14 @@ $_rfc1321Md5Js
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #21262D;
+      border-bottom: 1px solid #1E1E22;
       font-size: 13px;
     }
     .stat-row:last-child {
       border-bottom: none;
     }
     .stat-label {
-      color: #8B949E;
+      color: #A1A1AA;
     }
     .stat-value {
       color: #FFFFFF;
@@ -1881,20 +1955,25 @@ $_rfc1321Md5Js
       display: block;
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #11998E 0%, #38EF7D 100%);
-      color: #0D1117;
+      background: #FFFFFF;
+      color: #000000;
       text-decoration: none;
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 800;
       border-radius: 12px;
       text-align: center;
       border: none;
       cursor: pointer;
+      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+      transition: background 0.15s;
+    }
+    .btn-login:hover {
+      background: #E4E4E7;
     }
     .footer {
       margin-top: 16px;
       font-size: 11px;
-      color: #484F58;
+      color: #71717A;
     }
   </style>
 </head>

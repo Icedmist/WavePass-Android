@@ -81,7 +81,7 @@ void main() {
       expect(html, contains('id="panelPlans"'));
       expect(html, contains('id="pay_email"'));
       expect(html, contains('payWithPaystack'));
-      expect(html, contains('https://apex-lounge.nexawavepass.com/api/portal/init-payment'));
+      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/init-payment'));
 
       // 4. Pure-JS RFC 1321 MD5 & CHAP challenge response
       expect(html, contains('function hexMD5('));

@@ -466,3 +466,9 @@
 - [x] **List**: kind badge + expiry per code, EXPIRED filter/count.
 - [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
 - [x] PR [#89](https://github.com/Icedmist/WavePass-Android/pull/89) merged to `main`.
+
+### 33. Code Request Flow & Admin Review (Issue #90, PR #91)
+- [x] **Request Form**: activation screen collects name/phone/venue/message, posts to admin, shows pending confirmation.
+- [x] **Review Screen**: pending/granted/rejected filters, full requester details, grant-code (kind+days), direct-access (days), reject, copy granted code.
+- [x] **Verification**: `flutter analyze` 0 issues; 60/60 tests pass.
+- [x] PR [#91](https://github.com/Icedmist/WavePass-Android/pull/91) merged to `main`.

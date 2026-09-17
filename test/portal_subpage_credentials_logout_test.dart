@@ -66,10 +66,8 @@ void main() {
     test('Generated login.html defaults to full on-router standalone portal card with voucher redemption and Paystack', () {
       final html = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge');
 
-      // 1. Venue Hosted Subpage Integration
-      expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
-      expect(html, contains('Launch Venue Portal'));
-      expect(html, contains('Visiting Apex Lounge?'));
+      // 1. Standalone Title & Venue Branding
+      expect(html, contains('Apex Lounge | WavePass Wi-Fi'));
 
       // 2. Segmented Credential and Plan Tabs
       expect(html, contains('id="tabVoucher"'));
@@ -160,7 +158,7 @@ void main() {
       expect(html, contains("payWithPaystack('plan_weekly', '₦5000')"));
       expect(html, contains('Paystack Online'));
       expect(html, contains('Need Internet to Pay?'));
-      expect(html, contains(r'username=T-$(mac-esc)'));
+      expect(html, contains(r'value="T-$(mac-esc)"'));
       expect(html, contains('placeholder="e.g. 123456"'));
     });
 

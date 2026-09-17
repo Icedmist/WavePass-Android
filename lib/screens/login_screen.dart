@@ -10,6 +10,7 @@ import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/services/router_discovery_service.dart';
+import '../core/services/activation_code_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -60,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await VenueStateService.instance.clearVenue();
         final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
         await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
+        await ActivationCodeService.instance.isAccountActivated(email);
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;
@@ -86,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await VenueStateService.instance.clearVenue();
           final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
           await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
+          await ActivationCodeService.instance.isAccountActivated(email);
           if (!mounted) return;
           context.go(AppRouter.dashboard);
           return;

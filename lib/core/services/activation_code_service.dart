@@ -24,6 +24,7 @@ class ActivationCodeService {
   static const String _keyActivationPrefix = 'wavepass_venue_activated_';
   static const String _keyActivatedCodePrefix = 'wavepass_venue_activation_code_';
   static const String _keyExpiryPrefix = 'wavepass_venue_activated_expiry_';
+  static const String _keyPermanentActivationPrefix = 'wavepass_user_permanently_activated_';
 
   static const String _superAdminEmail = 'talk2icedmist@gmail.com';
 
@@ -34,6 +35,13 @@ class ActivationCodeService {
   Future<void> warmCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final targetEmail = (await _getCurrentUserEmail()).toLowerCase().trim();
+      if (targetEmail.isNotEmpty) {
+        if (targetEmail == _superAdminEmail || prefs.getBool('$_keyPermanentActivationPrefix$targetEmail') == true) {
+          isActivatedCached = true;
+          return;
+        }
+      }
       if (_isExpired(prefs.getString(keyGlobalExpiry))) {
         await clearCache();
         isActivatedCached = false;
@@ -71,6 +79,7 @@ class ActivationCodeService {
     await prefs.setBool(keyGlobalActivated, true);
     if (targetEmail.isNotEmpty) {
       await prefs.setBool('$_keyActivationPrefix$targetEmail', true);
+      await prefs.setBool('$_keyPermanentActivationPrefix$targetEmail', true);
       if (code != null) {
         await prefs.setString('$_keyActivatedCodePrefix$targetEmail', code);
       } else {
@@ -106,7 +115,11 @@ class ActivationCodeService {
     // If an explicit email was specified, check specifically for that account
     if (email != null && email.isNotEmpty) {
       final target = email.toLowerCase().trim();
-      if (target == _superAdminEmail) return true;
+      if (target == _superAdminEmail || prefs.getBool('$_keyPermanentActivationPrefix$target') == true) {
+        await prefs.setBool(keyGlobalActivated, true);
+        isActivatedCached = true;
+        return true;
+      }
       if (!forceRefresh) {
         if (_isExpired(prefs.getString('$_keyExpiryPrefix$target'))) {
           await _noteExpiryBeforeClear(prefs, target);
@@ -130,8 +143,9 @@ class ActivationCodeService {
 
     final targetEmail = (await _getCurrentUserEmail()).toLowerCase().trim();
 
-    // Super admin bypass
-    if (targetEmail == _superAdminEmail) {
+    // Super admin bypass or permanent account activation
+    if (targetEmail == _superAdminEmail ||
+        (targetEmail.isNotEmpty && prefs.getBool('$_keyPermanentActivationPrefix$targetEmail') == true)) {
       await prefs.setBool(keyGlobalActivated, true);
       isActivatedCached = true;
       return true;
@@ -166,7 +180,9 @@ class ActivationCodeService {
   Future<Map<String, dynamic>> reverifyActivations() async {
     final prefs = await SharedPreferences.getInstance();
     final targetEmail = (await _getCurrentUserEmail()).toLowerCase().trim();
-    if (targetEmail.isEmpty || targetEmail == _superAdminEmail) {
+    if (targetEmail.isEmpty ||
+        targetEmail == _superAdminEmail ||
+        prefs.getBool('$_keyPermanentActivationPrefix$targetEmail') == true) {
       return {'activated': true, 'source': 'local'};
     }
     final ok = await _checkCloudActivation(targetEmail, prefs, force: true);
@@ -174,6 +190,11 @@ class ActivationCodeService {
   }
 
   Future<bool> _checkCloudActivation(String targetEmail, SharedPreferences prefs, {bool force = false}) async {
+    if (prefs.getBool('$_keyPermanentActivationPrefix$targetEmail') == true) {
+      await prefs.setBool(keyGlobalActivated, true);
+      isActivatedCached = true;
+      return true;
+    }
     try {
       final res = await http
           .get(

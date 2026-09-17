@@ -1091,7 +1091,7 @@ $_rfc1321Md5Js
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>$venueName | WavePass Wi-Fi</title>
-  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <script async src="https://js.paystack.co/v1/inline.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1142,63 +1142,20 @@ $_rfc1321Md5Js
       text-align: center;
       margin-bottom: 18px;
     }
-    .subpage-box {
-      background: #141414;
-      border: 1px solid #333333;
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 20px;
-      text-align: center;
-    }
-    .subpage-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #FFFFFF;
-      margin-bottom: 6px;
-    }
-    .subpage-desc {
-      font-size: 12px;
-      color: #A1A1AA;
-      line-height: 1.4;
-      margin-bottom: 12px;
-    }
-    .btn-subpage {
-      display: block;
-      width: 100%;
-      padding: 12px;
-      background: #FFFFFF;
-      color: #000000;
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 800;
-      border-radius: 10px;
-      text-align: center;
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
-      transition: background 0.15s;
-    }
-    .btn-subpage:hover {
-      background: #E4E4E7;
-    }
     .tabs {
       display: flex;
+      flex-wrap: wrap;
       background: #000000;
       border-radius: 12px;
       padding: 4px;
       margin-bottom: 16px;
       border: 1px solid #262626;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
       gap: 4px;
     }
-    .tabs::-webkit-scrollbar {
-      display: none;
-    }
     .tab-btn {
-      flex: 1 0 auto;
-      padding: 9px 8px;
+      flex: 1 1 calc(33.333% - 4px);
+      min-width: 90px;
+      padding: 10px 6px;
       background: transparent;
       border: none;
       color: #71717A;
@@ -1207,7 +1164,8 @@ $_rfc1321Md5Js
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.2s;
-      white-space: nowrap;
+      text-align: center;
+      line-height: 1.2;
     }
     .tab-btn.active {
       background: #FFFFFF;
@@ -1499,22 +1457,12 @@ $_rfc1321Md5Js
 </head>
 <body>
   <div class="card">
-    <div style="text-align:center;"><span class="badge">Hotspot Gateway</span></div>
     <div class="logo">$venueName</div>
     <div class="subtitle">Fast &amp; Secure Wi-Fi Access</div>
 
     \$(if error)
     <div class="error-msg">\$(error)</div>
     \$(endif)
-
-    <!-- Venue Hosted Subpage Card -->
-    <div class="subpage-box">
-      <div class="subpage-title">Visiting $venueName?</div>
-      <p class="subpage-desc">Buy passes online with Card/Transfer or manage your active connection on our venue portal.</p>
-      <a href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)" class="btn-subpage">
-        Launch Venue Portal &rarr;
-      </a>
-    </div>
 
     <!-- Segmented Tab Switcher (Voucher, Buy Online, Transfer, Retrieve, User & Pass) -->
     <div class="tabs">
@@ -1561,13 +1509,17 @@ $_rfc1321Md5Js
       <div class="plans-list" id="plansContainer">
         ${plansBuffer.toString()}
       </div>
-      <!-- 2-Minute Payment Trial Access -->
+      <!-- 2-Minute Payment Trial Access (Direct POST Form) -->
       <div class="trial-box">
         <div class="trial-title">⚡ Need Internet to Pay?</div>
         <div class="trial-desc">Get a 2-minute temporary connection window to open your bank app or complete Paystack checkout.</div>
-        <a href="\$(link-login-only)?dst=\$(link-orig-esc)&username=T-\$(mac-esc)" class="btn-trial">
-          Activate 2-Min Payment Trial &rarr;
-        </a>
+        <form name="trial_form" action="\$(link-login-only)" method="post">
+          <input type="hidden" name="dst" value="\$(link-orig)">
+          <input type="hidden" name="popup" value="false">
+          <input type="hidden" name="username" value="T-\$(mac-esc)">
+          <input type="hidden" name="password" value="">
+          <button type="submit" class="btn-trial">Activate 2-Min Payment Trial &rarr;</button>
+        </form>
       </div>
     </div>
 
@@ -1652,6 +1604,37 @@ $_rfc1321Md5Js
   </div>
 
   <script>
+    window.switchTab = function(mode) {
+      var tabs = ['voucher', 'plans', 'transfer', 'retrieve', 'creds'];
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        var cap = t.charAt(0).toUpperCase() + t.slice(1);
+        var btn = document.getElementById('tab' + cap);
+        var pan = document.getElementById('panel' + cap);
+        if (btn) {
+          btn.className = (mode === t) ? 'tab-btn active' : 'tab-btn';
+        }
+        if (pan) {
+          pan.style.display = (mode === t) ? 'block' : 'none';
+        }
+      }
+    };
+    var switchTab = window.switchTab;
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var tabBox = document.querySelector('.tabs');
+      if (tabBox) {
+        tabBox.addEventListener('click', function(e) {
+          var btn = e.target.closest('.tab-btn');
+          if (!btn) return;
+          var id = btn.id || '';
+          if (id.indexOf('tab') === 0) {
+            window.switchTab(id.substring(3).toLowerCase());
+          }
+        });
+      }
+    });
+
 $_rfc1321Md5Js
 
     function copyText(val) {
@@ -1664,18 +1647,6 @@ $_rfc1321Md5Js
         });
       } else {
         prompt('Copy account number:', val);
-      }
-    }
-
-    function switchTab(mode) {
-      var tabs = ['voucher', 'plans', 'transfer', 'retrieve', 'creds'];
-      for (var i = 0; i < tabs.length; i++) {
-        var t = tabs[i];
-        var cap = t.charAt(0).toUpperCase() + t.slice(1);
-        var btn = document.getElementById('tab' + cap);
-        var pan = document.getElementById('panel' + cap);
-        if (btn) btn.className = (mode === t) ? 'tab-btn active' : 'tab-btn';
-        if (pan) pan.style.display = (mode === t) ? 'block' : 'none';
       }
     }
 

@@ -296,144 +296,125 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           ? 'Unlimited'
           : '${((dataLimit as num) / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB';
 
-      // Group cards into pairs for 2-column rows
-      final pairs = <List<Map<String, dynamic>>>[];
-      for (int i = 0; i < _generated.length; i += 2) {
-        pairs.add([
-          _generated[i],
-          if (i + 1 < _generated.length) _generated[i + 1],
-        ]);
-      }
-
       pw.Widget buildCard(Map<String, dynamic> item) {
         final code = item['code']?.toString() ?? '';
         final pass = item['password']?.toString() ?? '';
         final isDual = _userMode == 'Username & Password' && pass != code;
 
         return pw.Container(
-          width: 260,
-          height: 156,
-          margin: const pw.EdgeInsets.all(6),
-          padding: const pw.EdgeInsets.all(8),
+          width: double.infinity,
+          margin: const pw.EdgeInsets.symmetric(vertical: 3.5),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: pw.BoxDecoration(
             color: PdfColors.white,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
             border: pw.Border.all(
               color: PdfColors.grey500,
               width: 1,
               style: pw.BorderStyle.dashed,
             ),
           ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              // Venue Header & Wi-Fi badge
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Expanded(
-                    child: pw.Text(
-                      venueName.toUpperCase(),
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.black),
-                      maxLines: 1,
-                    ),
-                  ),
-                  pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: const pw.BoxDecoration(
-                      color: PdfColors.black,
-                      borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
-                    ),
-                    child: pw.Text(
-                      'WI-FI TICKET',
-                      style: pw.TextStyle(color: PdfColors.white, fontSize: 7, fontWeight: pw.FontWeight.bold),
-                    ),
-                  ),
-                ],
+              // 1. QR Code
+              pw.Container(
+                padding: const pw.EdgeInsets.all(3),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: 'http://192.168.88.1/login?username=${item['code']}&password=${item['password'] ?? item['code']}',
+                  width: 50,
+                  height: 50,
+                ),
               ),
-              pw.Divider(thickness: 0.5, color: PdfColors.grey400),
-              pw.SizedBox(height: 2),
+              pw.SizedBox(width: 12),
 
-              // Middle: QR Code + Plan & Price Info
-              pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(2),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    ),
-                    child: pw.BarcodeWidget(
-                      barcode: pw.Barcode.qrCode(),
-                      data: 'http://192.168.88.1/login?username=${item['code']}&password=${item['password'] ?? item['code']}',
-                      width: 50,
-                      height: 50,
-                    ),
-                  ),
-                  pw.SizedBox(width: 8),
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+              // 2. Plan & Venue Details
+              pw.Expanded(
+                flex: 3,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Row(
                       children: [
                         pw.Text(
-                          planName,
+                          venueName.toUpperCase(),
                           style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.black),
                           maxLines: 1,
                         ),
-                        pw.SizedBox(height: 2),
-                        pw.Text(
-                          priceStr,
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: PdfColors.red800),
-                        ),
-                        pw.SizedBox(height: 2),
-                        pw.Text(
-                          '$durationStr • $dataStr',
-                          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                        pw.SizedBox(width: 6),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: const pw.BoxDecoration(
+                            color: PdfColors.black,
+                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                          ),
+                          child: pw.Text(
+                            'WI-FI SLIP',
+                            style: pw.TextStyle(color: PdfColors.white, fontSize: 6.5, fontWeight: pw.FontWeight.bold),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 4),
-
-              // Voucher Code Box
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: const pw.BoxDecoration(
-                  color: PdfColors.grey200,
-                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      '$planName  •  $durationStr  •  $dataStr',
+                      style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Connect Wi-Fi & scan QR or visit $slug.nexawavepass.com',
+                      style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
+                    ),
+                  ],
                 ),
-                child: isDual
-                    ? pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('USER: $code', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
-                          pw.Text('PIN: $pass', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
-                        ],
-                      )
-                    : pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('VOUCHER:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                          pw.Text(
-                            code,
-                            style: pw.TextStyle(
-                              fontSize: 11,
-                              fontWeight: pw.FontWeight.bold,
-                              font: pw.Font.courierBold(),
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ],
-                      ),
               ),
-              pw.Spacer(),
-              pw.Text(
-                'Connect to Wi-Fi • Scan QR or visit $slug.nexawavepass.com to pay or enter code',
-                style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
-                textAlign: pw.TextAlign.center,
+
+              pw.SizedBox(width: 8),
+
+              // 3. Price & Voucher Code Box
+              pw.Expanded(
+                flex: 2,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      priceStr,
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: PdfColors.red800),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: const pw.BoxDecoration(
+                        color: PdfColors.grey200,
+                        borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+                      ),
+                      child: isDual
+                          ? pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.end,
+                              children: [
+                                pw.Text('USER: $code', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
+                                pw.Text('PIN: $pass', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
+                              ],
+                            )
+                          : pw.Text(
+                              code,
+                              style: pw.TextStyle(
+                                fontSize: 13,
+                                fontWeight: pw.FontWeight.bold,
+                                font: pw.Font.courierBold(),
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -447,19 +428,11 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           header: (ctx) => pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('WAVEPASS CUTOUT VOUCHERS', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              pw.Text('WAVEPASS VOUCHER SLIPS', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
               pw.Text('$venueName • $planName • ${DateTime.now().toLocal().toString().split(' ')[0]}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
             ],
           ),
-          build: (ctx) => pairs.map((pair) {
-            return pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-              children: [
-                buildCard(pair[0]),
-                if (pair.length > 1) buildCard(pair[1]) else pw.SizedBox(width: 260),
-              ],
-            );
-          }).toList(),
+          build: (ctx) => _generated.map((item) => buildCard(item)).toList(),
         ),
       );
 
@@ -600,9 +573,9 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                   value: 'cutout',
                   child: Row(
                     children: [
-                      Icon(Icons.grid_view_rounded, size: 18, color: AppColors.primary),
+                      Icon(Icons.view_list_rounded, size: 18, color: AppColors.primary),
                       SizedBox(width: 8),
-                      Text('Print Cutout Cards (A4)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      Text('Print Voucher Slips (List)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -857,8 +830,8 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                             backgroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                          icon: const Icon(Icons.grid_view_rounded, size: 16),
-                          label: const Text('Print Cutout Cards (A4)', style: TextStyle(fontSize: 11)),
+                          icon: const Icon(Icons.view_list_rounded, size: 16),
+                          label: const Text('Print Voucher Slips (List)', style: TextStyle(fontSize: 11)),
                         ),
                       ),
                       const SizedBox(width: 8),

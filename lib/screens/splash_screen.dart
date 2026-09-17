@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/activation_code_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -40,6 +41,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       final user = SupabaseService.instance.currentUser;
       final adminToken = prefs.getString('admin_token');
       if (user != null || (adminToken != null && adminToken.isNotEmpty)) {
+        await ActivationCodeService.instance.warmCache();
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;

@@ -501,3 +501,8 @@
 - [x] **Fix**: validateRouterTarget proves MikroTik identity (API-8728, REST fallback); Pass History shows effective target with tap-to-verify + one-tap reset to 192.168.88.1; monitoring falls back to cloud retrieve-voucher when router unreachable.
 - [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
 - [x] PR [#104](https://github.com/Icedmist/WavePass-Android/pull/104) merged to `main`.
+
+### 39. Approval Error Surfacing (PR #105, related to Backend #52)
+- [x] approveTransfer throws real backend/network errors instead of silent false; Approve buttons show friendly snackbars (offline vs timeout vs server message).
+- [x] **Verification**: `flutter analyze` clean.
+- [x] PR [#105](https://github.com/Icedmist/WavePass-Android/pull/105) merged to `main`.

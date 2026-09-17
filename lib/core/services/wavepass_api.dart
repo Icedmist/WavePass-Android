@@ -108,6 +108,28 @@ class WavePassApi {
     return _decode(res);
   }
 
+  // ── Voucher cloud sync ───────────────────────────────────────────────
+  /// Uploads caller-generated codes so cloud records match app + router.
+  /// Returns {vouchers, requested, created, conflicts}.
+  Future<Map<String, dynamic>> uploadVoucherBatch({
+    required String venueId,
+    required String planId,
+    required List<String> codes,
+  }) {
+    return _post('/api/v1/vouchers/batches', {
+      'venueId': venueId,
+      'planId': planId,
+      'quantity': codes.length,
+      if (codes.length == 1) 'customCode': codes.first,
+      if (codes.length > 1) 'customCodes': codes,
+    });
+  }
+
+  /// Non-consuming cloud existence check for a single code.
+  Future<Map<String, dynamic>> checkVoucher(String code) {
+    return _get('/api/v1/vouchers/check/${Uri.encodeComponent(code)}');
+  }
+
   // ── Virtual accounts (DVA per venue) ───────────────────────────────────
   Future<Map<String, dynamic>> ensureVirtualAccount(
       String venueId, {String? email}) {

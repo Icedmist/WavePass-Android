@@ -18,6 +18,7 @@ class VoucherRecord {
   final DateTime createdAt;
   String status; // 'unused', 'in_use', 'expired'
   bool sold;
+  bool provisioned;
   String? directMode;
   DateTime? usedAt;
   String? mac;
@@ -36,6 +37,7 @@ class VoucherRecord {
     required this.createdAt,
     this.status = 'unused',
     this.sold = false,
+    this.provisioned = true,
     this.directMode,
     this.usedAt,
     this.mac,
@@ -80,6 +82,7 @@ class VoucherRecord {
         'createdAt': createdAt.toIso8601String(),
         'status': status,
         'sold': sold,
+        'provisioned': provisioned,
         'directMode': directMode,
         'usedAt': usedAt?.toIso8601String(),
         'mac': mac,
@@ -101,6 +104,7 @@ class VoucherRecord {
             : DateTime.now(),
         status: json['status']?.toString() ?? 'unused',
         sold: json['sold'] == true,
+        provisioned: json['provisioned'] == null ? true : json['provisioned'] == true,
         directMode: json['directMode']?.toString(),
         usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
         mac: json['mac']?.toString(),
@@ -156,6 +160,7 @@ class VoucherHistoryService {
     String? directMode,
     String? source,
     bool sold = false,
+    bool provisioned = true,
   }) async {
     try {
       final history = await getHistory();
@@ -171,6 +176,7 @@ class VoucherHistoryService {
         createdAt: DateTime.now(),
         status: 'unused',
         sold: sold,
+        provisioned: provisioned,
         directMode: directMode,
         source: source ?? 'local',
       );
@@ -185,6 +191,22 @@ class VoucherHistoryService {
       await _saveHistory(history);
     } catch (e) {
       debugPrint('Error recording voucher history: $e');
+    }
+  }
+  /// Patches the provisioned flag in place (retry flows) without resetting
+  /// timestamps or status.
+  Future<bool> updateProvisioned(String code, bool provisioned, {String? directMode}) async {
+    try {
+      final history = await getHistory();
+      final idx = history.indexWhere((v) => v.code.toUpperCase() == code.toUpperCase());
+      if (idx < 0) return false;
+      history[idx].provisioned = provisioned;
+      if (directMode != null) history[idx].directMode = directMode;
+      await _saveHistory(history);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating voucher provisioned flag: $e');
+      return false;
     }
   }
 

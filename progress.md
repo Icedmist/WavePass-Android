@@ -511,3 +511,8 @@
 - [x] Review Queue screen: counts, filters, refund/stuck/failed/reversed cards with refs; Verify-live action per item; dashboard entry card.
 - [x] **Verification**: `flutter analyze` clean.
 - [x] PR [#106](https://github.com/Icedmist/WavePass-Android/pull/106) merged to `main`.
+
+### 41. Secret Hygiene (Issue #109, PR #110)
+- [x] Removed hardcoded Supabase key from ApiConstants (dart-define only, fail-closed guard); README documents key injection.
+- [x] **Verification**: `flutter analyze` clean; 70/70 tests pass.
+- [x] PR [#110](https://github.com/Icedmist/WavePass-Android/pull/110) merged to `main`.

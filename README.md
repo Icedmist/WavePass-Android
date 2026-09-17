@@ -151,7 +151,14 @@ flutter build appbundle --release
 
 ## 🔐 Credentials & Environment Setup
 
+Supabase project URL is a build constant; the anon key **must** be injected at build time and must never be hardcoded or committed:
+
+```bash
+flutter run --dart-define=SUPABASE_ANON_KEY=<your-key>
+flutter build apk --release --dart-define=SUPABASE_ANON_KEY=<key> --dart-define=SUPABASE_URL=<url>
+```
+
 Configure `lib/core/constants/api_constants.dart`:
 - `cloudBaseUrl`: Base URL of the NestJS backend (`https://api.nexawavepass.com` or `http://10.0.2.2:3000` for Android emulator).
-- `supabaseUrl`: Supabase project URL (`https://vvoenmdzavyzlisykhks.supabase.co`).
-- `supabaseAnonKey`: Supabase public anonymous API key.
+- `supabaseUrl`: Supabase project URL (overridable via `SUPABASE_URL` dart-define).
+- `supabaseAnonKey`: empty by default — the app refuses Supabase init with a clear error when no key is injected.

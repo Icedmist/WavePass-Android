@@ -521,3 +521,12 @@
 - [x] Backend 4xx/5xx JSON error maps now surface message + retry instead of rendering as silent pending.
 - [x] **Verification**: `flutter analyze` clean.
 - [x] PR [#112](https://github.com/Icedmist/WavePass-Android/pull/112) merged to `main`.
+
+### 43. 2-Minute Trial Loop Prevention & Hotspot Profile Provisioning (Issue #113, PR #114)
+- [x] **Trial Loop Fix**: Fixed `login.html` auto-login script in both hosted and standalone modes. Previously, matching `u.indexOf('T-') === 0` triggered an infinite redirect loop whenever RouterOS reloaded or redirected with a trial username (`T-...`). Now strictly checks `trial === 'yes' || trial === '1'`.
+- [x] **Hotspot Trial Profile Provisioning**: Created `/ip hotspot user profile add name="wp-payment-trial"` before `/ip hotspot profile add name="wavepass-profile"`, adding `login-by=http-pap,http-chap,mac-cookie,trial`, `trial-user-profile="wp-payment-trial"`, and `trial-uptime=2m/24h` directly on the hotspot profile.
+- [x] **Walled Garden**: Added Google Fonts domains (`fonts.googleapis.com` and `fonts.gstatic.com`) to walled garden and walled garden IP tables.
+- [x] **Standalone Trial Form**: Switched trial activation in standalone `login.html` to native RouterOS trial GET form submission (`value="T-$(mac-esc)"`).
+- [x] **Hosted Subdomain Default**: Defaulted `_useHostedSubdomainPortal = true` with `SharedPreferences` persistence.
+- [x] **Verification**: `flutter analyze` passed with 0 issues; all 70 tests passed.
+- [x] PR [#114](https://github.com/Icedmist/WavePass-Android/pull/114) merged to `main`.

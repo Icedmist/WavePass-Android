@@ -1,11 +1,14 @@
 class ApiConstants {
-  // Project URL is not a secret. The anon key MUST be injected at build time
-  // (--dart-define=SUPABASE_ANON_KEY=...) and must never be hardcoded here.
+  // Public project URL and public anon publishable key (client key protected by RLS).
+  // Overridable at build time via --dart-define=SUPABASE_URL=... and --dart-define=SUPABASE_ANON_KEY=...
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://vvoenmdzavyzlisykhks.supabase.co',
   );
-  static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  static const String supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+  );
 
   // Cloud API Endpoint (NestJS Backend)
   static const String cloudBaseUrl = "https://api.nexawavepass.com";

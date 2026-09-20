@@ -551,3 +551,12 @@
 - [x] **Verification**: `flutter analyze` clean (0 issues); 70/70 tests passed.
 - [x] PR [#115](https://github.com/Icedmist/WavePass-Android/pull/115) merged to `main`.
 
+### 45. Out-of-the-Box Supabase Anon Key Default (Issue #116, PR #117)
+- [x] **Default Anon Publishable Key**:
+  - Configured `defaultValue: 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR'` on `ApiConstants.supabaseAnonKey`.
+  - Enables standard `flutter run` and builds to initialize Supabase and execute sign-up/login out-of-the-box without requiring explicit `--dart-define` command line arguments.
+  - Retained `String.fromEnvironment('SUPABASE_ANON_KEY')` to allow overriding at build time whenever custom keys are provided.
+- [x] **Verification**: `flutter analyze` clean (0 issues); 70/70 tests passed.
+- [x] PR [#117](https://github.com/Icedmist/WavePass-Android/pull/117) merged to `main`.
+
+

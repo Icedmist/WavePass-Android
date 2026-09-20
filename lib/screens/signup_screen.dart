@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/session_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -31,7 +32,6 @@ class _SState extends State<SignupScreen> {
       setState(() => _err = 'Passwords do not match.');
       return;
     }
-    setState(() { _loading = true; _err = null; });
     final email = _email.text.trim();
     final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
     if (!emailRegex.hasMatch(email)) {
@@ -42,6 +42,11 @@ class _SState extends State<SignupScreen> {
       setState(() => _err = 'Password must be at least 6 characters.');
       return;
     }
+    if (!SupabaseService.isInitialized) {
+      setState(() => _err = 'Supabase is not configured. Rebuild or run with --dart-define=SUPABASE_ANON_KEY=<key>.');
+      return;
+    }
+    setState(() { _loading = true; _err = null; });
     try {
       final res = await SupabaseService.instance.client.auth.signUp(email: email, password: _pass.text, data: {'name': _name.text.trim(), 'phone': _phone.text.trim()});
       if (res.user != null) {
@@ -54,6 +59,7 @@ class _SState extends State<SignupScreen> {
           context.go(AppRouter.login);
           return;
         }
+        await SessionService.instance.recordLogin(email);
         if (!mounted) return;
         context.go(AppRouter.dashboard);
       } else {
@@ -65,6 +71,8 @@ class _SState extends State<SignupScreen> {
         setState(() => _err = 'Account already exists — try Sign In.');
       } else if (msg.contains('network') || msg.contains('Failed host')) {
         setState(() => _err = 'Network error — check internet and try again.');
+      } else if (msg.contains('SUPABASE_ANON_KEY') || msg.contains('not initialized')) {
+        setState(() => _err = 'Supabase is not configured. Rebuild or run with --dart-define=SUPABASE_ANON_KEY=<key>.');
       } else {
         setState(() => _err = 'Sign up failed: $e');
       }

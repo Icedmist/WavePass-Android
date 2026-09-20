@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>The Foundry Hub | Turbo Wi-Fi</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg-image: url('https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?q=80&w=1200&auto=format&fit=crop');
+      --bg-dim: rgba(254, 240, 138, 0.4); /* Gentle warm tint so photo is clearly visible */
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #FEF08A;
+      background-image: var(--bg-image);
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      color: #000000;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    .bg-overlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.4) 100%);
+      z-index: 1;
+    }
+    .card {
+      position: relative;
+      z-index: 2;
+      background: #FFFFFF;
+      border: 3px solid #000000;
+      border-radius: 20px;
+      padding: 32px 24px 28px;
+      width: 100%;
+      max-width: 410px;
+      box-shadow: 7px 7px 0px #000000;
+      text-align: center;
+    }
+    .logo-container {
+      margin: 0 auto 14px;
+      width: 68px;
+      height: 68px;
+      border-radius: 16px;
+      background: #FFE4E6;
+      border: 2.5px solid #000000;
+      box-shadow: 3px 3px 0px #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .venue-logo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .logo-fallback {
+      font-size: 22px;
+      font-weight: 900;
+      color: #000000;
+      letter-spacing: -0.5px;
+    }
+    .ap-badge {
+      display: inline-block;
+      padding: 5px 14px;
+      background: #F43F5E;
+      color: #FFFFFF;
+      border: 2px solid #000000;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      box-shadow: 2px 2px 0px #000000;
+      margin-bottom: 12px;
+    }
+    .venue-name {
+      font-size: 25px;
+      font-weight: 900;
+      color: #000000;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      font-size: 12px;
+      font-weight: 700;
+      color: #4B5563;
+      margin-bottom: 22px;
+    }
+    .tabs {
+      display: flex;
+      background: #FFFFFF;
+      border: 2.5px solid #000000;
+      border-radius: 12px;
+      padding: 3px;
+      gap: 3px;
+      margin-bottom: 20px;
+      box-shadow: 3px 3px 0px #000000;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 9px 2px;
+      background: transparent;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      color: #4B5563;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn.active {
+      background: #A7F3D0;
+      color: #000000;
+      border-color: #000000;
+    }
+    .panel { display: none; text-align: left; }
+    .panel.active { display: block; }
+    .form-group { margin-bottom: 14px; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 900;
+      color: #000000;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 13px 14px;
+      background: #F9FAFB;
+      border: 2.5px solid #000000;
+      border-radius: 10px;
+      color: #000000;
+      font-size: 15px;
+      font-weight: 700;
+      outline: none;
+      box-shadow: 2px 2px 0px #000000;
+      transition: all 0.15s;
+    }
+    input[type="text"]:focus, input[type="password"]:focus {
+      background: #FFFFFF;
+      box-shadow: 4px 4px 0px #000000;
+    }
+    .voucher-input {
+      font-family: monospace;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      font-size: 18px !important;
+      text-align: center;
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: #FBBF24;
+      color: #000000;
+      border: 2.5px solid #000000;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+      margin-top: 6px;
+      box-shadow: 4px 4px 0px #000000;
+      transition: all 0.1s;
+    }
+    .btn-submit:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0px #000000;
+    }
+    .lock-notice {
+      background: #FEE2E2;
+      border: 2px solid #000000;
+      border-radius: 10px;
+      padding: 12px;
+      color: #991B1B;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 14px;
+      box-shadow: 2px 2px 0px #000000;
+    }
+    .plan-card {
+      background: #F3F4F6;
+      border: 2px solid #000000;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      box-shadow: 2px 2px 0px #000000;
+    }
+    .plan-title { font-weight: 900; font-size: 13px; color: #000000; }
+    .plan-desc { font-size: 11px; font-weight: 600; color: #4B5563; margin-top: 2px; }
+    .plan-price { font-weight: 900; font-size: 16px; color: #000000; }
+    .bank-card {
+      background: #F3F4F6;
+      border: 2px solid #000000;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 3px 3px 0px #000000;
+    }
+    .bank-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .bank-row:last-child { margin-bottom: 0; }
+    .bank-label { color: #4B5563; font-weight: 800; }
+    .bank-value { color: #000000; font-weight: 900; }
+    .bank-acct {
+      font-family: monospace;
+      font-size: 15px;
+      color: #000000;
+      font-weight: 900;
+    }
+    .btn-copy {
+      padding: 4px 10px;
+      background: #A7F3D0;
+      color: #000000;
+      border: 1.5px solid #000000;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 1.5px 1.5px 0px #000000;
+    }
+    .trial-box {
+      margin-top: 18px;
+      padding: 14px;
+      background: #FEF3C7;
+      border: 2px solid #000000;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 3px 3px 0px #000000;
+    }
+    .trial-title { font-size: 12px; font-weight: 900; color: #92400E; margin-bottom: 4px; }
+    .trial-desc { font-size: 11px; font-weight: 700; color: #78350F; line-height: 1.4; margin-bottom: 10px; }
+    .btn-trial {
+      display: inline-block;
+      width: 100%;
+      padding: 10px;
+      background: #FFFFFF;
+      border: 2px solid #000000;
+      color: #000000;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 900;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 2px 2px 0px #000000;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #4B5563;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-overlay"></div>
+
+  <div class="card">
+    <div class="logo-container">
+      <img id="venueLogoImg" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjRTExRDQ4Ii8+PHBhdGggZD0iTTU1IDE4IEwzMCA1NCBMNDggNTQgTDQyIDgyIEw3MiA0NCBMNTIgNDQgWiIgZmlsbD0iI0ZFRjA4QSIvPjwvc3ZnPg==" alt="Logo" class="venue-logo" style="display:block;" onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjRTExRDQ4Ii8+PHBhdGggZD0iTTU1IDE4IEwzMCA1NCBMNDggNTQgTDQyIDgyIEw3MiA0NCBMNTIgNDQgWiIgZmlsbD0iI0ZFRjA4QSIvPjwvc3ZnPg==';">
+      <div id="venueLogoFallback" class="logo-fallback" style="display:none;">FH</div>
+    </div>
+
+    <div class="ap-badge" id="apBadgeText">&#9889; The Foundry Hub Wi-Fi</div>
+
+    <div class="venue-name" id="displayVenueName">The Foundry Hub</div>
+    <div class="subtitle">Drop in &bull; Punch your code &bull; Get grinding</div>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" onclick="switchTab('voucher')">Voucher</button>
+      <button type="button" class="tab-btn" onclick="switchTab('rates')">Rates</button>
+      <button type="button" class="tab-btn" onclick="switchTab('transfer')">Transfer</button>
+      <button type="button" class="tab-btn" onclick="switchTab('retrieve')">🔍 Retrieve</button>
+      <button type="button" class="tab-btn" onclick="switchTab('creds')">Staff</button>
+    </div>
+
+    <!-- Panel 1: Voucher -->
+    <div id="panelVoucher" class="panel active">
+      <div class="form-group">
+        <label for="voucher_input">Passcode / Voucher</label>
+        <input type="text" id="voucher_input" class="voucher-input" placeholder="WP-XXXX" autofocus autocomplete="off">
+      </div>
+      <button type="button" class="btn-submit" onclick="submitVoucher()">GO ONLINE &rarr;</button>
+    </div>
+
+    <!-- Panel 2: Rates / Locked Paystack -->
+    <div id="panelRates" class="panel">
+      <div class="lock-notice">
+        <span>🔒</span>
+        <div><strong>Card checkout locked.</strong><br>Grab instant vouchers at the desk or pay via bank transfer below.</div>
+      </div>
+      <div class="plan-card">
+        <div>
+          <div class="plan-title">1-Hour Sprint Pass</div>
+          <div class="plan-desc">Single device &bull; Full speed</div>
+        </div>
+        <div class="plan-price">&#8358;500</div>
+      </div>
+      <div class="plan-card">
+        <div>
+          <div class="plan-title">Full Shift Unlimited</div>
+          <div class="plan-desc">12 Hours &bull; Priority bandwidth</div>
+        </div>
+        <div class="plan-price">&#8358;1,800</div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Bank Transfer -->
+    <div id="panelTransfer" class="panel">
+      <div class="bank-card">
+        <div class="bank-row">
+          <span class="bank-label">Bank Name</span>
+          <span class="bank-value">Moniepoint MFB</span>
+        </div>
+        <div class="bank-row">
+          <span class="bank-label">Account Name</span>
+          <span class="bank-value" id="bankAcctName">The Foundry Hub / WavePass</span>
+        </div>
+        <div class="bank-row">
+          <span class="bank-label">Account Number</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="bank-acct" id="acctNum">6591029301</span>
+            <button type="button" class="btn-copy" onclick="copyAcct()">Copy</button>
+          </div>
+        </div>
+      </div>
+      <p style="font-size: 11px; font-weight: 700; color: #4B5563; margin-top: 8px; line-height: 1.4;">
+        Transfer to the account above and show proof to the desk captain for immediate unlock.
+      </p>
+    </div>
+
+    <!-- Panel 4: Staff Credentials -->
+    <div id="panelCreds" class="panel">
+      <div class="form-group">
+        <label for="username_input">Username</label>
+        <input type="text" id="username_input" placeholder="Staff handle" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password_input">Key</label>
+        <input type="password" id="password_input" placeholder="Password" autocomplete="current-password">
+      </div>
+      <button type="button" class="btn-submit" onclick="submitStaff()">STAFF ACCESS &rarr;</button>
+    </div>
+
+    <!-- Panel 5: Retrieve Pass -->
+    <div id="panelRetrieve" class="panel">
+      <div style="font-size:12px; font-weight:900; text-transform:uppercase; color:#000000; margin-bottom:4px;">Retrieve Active Pass</div>
+      <div style="font-size:11px; font-weight:700; color:#4B5563; margin-bottom:12px; line-height:1.4;">
+        Transferred or already bought a pass? Retrieve it by auto-detected MAC, phone number, or transfer reference.
+      </div>
+      <div class="form-group">
+        <label for="retrieve_mac">Device MAC (Auto-detected)</label>
+        <input type="text" id="retrieve_mac" class="voucher-input" value="$(mac)" placeholder="00:00:00:00:00:00">
+      </div>
+      <div class="form-group">
+        <label for="retrieve_query">Or Phone / Transfer Reference / Code</label>
+        <input type="text" id="retrieve_query" placeholder="e.g. 08012345678 or TRF-...">
+      </div>
+      <div id="retrieveStatusBox" style="display:none; margin-bottom:12px; padding:10px; background:#FEF08A; border:2px solid #000000; border-radius:10px; font-size:12px; font-weight:700; text-align:center;"></div>
+      <button type="button" id="btn_retrieve" class="btn-submit" onclick="retrieveActivePass()">🔍 RETRIEVE PASS &rarr;</button>
+    </div>
+
+    <!-- 2-Minute Payment Grace -->
+    <div class="trial-box">
+      <div class="trial-title">&#9889; Need 2 Mins to Transfer?</div>
+      <div class="trial-desc">Open your banking app without losing your spot.</div>
+      <button type="button" class="btn-trial" onclick="startGrace()">Launch 2-Min Grace Window</button>
+    </div>
+
+    <div class="footer">
+      Powered by WavePass &bull; Campus & Space Edition
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      if (tab === 'voucher') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('panelVoucher').classList.add('active');
+      } else if (tab === 'rates') {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('panelRates').classList.add('active');
+      } else if (tab === 'transfer') {
+        document.querySelectorAll('.tab-btn')[2].classList.add('active');
+        document.getElementById('panelTransfer').classList.add('active');
+      } else if (tab === 'retrieve') {
+        document.querySelectorAll('.tab-btn')[3].classList.add('active');
+        document.getElementById('panelRetrieve').classList.add('active');
+      } else if (tab === 'creds') {
+        document.querySelectorAll('.tab-btn')[4].classList.add('active');
+        document.getElementById('panelCreds').classList.add('active');
+      }
+    }
+
+    function retrieveActivePass() {
+      const macInp = document.getElementById('retrieve_mac') ? document.getElementById('retrieve_mac').value.trim() : '';
+      const qInp = document.getElementById('retrieve_query') ? document.getElementById('retrieve_query').value.trim() : '';
+      const rawMac = "$(mac)";
+      const mac = (macInp && !macInp.includes("$(") && macInp.length >= 11) ? macInp : ((rawMac && !rawMac.includes("$(") && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || sessionStorage.getItem('wp-device-mac') || ''));
+
+      const btn = document.getElementById('btn_retrieve');
+      const originalText = btn ? btn.innerText : 'RETRIEVE PASS';
+      if (btn) { btn.innerText = 'CHECKING ACCESS...'; btn.disabled = true; }
+
+      const statusBox = document.getElementById('retrieveStatusBox');
+      if (statusBox) statusBox.style.display = 'none';
+
+      let url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venue=' + encodeURIComponent(window.venueSlug || 'the-foundry');
+      if (mac) url += '&mac=' + encodeURIComponent(mac);
+      if (qInp) {
+        url += '&q=' + encodeURIComponent(qInp) + '&query=' + encodeURIComponent(qInp);
+        if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
+        if (qInp.startsWith('TRF-') || qInp.startsWith('BT-')) url += '&reference=' + encodeURIComponent(qInp);
+      }
+
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          if (btn) { btn.innerText = originalText; btn.disabled = false; }
+          if (data && data.found && data.voucherCode) {
+            try {
+              localStorage.setItem('wp-active-voucher', data.voucherCode);
+              sessionStorage.setItem('wp-active-voucher', data.voucherCode);
+            } catch(e){}
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="font-weight:900; color:#000000; font-size:13px;">✅ PASS FOUND!</div>' +
+                '<div style="margin:6px 0; font-family:monospace; font-size:20px; font-weight:900; letter-spacing:2px; color:#000000;">' + data.voucherCode + '</div>' +
+                '<div style="font-size:11px; font-weight:700; color:#4B5563; margin-bottom:8px;">' + (data.planName || 'Pass') + '</div>' +
+                '<button type="button" class="btn-submit" style="margin-top:0; padding:8px 12px; font-size:12px; background:#22C55E; color:#000000;" onclick="submitVoucherCode(\'' + data.voucherCode + '\')">⚡ CONNECT NOW &rarr;</button>';
+              statusBox.style.display = 'block';
+            }
+          } else if (data && data.pendingApproval) {
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="font-weight:900; color:#000000;">⏳ TRANSFER PENDING APPROVAL</div>' +
+                '<div style="font-size:11px; font-weight:700; color:#4B5563; margin-top:4px;">' + (data.message || 'Waiting for owner confirmation.') + '</div>';
+              statusBox.style.display = 'block';
+            }
+          } else {
+            if (statusBox) {
+              statusBox.innerHTML = '<div style="color:#DC2626; font-weight:900;">⚠️ ' + (data.message || 'No active pass found.') + '</div>';
+              statusBox.style.display = 'block';
+            }
+          }
+        })
+        .catch(() => {
+          if (btn) { btn.innerText = originalText; btn.disabled = false; }
+          if (statusBox) {
+            statusBox.innerHTML = '<div style="color:#DC2626; font-weight:900;">⚠️ Server unreachable. Verify connection.</div>';
+            statusBox.style.display = 'block';
+          }
+        });
+    }
+
+    function submitVoucherCode(code) {
+      document.getElementById('voucher_input').value = code;
+      switchTab('voucher');
+      submitVoucher();
+    }
+
+    function copyAcct() {
+      const num = document.getElementById('acctNum').innerText;
+      navigator.clipboard.writeText(num).then(() => alert('Account number copied: ' + num));
+    }
+
+    function submitVoucher() {
+      const code = document.getElementById('voucher_input').value.trim();
+      if (!code) { alert('Please enter your voucher code'); return; }
+      alert('Logging in with voucher: ' + code);
+    }
+
+    function submitStaff() {
+      const u = document.getElementById('username_input').value.trim();
+      const p = document.getElementById('password_input').value.trim();
+      if (!u || !p) { alert('Enter staff credentials'); return; }
+      alert('Authenticating staff: ' + u);
+    }
+
+    function startGrace() {
+      alert('Activating 2-minute grace period on router...');
+    }
+
+    // Dynamic customization listener from Studio Showcase
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.action === 'updateCustomization') {
+        const d = e.data;
+        if (d.venueName) {
+          document.getElementById('displayVenueName').innerText = d.venueName;
+          document.getElementById('apBadgeText').innerText = '⚡ ' + d.venueName + ' Wi-Fi';
+          document.getElementById('bankAcctName').innerText = d.venueName + ' / WavePass';
+          const initials = d.venueName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() || 'FH';
+          document.getElementById('venueLogoFallback').innerText = initials;
+        }
+        if (d.logoUrl) {
+          const img = document.getElementById('venueLogoImg');
+          img.src = d.logoUrl;
+          img.style.display = 'block';
+          document.getElementById('venueLogoFallback').style.display = 'none';
+        }
+        if (d.bgUrl) {
+          document.documentElement.style.setProperty('--bg-image', "url('" + d.bgUrl + "')");
+        }
+        if (d.bgDim) {
+          document.documentElement.style.setProperty('--bg-dim', d.bgDim);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

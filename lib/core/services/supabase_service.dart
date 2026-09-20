@@ -5,10 +5,22 @@ class SupabaseService {
   static final SupabaseService instance = SupabaseService._internal();
   SupabaseService._internal();
 
-  SupabaseClient get client => Supabase.instance.client;
+  static bool _initialized = false;
+  static bool get isInitialized => _initialized;
+  bool get initialized => _initialized;
+
+  SupabaseClient get client {
+    if (!_initialized) {
+      throw StateError(
+        'Supabase is not initialized. Please run or build the app with --dart-define=SUPABASE_ANON_KEY=<key>.',
+      );
+    }
+    return Supabase.instance.client;
+  }
 
   static Future<void> initialize() async {
     if (ApiConstants.supabaseAnonKey.isEmpty) {
+      _initialized = false;
       throw StateError(
         'Missing SUPABASE_ANON_KEY — rebuild with --dart-define=SUPABASE_ANON_KEY=<key> (never hardcode keys in source).',
       );
@@ -18,6 +30,7 @@ class SupabaseService {
       // ignore: deprecated_member_use
       anonKey: ApiConstants.supabaseAnonKey,
     );
+    _initialized = true;
   }
 
   // Authentication
@@ -30,12 +43,14 @@ class SupabaseService {
 
   Future<void> signOut() async {
     try {
+      if (!_initialized) return;
       await client.auth.signOut();
     } catch (_) {}
   }
 
   User? get currentUser {
     try {
+      if (!_initialized) return null;
       return Supabase.instance.client.auth.currentUser;
     } catch (_) {
       return null;

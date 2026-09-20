@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +27,9 @@ class RouterSetupScreen extends StatefulWidget {
     bool isPaystackConfigured = true,
     bool useHostedSubdomainPortal = false,
     List<Map<String, dynamic>>? bankAccounts,
+    String templateId = 'onyx',
+    String? bgImageUrl,
+    String? logoUrl,
   ]) =>
       _RouterSetupScreenState._generateLoginHtml(
         venueName,
@@ -32,6 +38,9 @@ class RouterSetupScreen extends StatefulWidget {
         isPaystackConfigured,
         useHostedSubdomainPortal,
         bankAccounts,
+        templateId,
+        bgImageUrl,
+        logoUrl,
       );
 
   static String generateStatusHtml(String venueName, String slug) =>
@@ -64,8 +73,26 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingPortalHtml = false;
   bool _uploadingPortalFiles = false;
   int _selectedPortalTabIndex = 0;
-  bool _useHostedSubdomainPortal = true;
+  bool _useHostedSubdomainPortal = false;
+  String _selectedPortalTemplate = 'onyx'; // 'onyx', 'ivory', 'neopop', 'aurora'
+  String? _customPortalBgUrl;
+  String? _customPortalLogoUrl;
+  bool _uploadingPortalBg = false;
+  bool _uploadingPortalLogo = false;
   Map<String, String>? _portalSuite;
+
+  static const Map<String, String> _presetBackgrounds = {
+    'Lounge': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop',
+    'Cafe': 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1200&auto=format&fit=crop',
+    'Workspace': 'https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?q=80&w=1200&auto=format&fit=crop',
+    'Nightlife': 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=1200&auto=format&fit=crop',
+  };
+
+  static const Map<String, String> _presetLogos = {
+    'Crown VIP': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTExODI3Ii8+PHBhdGggZD0iTTI1IDY1IEwyMCAzNSBMMzggNDggTDUwIDI1IEw2MiA0OCBMODAgMzUgTDc1IDY1IFoiIGZpbGw9IiNGNTlFMEIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjIyIiByPSI0IiBmaWxsPSIjRkRFNjhBIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIzMiIgcj0iNCIgZmlsbD0iI0ZERTY4QSIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iMzIiIHI9IjQiIGZpbGw9IiNGREU2OEEiLz48cmVjdCB4PSIyNSIgeT0iNjgiIHdpZHRoPSI1MCIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjRjU5RTBCIi8+PC9zdmc+',
+    'Bistro': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMDY0RTNCIi8+PHBhdGggZD0iTTMwIDQwIEw3MCA0MCBMNjUgNzIgQTE1IDE1IDAgMCAxIDUwIDgyIEExNSAxNSAwIDAgMSAzNSA3MiBaIiBmaWxsPSIjQTdGM0QwIi8+PHBhdGggZD0iTTcwIDQ2IEM3OCA0NiA4MiA1MCA4MiA1NiBDODIgNjIgNzYgNjYgNjggNjYiIHN0cm9rZT0iI0E3RjNEMCIgc3Ryb2tlLXdpZHRoPSI1IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTQyIDIyIFE0NiAzMCA0MiAzNiBNNTAgMTggUTU0IDI4IDUwIDM2IE01OCAyMiBRNjIgMzAgNTggMzYiIHN0cm9rZT0iIzM0RDM5OSIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz48L3N2Zz4=',
+    'Tech': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjRTExRDQ4Ii8+PHBhdGggZD0iTTU1IDE4IEwzMCA1NCBMNDggNTQgTDQyIDgyIEw3MiA0NCBMNTIgNDQgWiIgZmlsbD0iI0ZFRjA4QSIvPjwvc3ZnPg==',
+  };
 
   @override
   void initState() {
@@ -88,6 +115,9 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     final savedUser = prefs.getString(RouterDiscoveryService.keyRouterUsername);
     final savedPass = prefs.getString(RouterDiscoveryService.keyRouterPassword);
     final savedHosted = prefs.getBool('wavepass_use_hosted_portal');
+    final savedTemplate = prefs.getString('wavepass_portal_template');
+    final savedBg = prefs.getString('wavepass_portal_bg_url');
+    final savedLogo = prefs.getString('wavepass_portal_logo_url');
 
     if (mounted) {
       setState(() {
@@ -98,8 +128,16 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
           _passCtrl.text = savedPass;
           _showCustomSettings = true;
         }
-        if (savedHosted != null) {
-          _useHostedSubdomainPortal = savedHosted;
+        _useHostedSubdomainPortal = savedHosted ?? false;
+        if (savedTemplate != null && savedTemplate.isNotEmpty) _selectedPortalTemplate = savedTemplate;
+        if (savedBg != null && savedBg.isNotEmpty) _customPortalBgUrl = savedBg;
+        if (savedLogo != null && savedLogo.isNotEmpty) {
+          _customPortalLogoUrl = savedLogo;
+        } else {
+          final venueLogo = VenueStateService.instance.currentLogoUrl;
+          if (venueLogo != null && venueLogo.isNotEmpty) {
+            _customPortalLogoUrl = venueLogo;
+          }
         }
       });
     }
@@ -743,6 +781,9 @@ set name="WavePass-$slug"
     bool isPaystackConfigured = true,
     bool useHostedSubdomainPortal = false,
     List<Map<String, dynamic>>? bankAccounts,
+    String templateId = 'onyx',
+    String? bgImageUrl,
+    String? logoUrl,
   ]) {
     if (useHostedSubdomainPortal) {
       return """<!DOCTYPE html>
@@ -1097,6 +1138,74 @@ $_rfc1321Md5Js
         </div>''');
     }
 
+    final effectiveBg = (bgImageUrl != null && bgImageUrl.isNotEmpty)
+        ? bgImageUrl
+        : 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop';
+    const defaultLogo = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTExODI3Ii8+PHBhdGggZD0iTTI1IDY1IEwyMCAzNSBMMzggNDggTDUwIDI1IEw2MiA0OCBMODAgMzUgTDc1IDY1IFoiIGZpbGw9IiNGNTlFMEIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjIyIiByPSI0IiBmaWxsPSIjRkRFNjhBIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIzMiIgcj0iNCIgZmlsbD0iI0ZERTY4QSIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iMzIiIHI9IjQiIGZpbGw9IiNGREU2OEEiLz48cmVjdCB4PSIyNSIgeT0iNjgiIHdpZHRoPSI1MCIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjRjU5RTBCIi8+PC9zdmc+';
+    final effectiveLogo = (logoUrl != null && logoUrl.isNotEmpty) ? logoUrl : defaultLogo;
+    final venueInitials = venueName
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0])
+        .take(2)
+        .join('')
+        .toUpperCase();
+    final initialsSafe = venueInitials.isNotEmpty ? venueInitials : 'WP';
+
+    // Template theme styling
+    String cardBg;
+    String cardBorder;
+    String textColor;
+    String primaryColor;
+    String badgeBg;
+    String badgeBorder;
+    String badgeColor;
+    String overlayGradient;
+
+    switch (templateId) {
+      case 'ivory':
+        cardBg = 'rgba(255, 255, 255, 0.95)';
+        cardBorder = '1px solid #E2E8F0';
+        textColor = '#0F172A';
+        primaryColor = '#059669';
+        badgeBg = '#ECFDF5';
+        badgeBorder = '1px solid #A7F3D0';
+        badgeColor = '#059669';
+        overlayGradient = 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.45) 100%)';
+        break;
+      case 'neopop':
+        cardBg = '#FFFFFF';
+        cardBorder = '3px solid #000000; box-shadow: 6px 6px 0px #000000';
+        textColor = '#000000';
+        primaryColor = '#000000';
+        badgeBg = '#F43F5E';
+        badgeBorder = '2px solid #000000';
+        badgeColor = '#FFFFFF';
+        overlayGradient = 'linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.4) 100%)';
+        break;
+      case 'aurora':
+        cardBg = 'rgba(15, 23, 42, 0.82)';
+        cardBorder = '1px solid rgba(56, 189, 248, 0.35); box-shadow: 0 0 25px rgba(56, 189, 248, 0.15)';
+        textColor = '#FFFFFF';
+        primaryColor = '#38BDF8';
+        badgeBg = 'rgba(6, 182, 212, 0.15)';
+        badgeBorder = '1px solid rgba(6, 182, 212, 0.35)';
+        badgeColor = '#38BDF8';
+        overlayGradient = 'linear-gradient(180deg, rgba(3, 7, 18, 0.25) 0%, rgba(3, 7, 18, 0.55) 100%)';
+        break;
+      case 'onyx':
+      default:
+        cardBg = 'rgba(12, 16, 26, 0.88)';
+        cardBorder = '1px solid rgba(255, 255, 255, 0.12)';
+        textColor = '#FFFFFF';
+        primaryColor = '#10B981';
+        badgeBg = 'rgba(16, 185, 129, 0.12)';
+        badgeBorder = '1px solid rgba(16, 185, 129, 0.3)';
+        badgeColor = '#34D399';
+        overlayGradient = 'linear-gradient(180deg, rgba(6, 8, 14, 0.3) 0%, rgba(6, 8, 14, 0.6) 100%)';
+        break;
+    }
+
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1106,33 +1215,65 @@ $_rfc1321Md5Js
   <script async src="https://js.paystack.co/v1/inline.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-image: url('$effectiveBg');
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #000000;
-      color: #FFFFFF;
+      background-color: #06080E;
+      background-image: var(--bg-image);
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      color: $textColor;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 16px;
+      position: relative;
+    }
+    .bg-overlay {
+      position: fixed;
+      inset: 0;
+      background: $overlayGradient;
+      z-index: 1;
     }
     .card {
-      background: #0C0C0C;
-      border: 1px solid #262626;
+      position: relative;
+      z-index: 2;
+      background: $cardBg;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: $cardBorder;
       border-radius: 20px;
       padding: 24px;
       width: 100%;
       max-width: 420px;
       box-shadow: 0 16px 40px rgba(0,0,0,0.8);
     }
+    .logo-container {
+      margin: 0 auto 12px;
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1.5px solid rgba(255, 255, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    }
     .badge {
       display: inline-block;
-      padding: 4px 12px;
-      background: #171717;
-      border: 1px solid #FFFFFF;
+      padding: 4px 14px;
+      background: $badgeBg;
+      border: $badgeBorder;
       border-radius: 20px;
-      color: #FFFFFF;
+      color: $badgeColor;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
@@ -1468,7 +1609,13 @@ $_rfc1321Md5Js
   </style>
 </head>
 <body>
+  <div class="bg-overlay"></div>
   <div class="card">
+    <div class="logo-container">
+      <img id="venueLogoImg" src="$effectiveLogo" alt="Logo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='$defaultLogo';">
+      <div id="venueLogoFallback" style="font-size: 20px; font-weight: 900; color: $primaryColor; display:none;">$initialsSafe</div>
+    </div>
+    <span class="badge">$venueName Wi-Fi</span>
     <div class="logo">$venueName</div>
     <div class="subtitle">Fast &amp; Secure Wi-Fi Access</div>
 
@@ -1600,11 +1747,11 @@ $_rfc1321Md5Js
     </div>
 
     <!-- Hidden standard RouterOS Hotspot Form -->
-    <form name="sendin" action="\$(link-login-only)" method="post" style="display:none;">
+    <form name="sendin" id="sendin" action="\$(link-login-only)" method="post" style="display:none;">
       <input type="hidden" name="username" id="dst_user">
       <input type="hidden" name="password" id="dst_pass">
       <input type="hidden" name="dst" value="\$(link-orig)">
-      <input type="hidden" name="popup" value="true">
+      <input type="hidden" name="popup" value="false">
     </form>
 
     <div class="footer">
@@ -1752,7 +1899,7 @@ $_rfc1321Md5Js
       var macInp = document.getElementById('retrieve_mac') ? document.getElementById('retrieve_mac').value.trim() : '';
       var qInp = document.getElementById('retrieve_query') ? document.getElementById('retrieve_query').value.trim() : '';
       var rawMac = "\$(mac)";
-      var mac = (macInp && macInp.indexOf("\$(") === -1 && macInp.length >= 11) ? macInp : ((rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || ''));
+      var mac = (macInp && macInp.indexOf("\$(") === -1 && macInp.length >= 11) ? macInp : ((rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || sessionStorage.getItem('wp-device-mac') || ''));
 
       var btn = document.getElementById('btn_retrieve');
       var originalText = btn ? btn.innerText : 'Connect Active Pass';
@@ -1764,9 +1911,33 @@ $_rfc1321Md5Js
       var statusBox = document.getElementById('retrieveStatusBox');
       if (statusBox) statusBox.style.display = 'none';
 
-      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent('$slug');
+      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent('$slug') + '&venue=' + encodeURIComponent('$slug');
       if (mac) url += '&mac=' + encodeURIComponent(mac);
-      if (qInp) url += '&q=' + encodeURIComponent(qInp);
+      if (qInp) {
+        url += '&q=' + encodeURIComponent(qInp) + '&query=' + encodeURIComponent(qInp);
+        if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
+        if (qInp.indexOf('TRF-') === 0 || qInp.indexOf('BT-') === 0) url += '&reference=' + encodeURIComponent(qInp);
+      }
+
+      function handleVoucherFound(vData) {
+        try {
+          localStorage.setItem('wp-active-voucher', vData.voucherCode);
+          sessionStorage.setItem('wp-active-voucher', vData.voucherCode);
+        } catch(e){}
+        if (statusBox) {
+          statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF; font-size:14px;">✅ Active Pass Found!</div>' +
+            '<div style="margin:8px 0; padding:10px; background:#000000; border:1px solid #333333; border-radius:10px; font-family:monospace; font-size:20px; font-weight:900; letter-spacing:2px; color:#10B981;">' + vData.voucherCode + '</div>' +
+            '<div style="font-size:11px; color:#A1A1AA; margin-bottom:10px;">' + (vData.planName || 'Wi-Fi') + (vData.remainingFormatted ? ' &bull; ' + vData.remainingFormatted + ' remaining' : '') + '</div>' +
+            '<div style="display:flex; gap:8px; justify-content:center;">' +
+              '<button type="button" class="btn-submit" style="margin-top:0; padding:10px 14px; font-size:12px; background:#10B981; color:#000000; flex:1;" onclick="executeLogin(&quot;' + vData.voucherCode + '&quot;, &quot;' + vData.voucherCode + '&quot;)">⚡ Connect Now &rarr;</button>' +
+              '<button type="button" class="btn-fallback" style="margin-top:0; padding:10px 14px; font-size:12px; flex:1;" onclick="copyText(&quot;' + vData.voucherCode + '&quot;)">📋 Copy Code</button>' +
+            '</div>';
+          statusBox.style.display = 'block';
+        }
+        setTimeout(function() {
+          executeLogin(vData.voucherCode, vData.voucherCode);
+        }, 1200);
+      }
 
       fetch(url)
         .then(function(res) { return res.json(); })
@@ -1777,15 +1948,7 @@ $_rfc1321Md5Js
           }
 
           if (data && data.found && data.voucherCode) {
-            if (statusBox) {
-              statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">✅ Active Pass Found!</div>' +
-                '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Voucher: <strong>' + data.voucherCode + '</strong> (' + (data.planName || 'Wi-Fi') + '). Connecting...</div>';
-              statusBox.style.display = 'block';
-            }
-            try { localStorage.setItem('wp-active-voucher', data.voucherCode); } catch(e){}
-            setTimeout(function() {
-              executeLogin(data.voucherCode, data.voucherCode);
-            }, 1200);
+            handleVoucherFound(data);
           } else if (data && data.pendingApproval) {
             if (statusBox) {
               statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">⏳ Transfer Awaiting Approval</div>' +
@@ -1801,21 +1964,14 @@ $_rfc1321Md5Js
                 .then(function(pData) {
                   if (pData && pData.found && pData.voucherCode) {
                     clearInterval(retrievePollTimer);
-                    if (statusBox) {
-                      statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">🎉 Access Approved!</div>' +
-                        '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Connecting to Wi-Fi (' + pData.voucherCode + ')...</div>';
-                    }
-                    try { localStorage.setItem('wp-active-voucher', pData.voucherCode); } catch(e){}
-                    setTimeout(function() {
-                      executeLogin(pData.voucherCode, pData.voucherCode);
-                    }, 1200);
+                    handleVoucherFound(pData);
                   }
                 })
                 .catch(function() {});
             }, 3000);
           } else {
             if (statusBox) {
-              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code.') + '</div>';
+              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code or phone.') + '</div>';
               statusBox.style.display = 'block';
             }
           }
@@ -1971,19 +2127,30 @@ $_rfc1321Md5Js
         document.getElementById('dst_pass').value = p;
       }
 
-      document.sendin.submit();
+      var form = document.sendin || document.getElementById('sendin') || (document.forms && document.forms['sendin']);
+      if (form) {
+        form.submit();
+      }
     }
 
     function submitVoucher() {
       var v = document.getElementById('voucher_input').value.trim().toUpperCase();
-      try { localStorage.setItem('wp-active-voucher', v); } catch(e){}
+      try {
+        localStorage.setItem('wp-active-voucher', v);
+        sessionStorage.setItem('wp-active-voucher', v);
+      } catch(e){}
       executeLogin(v, v);
     }
 
     function submitCredentials() {
       var u = document.getElementById('cred_user').value.trim();
       var p = document.getElementById('cred_pass').value.trim();
-      try { localStorage.setItem('wp-active-user', u); localStorage.setItem('wp-active-pass', p); } catch(e){}
+      try {
+        localStorage.setItem('wp-active-user', u);
+        localStorage.setItem('wp-active-pass', p);
+        sessionStorage.setItem('wp-active-user', u);
+        sessionStorage.setItem('wp-active-pass', p);
+      } catch(e){}
       executeLogin(u, p);
     }
 
@@ -2024,19 +2191,20 @@ $_rfc1321Md5Js
         } else if (mode === 'retrieve') {
           switchTab('retrieve');
         } else {
+          var savedV = null;
           try {
-            var savedV = localStorage.getItem('wp-active-voucher');
-            if (savedV) {
-              var vInp = document.getElementById('voucher_input');
-              if (vInp && !vInp.value) {
-                vInp.value = savedV;
-                var sBox = document.getElementById('savedVoucherBox');
-                if (sBox) sBox.style.display = 'block';
-                var sCode = document.getElementById('savedVoucherCode');
-                if (sCode) sCode.innerText = savedV;
-              }
+            savedV = localStorage.getItem('wp-active-voucher') || sessionStorage.getItem('wp-active-voucher');
+          } catch(e){}
+          if (savedV) {
+            var vInp = document.getElementById('voucher_input');
+            if (vInp && !vInp.value) {
+              vInp.value = savedV;
+              var sBox = document.getElementById('savedVoucherBox');
+              if (sBox) sBox.style.display = 'block';
+              var sCode = document.getElementById('savedVoucherCode');
+              if (sCode) sCode.innerText = savedV;
             }
-          } catch(e) {}
+          }
         }
         loadDynamicBankAccounts();
       } catch (e) {}
@@ -2429,8 +2597,24 @@ $_rfc1321Md5Js
       } catch (_) {}
     }
 
+    final effectiveLogo = (_customPortalLogoUrl != null && _customPortalLogoUrl!.trim().isNotEmpty)
+        ? _customPortalLogoUrl!.trim()
+        : (VenueStateService.instance.currentLogoUrl != null && VenueStateService.instance.currentLogoUrl!.trim().isNotEmpty)
+            ? VenueStateService.instance.currentLogoUrl!.trim()
+            : null;
+
     final suite = {
-      'login.html': _generateLoginHtml(venueName, slug, plans, isPaystackConfigured, _useHostedSubdomainPortal, bankAccounts),
+      'login.html': _generateLoginHtml(
+        venueName,
+        slug,
+        plans,
+        isPaystackConfigured,
+        _useHostedSubdomainPortal,
+        bankAccounts,
+        _selectedPortalTemplate,
+        _customPortalBgUrl,
+        effectiveLogo,
+      ),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
@@ -3293,6 +3477,10 @@ $_rfc1321Md5Js
                     style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 14),
+                  if (!_useHostedSubdomainPortal) ...[
+                    _buildTemplatePickerCard(),
+                    const SizedBox(height: 14),
+                  ],
 
                   // Segmented Tabs: login.html | status.html | logout.html
                   Container(
@@ -3425,6 +3613,601 @@ $_rfc1321Md5Js
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndSetPortalBg() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80);
+    if (picked != null) {
+      setState(() => _uploadingPortalBg = true);
+      try {
+        final rawBytes = await picked.readAsBytes();
+        final compressed = await FlutterImageCompress.compressWithList(
+          rawBytes,
+          minWidth: 1080,
+          minHeight: 1080,
+          quality: 72,
+          format: CompressFormat.jpeg,
+        );
+        final bytes = compressed.isNotEmpty ? compressed : rawBytes;
+        final base64Str = base64Encode(bytes);
+        final dataUri = 'data:image/jpeg;base64,$base64Str';
+
+        String effectiveUrl = dataUri;
+        try {
+          final fileName = 'portal-bg-${DateTime.now().millisecondsSinceEpoch}.jpg';
+          await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
+          final pub = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
+          if (pub.isNotEmpty) effectiveUrl = pub;
+        } catch (_) {}
+
+        setState(() {
+          _customPortalBgUrl = effectiveUrl;
+          _portalSuite = null;
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('wavepass_portal_bg_url', effectiveUrl);
+        await _ensurePortalSuite();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Portal background photo updated!'),
+              backgroundColor: AppColors.accentGreen,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load image: $e'),
+              backgroundColor: AppColors.warmSand,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _uploadingPortalBg = false);
+      }
+    }
+  }
+
+  Future<void> _pickAndSetPortalLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 600, imageQuality: 85);
+    if (picked != null) {
+      setState(() => _uploadingPortalLogo = true);
+      try {
+        final rawBytes = await picked.readAsBytes();
+        final compressed = await FlutterImageCompress.compressWithList(
+          rawBytes,
+          minWidth: 320,
+          minHeight: 320,
+          quality: 80,
+          format: CompressFormat.png,
+        );
+        final bytes = compressed.isNotEmpty ? compressed : rawBytes;
+        final base64Str = base64Encode(bytes);
+        final dataUri = 'data:image/png;base64,$base64Str';
+
+        String effectiveUrl = dataUri;
+        try {
+          final fileName = 'venue-logo-${DateTime.now().millisecondsSinceEpoch}.png';
+          await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
+          final pub = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
+          if (pub.isNotEmpty) effectiveUrl = pub;
+        } catch (_) {}
+
+        setState(() {
+          _customPortalLogoUrl = effectiveUrl;
+          _portalSuite = null;
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('wavepass_portal_logo_url', effectiveUrl);
+        await prefs.setString(VenueStateService.keyVenueLogo, effectiveUrl);
+        await _ensurePortalSuite();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Venue logo updated!'),
+              backgroundColor: AppColors.accentGreen,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load logo: $e'),
+              backgroundColor: AppColors.warmSand,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _uploadingPortalLogo = false);
+      }
+    }
+  }
+
+  Future<void> _setPresetBg(String url) async {
+    setState(() {
+      _customPortalBgUrl = url;
+      _portalSuite = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wavepass_portal_bg_url', url);
+    await _ensurePortalSuite();
+  }
+
+  Future<void> _resetBg() async {
+    setState(() {
+      _customPortalBgUrl = null;
+      _portalSuite = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('wavepass_portal_bg_url');
+    await _ensurePortalSuite();
+  }
+
+  Future<void> _setPresetLogo(String logoData) async {
+    setState(() {
+      _customPortalLogoUrl = logoData;
+      _portalSuite = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wavepass_portal_logo_url', logoData);
+    await _ensurePortalSuite();
+  }
+
+  Future<void> _resetLogo() async {
+    final defaultVenueLogo = VenueStateService.instance.currentLogoUrl;
+    setState(() {
+      _customPortalLogoUrl = defaultVenueLogo;
+      _portalSuite = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('wavepass_portal_logo_url');
+    await _ensurePortalSuite();
+  }
+
+  Widget _buildImagePreview(
+    String? imageUrl, {
+    required double width,
+    required double height,
+    BoxFit fit = BoxFit.cover,
+    Widget? placeholder,
+  }) {
+    if (imageUrl == null || imageUrl.trim().isEmpty) {
+      return placeholder ??
+          Container(
+            width: width,
+            height: height,
+            color: AppColors.containerBg,
+            child: const Icon(Icons.image_outlined, color: AppColors.textLight, size: 28),
+          );
+    }
+    final trimmed = imageUrl.trim();
+    if (trimmed.startsWith('data:image/')) {
+      try {
+        final commaIndex = trimmed.indexOf(',');
+        if (commaIndex != -1) {
+          final base64Data = trimmed.substring(commaIndex + 1);
+          final bytes = base64Decode(base64Data);
+          return Image.memory(
+            bytes,
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (ctx, err, stack) =>
+                placeholder ?? const Icon(Icons.broken_image_rounded, color: AppColors.textLight),
+          );
+        }
+      } catch (_) {}
+    }
+    return Image.network(
+      trimmed,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (ctx, err, stack) =>
+          placeholder ?? const Icon(Icons.broken_image_rounded, color: AppColors.textLight),
+    );
+  }
+
+  Widget _buildTemplatePickerCard() {
+    final templates = [
+      {'id': 'onyx', 'name': 'Onyx Modern', 'subtitle': 'Tech / Dark'},
+      {'id': 'ivory', 'name': 'Pure Ivory', 'subtitle': 'Clean Light'},
+      {'id': 'neopop', 'name': 'Neo-Pop', 'subtitle': 'Brutalist'},
+      {'id': 'aurora', 'name': 'Glass Aurora', 'subtitle': 'VIP Frosted'},
+    ];
+
+    final effectiveLogo = (_customPortalLogoUrl != null && _customPortalLogoUrl!.trim().isNotEmpty)
+        ? _customPortalLogoUrl!.trim()
+        : (VenueStateService.instance.currentLogoUrl != null && VenueStateService.instance.currentLogoUrl!.trim().isNotEmpty)
+            ? VenueStateService.instance.currentLogoUrl!.trim()
+            : _presetLogos['Crown VIP'];
+
+    final effectiveBg = (_customPortalBgUrl != null && _customPortalBgUrl!.trim().isNotEmpty)
+        ? _customPortalBgUrl!.trim()
+        : _presetBackgrounds['Lounge'];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. HEADER & TEMPLATES
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.palette_outlined, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Text(
+                    'PORTAL THEME & BRANDING',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.accentGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '100% Offline Ready',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentGreen),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Select your captive portal look and feel:',
+            style: TextStyle(fontSize: 11, color: AppColors.textLight),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: templates.map((t) {
+              final isSelected = _selectedPortalTemplate == t['id'];
+              return ChoiceChip(
+                label: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t['name']!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? AppColors.white : AppColors.primary,
+                      ),
+                    ),
+                    Text(
+                      t['subtitle']!,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isSelected ? Colors.white70 : AppColors.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+                selected: isSelected,
+                selectedColor: AppColors.primary,
+                backgroundColor: AppColors.containerBg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: isSelected ? AppColors.primary : AppColors.cardBorder),
+                ),
+                onSelected: (selected) async {
+                  if (selected) {
+                    setState(() {
+                      _selectedPortalTemplate = t['id']!;
+                      _portalSuite = null;
+                    });
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('wavepass_portal_template', t['id']!);
+                    await _ensurePortalSuite();
+                  }
+                },
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: AppColors.cardBorder),
+          const SizedBox(height: 16),
+
+          // 2. BACKGROUND PHOTO CUSTOMIZER
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.wallpaper_rounded, size: 15, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Text(
+                    'PORTAL BACKGROUND PHOTO (CLEAR)',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ],
+              ),
+              if (_customPortalBgUrl != null)
+                GestureDetector(
+                  onTap: _resetBg,
+                  child: const Text(
+                    'Reset to Default',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentRed),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 96,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.cardBorder),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildImagePreview(
+                    effectiveBg,
+                    width: double.infinity,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.black.withValues(alpha: 0.65),
+                          Colors.black.withValues(alpha: 0.25),
+                        ],
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    left: 10,
+                    right: 10,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _customPortalBgUrl != null
+                                ? '✓ Custom background image applied'
+                                : 'Default venue photo (clear view)',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _uploadingPortalBg ? null : _pickAndSetPortalBg,
+                          icon: _uploadingPortalBg
+                              ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.add_photo_alternate_rounded, size: 14, color: Colors.white),
+                          label: Text(
+                            _uploadingPortalBg ? 'Saving...' : 'Upload Photo',
+                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Presets: ', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _presetBackgrounds.entries.map((e) {
+                      final isSelected = _customPortalBgUrl == e.value || (_customPortalBgUrl == null && e.key == 'Lounge');
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ActionChip(
+                          label: Text(e.key, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: isSelected ? AppColors.primary : AppColors.textLight)),
+                          backgroundColor: isSelected ? AppColors.accentGreen.withValues(alpha: 0.15) : AppColors.containerBg,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          side: BorderSide(color: isSelected ? AppColors.accentGreen : AppColors.cardBorder),
+                          onPressed: () => _setPresetBg(e.value),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: AppColors.cardBorder),
+          const SizedBox(height: 16),
+
+          // 3. VENUE LOGO CUSTOMIZER
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.verified_user_outlined, size: 15, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Text(
+                    'VENUE LOGO (AP WI-FI IDENTITY)',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ],
+              ),
+              if (_customPortalLogoUrl != null)
+                GestureDetector(
+                  onTap: _resetLogo,
+                  child: const Text(
+                    'Reset',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentRed),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.containerBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.cardBorder),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.cardBorder),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: _buildImagePreview(
+                      effectiveLogo,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _customPortalLogoUrl != null ? 'Custom Logo Active' : 'Venue Brand Badge',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Rendered prominently at top of captive portal card.',
+                        style: TextStyle(fontSize: 9.5, color: AppColors.textLight),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: _uploadingPortalLogo ? null : _pickAndSetPortalLogo,
+                  icon: _uploadingPortalLogo
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.upload_rounded, size: 14, color: Colors.white),
+                  label: Text(
+                    _uploadingPortalLogo ? 'Saving...' : 'Upload Logo',
+                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Preset Logos: ', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _presetLogos.entries.map((e) {
+                      final isSelected = _customPortalLogoUrl == e.value || (_customPortalLogoUrl == null && e.key == 'Crown VIP');
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ActionChip(
+                          label: Text(e.key, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: isSelected ? AppColors.primary : AppColors.textLight)),
+                          backgroundColor: isSelected ? AppColors.accentGreen.withValues(alpha: 0.15) : AppColors.containerBg,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          side: BorderSide(color: isSelected ? AppColors.accentGreen : AppColors.cardBorder),
+                          onPressed: () => _setPresetLogo(e.value),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

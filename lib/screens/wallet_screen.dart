@@ -38,6 +38,7 @@ class _WalletScreenState extends State<WalletScreen> {
   int _selectedHistoryTab = 0; // 0: All, 1: Paystack Store Sales, 2: Cashouts
   String? _vaError;
   bool _refreshingVa = false;
+  final bool _isPaystackLocked = true;
 
   // New bank account form
   final _nameCtrl = TextEditingController();
@@ -301,31 +302,96 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
     );
   }
+  /// Locked Paystack feature portrait notification card
+  Widget _buildPaystackLockedCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.lock_clock_outlined, color: Color(0xFFB45309), size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDE68A),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'FEATURE NOT AVAILABLE YET',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF92400E),
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Paystack Wallet & Checkout Locked',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF78350F),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Automated Paystack wallet cashouts and online card checkout are currently locked under scheduled upgrade. Cash voucher pass sales, counter redemptions, direct bank transfers, and router hardware operations remain fully operational.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF92400E),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _requestCashout() async {
-    if (_bankAccounts.isEmpty) {
-      final registerNow = await showDialog<bool>(
+    if (_isPaystackLocked) {
+      await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Add Payout Bank First'),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
+              SizedBox(width: 8),
+              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
           content: const Text(
-            'You need to register your Nigerian bank account before cashing out so funds can be deposited directly to you.',
+            'Automated Paystack wallet cashouts and online card checkout are currently locked under scheduled upgrade. Cash voucher sales at the counter and router operations remain fully active.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Add Bank Now'),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Understood'),
             ),
           ],
         ),
       );
-      if (registerNow == true) {
-        await _registerBank();
-      }
       return;
     }
 
@@ -460,6 +526,30 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _registerBank() async {
+    if (_isPaystackLocked) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
+              SizedBox(width: 8),
+              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'Automated Paystack bank registration and wallet cashouts are currently locked under scheduled upgrade. Cash voucher sales at the counter and router operations remain fully active.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Understood'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     final form = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) {
@@ -604,6 +694,9 @@ class _WalletScreenState extends State<WalletScreen> {
                           child: Text(_error!, style: const TextStyle(color: AppColors.accentRed)),
                         ),
                       ),
+                    // PAYSTACK FEATURES LOCKED NOTIFICATION
+                    _buildPaystackLockedCard(),
+                    const SizedBox(height: 16),
                     // VIRTUAL ACCOUNT / WALLET STATUS
                     if (_hasActiveVirtualAccount)
                       Container(

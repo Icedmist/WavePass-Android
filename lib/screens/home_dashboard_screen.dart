@@ -1696,7 +1696,7 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              "${_paystackCount} sales • In Wallet",
+                                              "$_paystackCount sales • In Wallet",
                                               style: const TextStyle(
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.w600,
@@ -1756,7 +1756,7 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              "${_counterCount} vouchers • In Hand",
+                                              "$_counterCount vouchers • In Hand",
                                               style: TextStyle(
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.w600,

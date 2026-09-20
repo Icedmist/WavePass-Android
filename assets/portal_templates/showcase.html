@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WavePass Portal Template Studio</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #090D16;
+      color: #F8FAFC;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #111827;
+      border-bottom: 1px solid #1F2937;
+      padding: 14px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #10B981, #06B6D4);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #000;
+      font-size: 18px;
+    }
+    .brand-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #FFFFFF;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: #94A3B8;
+    }
+    .top-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .template-selector {
+      display: flex;
+      background: #030712;
+      border: 1px solid #1F2937;
+      border-radius: 12px;
+      padding: 4px;
+      gap: 4px;
+    }
+    .t-btn {
+      padding: 8px 14px;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: #94A3B8;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .t-btn:hover { color: #FFFFFF; }
+    .t-btn.active {
+      background: #2563EB;
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    }
+    .device-toggles {
+      display: flex;
+      gap: 8px;
+    }
+    .d-btn {
+      padding: 8px 12px;
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      color: #E2E8F0;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .d-btn.active {
+      background: #374151;
+      border-color: #6B7280;
+    }
+    .customizer-bar {
+      background: #0D1322;
+      border-bottom: 1px solid #1F2937;
+      padding: 12px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 20px;
+    }
+    .c-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .c-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #94A3B8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .c-input {
+      padding: 7px 12px;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+      width: 180px;
+    }
+    .c-input:focus { border-color: #3B82F6; }
+    .c-btn {
+      padding: 7px 12px;
+      background: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #F1F5F9;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .c-btn:hover {
+      background: #334155;
+    }
+    .preset-chips {
+      display: flex;
+      gap: 6px;
+    }
+    .chip {
+      padding: 5px 10px;
+      background: #111827;
+      border: 1px solid #1F2937;
+      border-radius: 6px;
+      color: #94A3B8;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .chip:hover, .chip.active {
+      color: #FFFFFF;
+      background: #1F2937;
+      border-color: #3B82F6;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+      background: #05070C;
+    }
+    .preview-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .phone-frame {
+      width: 395px;
+      height: 790px;
+      background: #000;
+      border: 10px solid #1F2937;
+      border-radius: 48px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .phone-frame.desktop {
+      width: 100%;
+      max-width: 1150px;
+      height: 840px;
+      border-radius: 16px;
+      border: 1px solid #1F2937;
+    }
+    .notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 24px;
+      background: #1F2937;
+      border-bottom-left-radius: 14px;
+      border-bottom-right-radius: 14px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .camera {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #0A0F1D;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+    }
+    .info-bar {
+      margin-top: 18px;
+      background: #111827;
+      border: 1px solid #1F2937;
+      border-radius: 12px;
+      padding: 12px 20px;
+      max-width: 760px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .info-text h4 { font-size: 13px; font-weight: 800; color: #FFFFFF; }
+    .info-text p { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: #064E3B;
+      color: #34D399;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">W</div>
+      <div>
+        <div class="brand-title">WavePass Custom Portal Studio</div>
+        <div class="brand-subtitle">Interactive Venue Customization & Approval Demo</div>
+      </div>
+    </div>
+
+    <div class="top-controls">
+      <div class="template-selector">
+        <button class="t-btn active" onclick="setTemplate('template_1_onyx.html', this, '1. Onyx Modern', 'Dark Mode, Cyber & Cocktail Bar Aesthetic')">1. Onyx Modern</button>
+        <button class="t-btn" onclick="setTemplate('template_2_ivory.html', this, '2. Pure Ivory', 'Upscale Hospitality, Boutique Hotels & Cafes')">2. Pure Ivory</button>
+        <button class="t-btn" onclick="setTemplate('template_3_neopop.html', this, '3. Neo-Bespoke', 'High-Contrast Yellow & Black, Creative Co-working')">3. Neo-Bespoke</button>
+        <button class="t-btn" onclick="setTemplate('template_4_aurora.html', this, '4. Glass Aurora', 'Frosted Glassmorphism, VIP Rooftops & Nightclubs')">4. Glass Aurora</button>
+      </div>
+
+      <div class="device-toggles">
+        <button class="d-btn active" id="btnPhone" onclick="setDevice('phone')">📱 Mobile Portrait</button>
+        <button class="d-btn" id="btnDesktop" onclick="setDevice('desktop')">💻 Wide View</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Live Customizer Bar -->
+  <div class="customizer-bar">
+    <div class="c-group">
+      <span class="c-label">Venue Name (AP):</span>
+      <input type="text" id="venueNameInput" class="c-input" value="Apex Lounge" oninput="updateVenueName(this.value)">
+    </div>
+
+    <div class="c-group">
+      <span class="c-label">Venue Logo:</span>
+      <label class="c-btn">
+        <span>📁 Upload Logo</span>
+        <input type="file" id="logoUploadInput" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)">
+      </label>
+      <div class="preset-chips">
+        <button type="button" class="chip active" onclick="setPresetLogo('crown')">Crown</button>
+        <button type="button" class="chip" onclick="setPresetLogo('coffee')">Coffee</button>
+        <button type="button" class="chip" onclick="setPresetLogo('lightning')">Flash</button>
+      </div>
+    </div>
+
+    <div class="c-group">
+      <span class="c-label">Background Image:</span>
+      <label class="c-btn">
+        <span>📸 Upload BG Photo</span>
+        <input type="file" id="bgUploadInput" accept="image/*" style="display:none;" onchange="handleBgUpload(event)">
+      </label>
+      <div class="preset-chips">
+        <button type="button" class="chip active" onclick="setPresetBg('lounge')">Cocktail Lounge</button>
+        <button type="button" class="chip" onclick="setPresetBg('cafe')">Artisan Cafe</button>
+        <button type="button" class="chip" onclick="setPresetBg('tech')">Tech Space</button>
+        <button type="button" class="chip" onclick="setPresetBg('nightclub')">Rooftop Night</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="preview-container">
+      <div class="phone-frame" id="frameContainer">
+        <div class="notch" id="notchEl"><div class="camera"></div></div>
+        <iframe id="previewIframe" src="template_1_onyx.html"></iframe>
+      </div>
+
+      <div class="info-bar">
+        <div class="info-text">
+          <h4 id="tplTitle">Template 1: Onyx Modern</h4>
+          <p id="tplDesc">Dark minimalist styling with live venue branding, AP Wi-Fi identity, and uploaded background image support.</p>
+        </div>
+        <div class="status-badge">
+          <span>✓ Ready for Approval</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Preset Logos (Standard RFC 2397 base64 data URIs for 100% universal browser rendering)
+    const PRESET_LOGOS = {
+      crown: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTExODI3Ii8+PHBhdGggZD0iTTI1IDY1IEwyMCAzNSBMMzggNDggTDUwIDI1IEw2MiA0OCBMODAgMzUgTDc1IDY1IFoiIGZpbGw9IiNGNTlFMEIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjIyIiByPSI0IiBmaWxsPSIjRkRFNjhBIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIzMiIgcj0iNCIgZmlsbD0iI0ZERTY4QSIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iMzIiIHI9IjQiIGZpbGw9IiNGREU2OEEiLz48cmVjdCB4PSIyNSIgeT0iNjgiIHdpZHRoPSI1MCIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjRjU5RTBCIi8+PC9zdmc+",
+      coffee: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMDY0RTNCIi8+PHBhdGggZD0iTTMwIDQwIEw3MCA0MCBMNjUgNzIgQTE1IDE1IDAgMCAxIDUwIDgyIEExNSAxNSAwIDAgMSAzNSA3MiBaIiBmaWxsPSIjQTdGM0QwIi8+PHBhdGggZD0iTTcwIDQ2IEM3OCA0NiA4MiA1MCA4MiA1NiBDODIgNjIgNzYgNjYgNjggNjYiIHN0cm9rZT0iI0E3RjNEMCIgc3Ryb2tlLXdpZHRoPSI1IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTQyIDIyIFE0NiAzMCA0MiAzNiBNNTAgMTggUTU0IDI4IDUwIDM2IE01OCAyMiBRNjIgMzAgNTggMzYiIHN0cm9rZT0iIzM0RDM5OSIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz48L3N2Zz4=",
+      lightning: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjRTExRDQ4Ii8+PHBhdGggZD0iTTU1IDE4IEwzMCA1NCBMNDggNTQgTDQyIDgyIEw3MiA0NCBMNTIgNDQgWiIgZmlsbD0iI0ZFRjA4QSIvPjwvc3ZnPg=="
+    };
+
+    // Preset Backgrounds
+    const PRESET_BGS = {
+      lounge: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop",
+      cafe: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1200&auto=format&fit=crop",
+      tech: "https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?q=80&w=1200&auto=format&fit=crop",
+      nightclub: "https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=1200&auto=format&fit=crop"
+    };
+
+    let state = {
+      venueName: "Apex Lounge",
+      logoUrl: PRESET_LOGOS.crown,
+      bgUrl: PRESET_BGS.lounge,
+      currentFile: "template_1_onyx.html"
+    };
+
+    function broadcastState() {
+      const iframe = document.getElementById('previewIframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          action: 'updateCustomization',
+          venueName: state.venueName,
+          logoUrl: state.logoUrl,
+          bgUrl: state.bgUrl
+        }, '*');
+      }
+    }
+
+    const iframeEl = document.getElementById('previewIframe');
+    iframeEl.addEventListener('load', () => {
+      broadcastState();
+      setTimeout(broadcastState, 80);
+      setTimeout(broadcastState, 300);
+    });
+    setTimeout(broadcastState, 200);
+
+    function setTemplate(file, btn, title, desc) {
+      document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.currentFile = file;
+      document.getElementById('previewIframe').src = file;
+      document.getElementById('tplTitle').innerText = title;
+      document.getElementById('tplDesc').innerText = desc + ' • Features prominent venue logo, AP identity, custom background, and locked Paystack notice.';
+    }
+
+    function setDevice(type) {
+      const f = document.getElementById('frameContainer');
+      const notch = document.getElementById('notchEl');
+      const bPhone = document.getElementById('btnPhone');
+      const bDesk = document.getElementById('btnDesktop');
+      if (type === 'desktop') {
+        f.classList.add('desktop');
+        notch.style.display = 'none';
+        bDesk.classList.add('active');
+        bPhone.classList.remove('active');
+      } else {
+        f.classList.remove('desktop');
+        notch.style.display = 'flex';
+        bPhone.classList.add('active');
+        bDesk.classList.remove('active');
+      }
+    }
+
+    function updateVenueName(val) {
+      state.venueName = val.trim() || 'Guest Wi-Fi';
+      broadcastState();
+    }
+
+    function setPresetLogo(type) {
+      state.logoUrl = PRESET_LOGOS[type] || '';
+      broadcastState();
+    }
+
+    function handleLogoUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        state.logoUrl = e.target.result;
+        broadcastState();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function setPresetBg(type) {
+      state.bgUrl = PRESET_BGS[type] || '';
+      broadcastState();
+    }
+
+    function handleBgUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        state.bgUrl = e.target.result;
+        broadcastState();
+      };
+      reader.readAsDataURL(file);
+    }
+  </script>
+</body>
+</html>

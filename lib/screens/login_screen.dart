@@ -11,6 +11,8 @@ import '../core/services/venue_state_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/session_service.dart';
+import '../core/services/biometric_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,6 +27,61 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
+
+  bool _biometricsEnabled = false;
+  String _biometricLabel = "Fingerprint / Face ID";
+  bool _hasEnrolledBiometrics = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    final hadExpired = await SessionService.instance.consumeExpiryNotice();
+    if (hadExpired && mounted) {
+      setState(() {
+        _errorMessage = "Your session expired after 48 hours. Please sign in again.";
+      });
+    }
+
+    final enabled = await BiometricAuthService.instance.isBiometricLoginEnabled();
+    final label = await BiometricAuthService.instance.getBiometricTypeLabel();
+    final creds = await BiometricAuthService.instance.getEnrolledCredentials();
+
+    if (mounted) {
+      setState(() {
+        _biometricsEnabled = enabled;
+        _biometricLabel = label;
+        _hasEnrolledBiometrics = enabled && creds != null;
+        if (_hasEnrolledBiometrics && _emailController.text.isEmpty) {
+          _emailController.text = creds!['email'] ?? '';
+        }
+      });
+    }
+  }
+
+  Future<void> _handleBiometricSignIn() async {
+    setState(() => _errorMessage = null);
+    final authenticated = await BiometricAuthService.instance.authenticate(
+      reason: "Authenticate with $_biometricLabel to sign in",
+    );
+    if (!authenticated) return;
+
+    final creds = await BiometricAuthService.instance.getEnrolledCredentials();
+    if (creds != null && creds['email'] != null && creds['password'] != null) {
+      _emailController.text = creds['email']!;
+      _passwordController.text = creds['password']!;
+      await _handleSignIn();
+    } else {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "No saved credentials found. Please sign in with your password.";
+        });
+      }
+    }
+  }
 
   Future<void> _handleSignIn() async {
     final email = _emailController.text.trim();
@@ -62,6 +119,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
         await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
         await ActivationCodeService.instance.isAccountActivated(email);
+        await SessionService.instance.recordLogin(email);
+        if (_biometricsEnabled) {
+          await BiometricAuthService.instance.enrollBiometrics(email: email, password: password);
+        }
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;
@@ -89,6 +150,10 @@ class _LoginScreenState extends State<LoginScreen> {
           final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
           await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
           await ActivationCodeService.instance.isAccountActivated(email);
+          await SessionService.instance.recordLogin(email);
+          if (_biometricsEnabled) {
+            await BiometricAuthService.instance.enrollBiometrics(email: email, password: password);
+          }
           if (!mounted) return;
           context.go(AppRouter.dashboard);
           return;
@@ -278,6 +343,29 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                         ),
                       ),
+                      if (_hasEnrolledBiometrics) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _handleBiometricSignIn,
+                            icon: const Icon(Icons.fingerprint_rounded, size: 22, color: AppColors.primary),
+                            label: Text(
+                              "Sign In with $_biometricLabel",
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.primary, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

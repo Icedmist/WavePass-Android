@@ -405,7 +405,11 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
 
   Future<void> _showCredentialsDialog() async {
     final prefs = await SharedPreferences.getInstance();
-    final ipCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1');
+    final savedIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp);
+    final initialIp = (savedIp != null && !RouterDiscoveryService.isForbiddenIspGateway(savedIp))
+        ? savedIp
+        : '192.168.88.1';
+    final ipCtrl = TextEditingController(text: initialIp);
     final userCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin');
     final passCtrl = TextEditingController(text: prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '');
     bool obscurePass = true;
@@ -433,39 +437,43 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  "Configure direct REST API authentication used to manage this MikroTik router locally.",
+                  "Configure the IP and admin credentials used by WavePass to discover and manage this MikroTik router on your local Wi-Fi subnet.",
                   style: TextStyle(fontSize: 12, color: AppColors.textLight),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextField(
                   controller: ipCtrl,
+                  keyboardType: TextInputType.text,
                   decoration: const InputDecoration(
-                    labelText: "Gateway IP / Host (Port 80)",
+                    labelText: "Router Local IP",
                     hintText: "192.168.88.1",
+                    isDense: true,
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.router, size: 20),
+                    prefixIcon: Icon(Icons.router_outlined, size: 20),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: userCtrl,
                   decoration: const InputDecoration(
-                    labelText: "Admin Username",
+                    labelText: "Router Username",
                     hintText: "admin",
+                    isDense: true,
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person, size: 20),
+                    prefixIcon: Icon(Icons.person_outline, size: 20),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: passCtrl,
                   obscureText: obscurePass,
                   decoration: InputDecoration(
-                    labelText: "Admin Password",
-                    hintText: "Enter router password",
+                    labelText: "Router Password",
+                    hintText: "Leave blank if default",
+                    isDense: true,
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.lock_outline, size: 20),
                     suffixIcon: IconButton(
@@ -493,13 +501,21 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                     onPressed: isTesting
                         ? null
                         : () async {
+                            final candidateIp = ipCtrl.text.trim();
+                            if (RouterDiscoveryService.isForbiddenIspGateway(candidateIp)) {
+                              setDialogState(() {
+                                testSuccess = false;
+                                testResult = "$candidateIp is an upstream ISP modem/dish gateway (e.g. Starlink dish). WavePass must target your MikroTik router (default 192.168.88.1).";
+                              });
+                              return;
+                            }
                             setDialogState(() {
                               isTesting = true;
                               testResult = null;
                               testSuccess = null;
                             });
                             final res = await RouterDiscoveryService.discoverLocalRouter(
-                              ip: ipCtrl.text.trim(),
+                              ip: candidateIp,
                               username: userCtrl.text.trim(),
                               password: passCtrl.text.trim(),
                             );
@@ -516,7 +532,7 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
                                 testResult = res?.errorMessage ?? "Auth failed (HTTP 401) on Port 80. Invalid password.";
                               } else {
                                 testSuccess = false;
-                                testResult = res?.errorMessage ?? "Router unreachable on Port 80 at ${ipCtrl.text.trim()}";
+                                testResult = res?.errorMessage ?? "Router unreachable on Port 80 at $candidateIp";
                               }
                             });
                           },
@@ -613,7 +629,15 @@ class _RouterDiagnosticsScreenState extends State<RouterDiagnosticsScreen> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
               onPressed: () async {
-                await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, ipCtrl.text.trim());
+                final targetIp = ipCtrl.text.trim();
+                if (RouterDiscoveryService.isForbiddenIspGateway(targetIp)) {
+                  setDialogState(() {
+                    testSuccess = false;
+                    testResult = "$targetIp is an upstream ISP modem/dish gateway (e.g. Starlink dish) and cannot be saved as the MikroTik router.";
+                  });
+                  return;
+                }
+                await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, targetIp);
                 await prefs.setString(RouterDiscoveryService.keyRouterUsername, userCtrl.text.trim());
                 await prefs.setString(RouterDiscoveryService.keyRouterPassword, passCtrl.text.trim());
                 if (ctx.mounted) Navigator.of(ctx).pop();

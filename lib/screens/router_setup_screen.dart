@@ -111,6 +111,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final savedIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp);
+    if (savedIp != null && RouterDiscoveryService.isForbiddenIspGateway(savedIp)) {
+      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+    }
+    final effectiveIp = (savedIp != null && !RouterDiscoveryService.isForbiddenIspGateway(savedIp))
+        ? savedIp
+        : '192.168.88.1';
     final savedTunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
     final savedUser = prefs.getString(RouterDiscoveryService.keyRouterUsername);
     final savedPass = prefs.getString(RouterDiscoveryService.keyRouterPassword);
@@ -121,7 +127,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
     if (mounted) {
       setState(() {
-        if (savedIp != null && savedIp.isNotEmpty) _ipCtrl.text = savedIp;
+        _ipCtrl.text = effectiveIp;
         if (savedTunnel != null && savedTunnel.isNotEmpty) _tunnelCtrl.text = savedTunnel;
         if (savedUser != null && savedUser.isNotEmpty) _userCtrl.text = savedUser;
         if (savedPass != null && savedPass.isNotEmpty) {
@@ -145,7 +151,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
   Future<void> _saveCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, _ipCtrl.text.trim());
+    final targetIp = _ipCtrl.text.trim();
+    if (!RouterDiscoveryService.isForbiddenIspGateway(targetIp)) {
+      await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, targetIp);
+    } else {
+      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+    }
     await prefs.setString(RouterDiscoveryService.keyRouterTunnelEndpoint, _tunnelCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterUsername, _userCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterPassword, _passCtrl.text.trim());
@@ -168,6 +179,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     });
 
     final targetIp = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
+    if (RouterDiscoveryService.isForbiddenIspGateway(targetIp)) {
+      setState(() {
+        _isScanning = false;
+        _foundRouter = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("$targetIp is an upstream ISP modem/dish gateway (e.g. Starlink dish). WavePass must target your MikroTik router (default 192.168.88.1)."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final tunnel = _tunnelCtrl.text.trim();
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
     final pass = _passCtrl.text.trim();
@@ -330,8 +354,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
   Future<void> _enforceNoSharing() async {
     await _saveCredentials();
+    if (!mounted) return;
     final enteredIp = _ipCtrl.text.trim().isNotEmpty ? _ipCtrl.text.trim() : "192.168.88.1";
     final targetIp = _foundRouter?.ip ?? enteredIp;
+    if (RouterDiscoveryService.isForbiddenIspGateway(targetIp)) {
+      setState(() => _isConfiguring = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("$targetIp is an upstream ISP modem/dish gateway (e.g. Starlink dish). WavePass must target your MikroTik router (default 192.168.88.1)."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isConfiguring = true);
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
@@ -603,18 +638,13 @@ add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d k
 
 /ip firewall mangle
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=postrouting dst-address=192.168.0.0/16 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
-add chain=postrouting dst-address=10.0.0.0/8 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 10.x.x.x"
-add chain=postrouting dst-address=172.16.0.0/12 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 172.16.x.x"
+add chain=postrouting dst-address=192.168.88.0/24 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 (blocks iOS, Windows, Android, Linux sharing)"
+add chain=postrouting dst-address=10.5.50.0/24 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 10.5.50.0/24"
+add chain=postrouting dst-address=172.16.10.0/24 action=change-ttl new-ttl=set:1 passthrough=yes comment="WavePass Anti-Tethering: set TTL=1 172.16.10.0/24"
 
+# Remove any legacy anti-tethering filter drop rules so WAN traffic is never blocked
 /ip firewall filter
 remove [find comment~"WavePass Anti-Tethering"]
-add chain=forward src-address=192.168.0.0/16 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (Android/iOS/Linux)"
-add chain=forward src-address=10.0.0.0/8 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (10.x)"
-add chain=forward src-address=172.16.0.0/12 ttl=less-than:64 action=drop place-before=0 comment="WavePass Anti-Tethering: drop secondary hop ttl<64 (172.x)"
-add chain=forward src-address=192.168.0.0/16 ttl=equal:127 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 1 (Windows)"
-add chain=forward src-address=192.168.0.0/16 ttl=equal:126 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 2 (Windows)"
-add chain=forward src-address=192.168.0.0/16 ttl=equal:125 place-before=0 comment="WavePass Anti-Tethering: drop secondary 128-ttl hop 3 (Windows)"
 
 # --------------------------------------------------------
 # 6. Active Session Expiry & 1-Minute User Limit Enforcer

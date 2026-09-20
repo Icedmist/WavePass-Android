@@ -777,7 +777,8 @@ class MikrotikApiClient {
           }
         }
 
-        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        // Scope strictly to local HotSpot client subnets to avoid Starlink WAN (192.168.1.1)
+        final subnets = ['192.168.88.0/24', '10.5.50.0/24', '172.16.10.0/24'];
         for (final subnet in subnets) {
           await executeSentence([
             '/ip/firewall/mangle/add',
@@ -820,9 +821,7 @@ class MikrotikApiClient {
         ]);
       } catch (_) {}
 
-      // 7. Firewall Filter Drop tethered packets for all client subnets
-      // Drops routed packets from Linux, Android, and iOS tethering (TTL < 64)
-      // and Windows tethering (TTL equal 127, 126, 125)
+      // 7. Firewall Filter: Clean up any legacy Anti-Tethering filter drop rules that dropped forwarded WAN/Starlink packets
       try {
         final existingFilters = await executeSentence([
           '/ip/firewall/filter/print',
@@ -836,35 +835,9 @@ class MikrotikApiClient {
             } catch (_) {}
           }
         }
-
-        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
-        for (final subnet in subnets) {
-          // Drop routed packets from Linux, Android, and iOS tethering (TTL < 64)
-          await executeSentence([
-            '/ip/firewall/filter/add',
-            '=chain=forward',
-            '=src-address=$subnet',
-            '=action=drop',
-            '=ttl=less-than:64',
-            '=place-before=0',
-            '=comment=WavePass Anti-Tethering: drop secondary hop ttl<64 for $subnet (Android/iOS/Linux)',
-          ]);
-          // Drop routed packets from Windows tethering
-          for (final wTtl in ['127', '126', '125']) {
-            await executeSentence([
-              '/ip/firewall/filter/add',
-              '=chain=forward',
-              '=src-address=$subnet',
-              '=action=drop',
-              '=ttl=equal:$wTtl',
-              '=place-before=0',
-              '=comment=WavePass Anti-Tethering: drop secondary Windows hop ttl=$wTtl for $subnet',
-            ]);
-          }
-        }
         results['firewallFilter'] = true;
       } catch (e) {
-        debugPrint('[MikrotikApiClient] enforceNoSharing firewall filter error: $e');
+        debugPrint('[MikrotikApiClient] enforceNoSharing cleanup filter error: $e');
       }
 
       results['success'] = results['profiles'] == true ||

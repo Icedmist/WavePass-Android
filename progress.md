@@ -559,4 +559,23 @@
 - [x] **Verification**: `flutter analyze` clean (0 issues); 70/70 tests passed.
 - [x] PR [#117](https://github.com/Icedmist/WavePass-Android/pull/117) merged to `main`.
 
+### 46. ISP Gateway Blacklist, Cache Sanitization & Safe HotSpot Anti-Tethering (Issue #118, PR #119)
+- [x] **Upstream ISP Gateway Blacklist (`router_discovery_service.dart`)**:
+  - Added `blacklistedIspGateways` (`192.168.1.1`, `192.168.0.1`, `192.168.100.1`, `10.0.0.1`) and `isForbiddenIspGateway()`.
+  - Prohibits targeting or caching upstream ISP / modem / WAN gateways (e.g. Starlink dish on `ether1` at `192.168.1.1`) as the local MikroTik router.
+  - Guarded `discoverLocalRouter`, `probeEndpoint`, `_probeRouter`, `_probeRouterOsApi`, `installHotspotOnRouter`, `updateRouterAdminPassword`, `validateRouterTarget`, and `provisionVoucherDualRoute`.
+- [x] **Automatic Cache Sanitization (`main.dart` & `effectiveRouterTarget()`)**:
+  - Calls `RouterDiscoveryService.sanitizeCachedRouterTarget()` on application boot in `main.dart` to immediately purge any cached `192.168.1.1` without requiring manual reset.
+  - `effectiveRouterTarget()` automatically removes blacklisted gateways and falls back to default `192.168.88.1`.
+- [x] **HotSpot Subnet Scoping & WAN-Safe Anti-Tethering (`mikrotik_api_client.dart`, `router_discovery_service.dart`, `router_setup_screen.dart`)**:
+  - Removed blanket `192.168.0.0/16`, `10.0.0.0/8`, and `172.16.0.0/12` rules that were intercepting Starlink WAN responses.
+  - Scoped anti-tethering `postrouting` mangle TTL modification strictly to local HotSpot client subnets (`192.168.88.0/24`, `10.5.50.0/24`, `172.16.10.0/24`).
+  - Removed destructive `chain=forward src-address=... ttl=less-than:64 action=drop` forward filter rules that were dropping Starlink WAN responses (TTL 63) and breaking user internet connectivity.
+  - Actively audits and removes legacy `WavePass Anti-Tethering` filter drop rules from RouterOS filter table upon execution.
+- [x] **UI Validation Guards (`router_setup_screen.dart`, `router_diagnostics_screen.dart`, `account_center_screen.dart`)**:
+  - Validates manual IP inputs and prevents saving blacklisted ISP gateways with clear user guidance.
+- [x] **Verification**:
+  - `flutter analyze` clean (0 issues).
+  - All 76 tests passed (including 6 new tests in `test/router_dual_connection_test.dart`).
+
 

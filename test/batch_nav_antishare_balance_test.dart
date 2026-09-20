@@ -187,7 +187,7 @@ void main() {
       expect(receivedCommands, contains('wireless_print'));
       expect(receivedCommands, contains('wireless_set'));
       expect(receivedCommands, contains('mangle_add'));
-      expect(receivedCommands, contains('filter_add'));
+      expect(receivedCommands, contains('filter_print'));
       expect(receivedCommands, contains('ipv6_cmd'));
     });
   });

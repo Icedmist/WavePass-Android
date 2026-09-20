@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wavepass_mobile/core/services/router_discovery_service.dart';
 
 void main() {
@@ -333,6 +334,82 @@ void main() {
       expect(status.isLocalOnline, isTrue);
       expect(status.activeMode, equals('local'));
       expect(status.latencySummary, contains('LAN: 3ms'));
+    });
+  });
+
+  group('ISP Gateway Blacklist & Sanitization Tests (#118)', () {
+    test('isForbiddenIspGateway correctly detects reserved upstream modem/WAN gateways', () {
+      expect(RouterDiscoveryService.isForbiddenIspGateway('192.168.1.1'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('http://192.168.1.1:80/'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('https://192.168.1.1'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('api://192.168.1.1:8728'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('192.168.0.1'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('192.168.100.1'), isTrue);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('10.0.0.1'), isTrue);
+
+      // Must allow valid MikroTik LAN router addresses
+      expect(RouterDiscoveryService.isForbiddenIspGateway('192.168.88.1'), isFalse);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('192.168.88.8'), isFalse);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('10.5.50.1'), isFalse);
+      expect(RouterDiscoveryService.isForbiddenIspGateway('172.16.10.1'), isFalse);
+      expect(RouterDiscoveryService.isForbiddenIspGateway(null), isFalse);
+    });
+
+    test('sanitizeCachedRouterTarget removes blacklisted ISP gateway from cache', () async {
+      SharedPreferences.setMockInitialValues({
+        RouterDiscoveryService.keyRouterLocalIp: '192.168.1.1',
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(RouterDiscoveryService.keyRouterLocalIp), equals('192.168.1.1'));
+
+      await RouterDiscoveryService.sanitizeCachedRouterTarget();
+      expect(prefs.getString(RouterDiscoveryService.keyRouterLocalIp), isNull);
+    });
+
+    test('effectiveRouterTarget sanitizes cached 192.168.1.1 and returns 192.168.88.1 default', () async {
+      SharedPreferences.setMockInitialValues({
+        RouterDiscoveryService.keyRouterLocalIp: '192.168.1.1',
+      });
+
+      final target = await RouterDiscoveryService.effectiveRouterTarget();
+      expect(target, equals('192.168.88.1'));
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(RouterDiscoveryService.keyRouterLocalIp), isNull);
+    });
+
+    test('effectiveRouterTarget preserves valid non-blacklisted router IP', () async {
+      SharedPreferences.setMockInitialValues({
+        RouterDiscoveryService.keyRouterLocalIp: '192.168.88.8',
+      });
+
+      final target = await RouterDiscoveryService.effectiveRouterTarget();
+      expect(target, equals('192.168.88.8'));
+    });
+
+    test('validateRouterTarget immediately rejects blacklisted upstream ISP gateway', () async {
+      final res = await RouterDiscoveryService.validateRouterTarget(
+        ip: '192.168.1.1',
+        username: 'admin',
+        password: '',
+      );
+
+      expect(res['ok'], isFalse);
+      expect(res['message'], contains('reserved upstream ISP/modem gateway'));
+    });
+
+    test('discoverLocalRouter immediately returns blocked router for 192.168.1.1 without network probe', () async {
+      final res = await RouterDiscoveryService.discoverLocalRouter(
+        ip: '192.168.1.1',
+        username: 'admin',
+        password: '',
+      );
+
+      expect(res, isNotNull);
+      expect(res!.isReachable, isFalse);
+      expect(res.identity, equals('Blocked ISP Gateway'));
+      expect(res.errorMessage, contains('upstream ISP modem/dish gateway'));
     });
   });
 }

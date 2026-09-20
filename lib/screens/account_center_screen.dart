@@ -137,11 +137,17 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
         _venueSlugController.text = venue['slug']?.toString() ?? 'venue';
       }
 
-      final savedRouterIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final savedRouterIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp);
+      if (savedRouterIp != null && RouterDiscoveryService.isForbiddenIspGateway(savedRouterIp)) {
+        await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+      }
+      final initialRouterIp = (savedRouterIp != null && !RouterDiscoveryService.isForbiddenIspGateway(savedRouterIp))
+          ? savedRouterIp
+          : '192.168.88.1';
       final savedRouterUser = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
       final savedRouterPass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
       if (mounted) {
-        _routerIpController.text = savedRouterIp;
+        _routerIpController.text = initialRouterIp;
         _routerUserController.text = savedRouterUser;
         _routerPassController.text = savedRouterPass;
       }
@@ -239,6 +245,10 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
 
   Future<void> _handleUpdateRouterCredentials() async {
     final ip = _routerIpController.text.trim().isNotEmpty ? _routerIpController.text.trim() : '192.168.88.1';
+    if (RouterDiscoveryService.isForbiddenIspGateway(ip)) {
+      _showToast('$ip is an upstream ISP modem/dish gateway (e.g. Starlink dish) and cannot be targeted as the MikroTik router.', isError: true);
+      return;
+    }
     final user = _routerUserController.text.trim().isNotEmpty ? _routerUserController.text.trim() : 'admin';
     final pass = _routerPassController.text.trim();
 

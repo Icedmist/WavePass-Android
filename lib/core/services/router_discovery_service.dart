@@ -79,6 +79,40 @@ class RouterDiscoveryService {
   static const String keyRouterUsername = 'wavepass_router_username';
   static const String keyRouterPassword = 'wavepass_router_password';
 
+  /// Blacklist of common upstream ISP / modem / WAN gateway addresses (e.g. Starlink dish,
+  /// fiber ONTs, ADSL/LTE modems) that must NEVER be targeted or saved as the local MikroTik router.
+  static const Set<String> blacklistedIspGateways = {
+    '192.168.1.1',
+    '192.168.0.1',
+    '192.168.100.1',
+    '10.0.0.1',
+  };
+
+  /// Returns true if the host is a known upstream ISP modem/gateway (e.g. Starlink dish at 192.168.1.1).
+  static bool isForbiddenIspGateway(String? host) {
+    if (host == null) return false;
+    var clean = host.trim().toLowerCase();
+    for (final prefix in ['http://', 'https://', 'api://']) {
+      if (clean.startsWith(prefix)) clean = clean.substring(prefix.length);
+    }
+    if (clean.contains('/')) clean = clean.split('/').first;
+    if (clean.contains(':')) clean = clean.split(':').first;
+    return blacklistedIspGateways.contains(clean);
+  }
+
+  /// Automatically sanitizes SharedPreferences on startup or discovery.
+  /// If keyRouterLocalIp contains a blacklisted ISP gateway, it is removed immediately.
+  static Future<void> sanitizeCachedRouterTarget() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(keyRouterLocalIp);
+      if (saved != null && isForbiddenIspGateway(saved)) {
+        await prefs.remove(keyRouterLocalIp);
+        debugPrint('[RouterDiscoveryService] Sanitized blacklisted ISP gateway ($saved) from cache.');
+      }
+    } catch (_) {}
+  }
+
   /// Creates an HTTP client configured to accept self-signed certificates on local router hardware.
   static http.Client createRouterClient({Duration timeout = const Duration(seconds: 8)}) {
     if (kIsWeb) return http.Client();
@@ -124,6 +158,20 @@ class RouterDiscoveryService {
     String username = "admin",
     String password = "",
   }) async {
+    if (isForbiddenIspGateway(ip)) {
+      return DiscoveredRouter(
+        ip: ip,
+        identity: 'Blocked ISP Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: 'LAN',
+        errorMessage: '$ip is an upstream ISP modem/dish gateway, not the MikroTik router.',
+      );
+    }
+
     // 1. Probe with supplied credentials
     DiscoveredRouter? router = await _probeRouter(ip, username, password, connectionType: "LAN");
     if (router != null && router.isReachable && !router.authFailed && !router.captivePortalIntercepted) {
@@ -151,6 +199,19 @@ class RouterDiscoveryService {
   }) async {
     var normalized = rawEndpoint.trim();
     if (normalized.isEmpty) return null;
+    if (isForbiddenIspGateway(normalized)) {
+      return DiscoveredRouter(
+        ip: normalized,
+        identity: 'Blocked ISP Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: '$normalized is an upstream ISP modem/dish gateway, not the MikroTik router.',
+      );
+    }
 
     // Direct Port 8728 RouterOS API endpoint handling
     if (normalized.startsWith('api://') || normalized.contains(':8728')) {
@@ -370,6 +431,19 @@ class RouterDiscoveryService {
     String connectionType = 'LAN (API :8728)',
     Duration timeout = const Duration(seconds: 5),
   }) async {
+    if (isForbiddenIspGateway(host)) {
+      return DiscoveredRouter(
+        ip: '$host:$port',
+        identity: 'Blocked ISP Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: '$host is an upstream ISP gateway, not the MikroTik router.',
+      );
+    }
     final client = MikrotikApiClient(
       host: host,
       port: port,
@@ -490,6 +564,19 @@ class RouterDiscoveryService {
     if (cleanHost.startsWith('https://')) cleanHost = cleanHost.substring(8);
     if (cleanHost.endsWith('/')) cleanHost = cleanHost.substring(0, cleanHost.length - 1);
     if (cleanHost.isEmpty) return null;
+    if (isForbiddenIspGateway(cleanHost)) {
+      return DiscoveredRouter(
+        ip: cleanHost,
+        identity: 'Blocked ISP Gateway',
+        version: 'N/A',
+        cpuLoad: 'N/A',
+        uptime: 'N/A',
+        totalMemory: 'N/A',
+        isReachable: false,
+        connectionType: connectionType,
+        errorMessage: '$cleanHost is an upstream ISP gateway, not the MikroTik router.',
+      );
+    }
 
     // Direct Port 8728 or api scheme handling
     if (cleanHost.contains(':8728') || ip.trim().startsWith('api://')) {
@@ -1141,7 +1228,9 @@ class RouterDiscoveryService {
     String? password,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final effectiveLocalIp = localIp ?? prefs.getString(keyRouterLocalIp) ?? '192.168.88.1';
+    final savedIp = prefs.getString(keyRouterLocalIp);
+    final rawLocalIp = localIp ?? savedIp ?? '192.168.88.1';
+    final effectiveLocalIp = isForbiddenIspGateway(rawLocalIp) ? '192.168.88.1' : rawLocalIp;
     final effectiveTunnel = tunnelEndpoint ?? prefs.getString(keyRouterTunnelEndpoint);
     final effectiveUser = username ?? prefs.getString(keyRouterUsername) ?? 'admin';
     final effectivePass = password ?? prefs.getString(keyRouterPassword) ?? '';
@@ -1164,7 +1253,7 @@ class RouterDiscoveryService {
     }
 
     // 2. Fallback to tunnel endpoint if configured
-    if (effectiveTunnel != null && effectiveTunnel.trim().isNotEmpty) {
+    if (effectiveTunnel != null && effectiveTunnel.isNotEmpty) {
       final tunnelSuccess = await createHotspotUserDirectly(
         endpoint: effectiveTunnel,
         username: effectiveUser,
@@ -1176,12 +1265,18 @@ class RouterDiscoveryService {
         limitBytesTotal: limitBytesTotal,
         sharedUsers: sharedUsers,
       );
+
       if (tunnelSuccess) {
         return {'success': true, 'mode': 'tunnel', 'endpoint': effectiveTunnel};
       }
     }
 
-    return {'success': false, 'mode': 'none', 'error': 'Router unreachable via LAN and Tunnel'};
+    return {
+      'success': false,
+      'mode': 'failed',
+      'endpoint': effectiveLocalIp,
+      'error': 'Failed to reach router locally ($effectiveLocalIp) and via tunnel (${effectiveTunnel ?? 'not configured'}).',
+    };
   }
 
   /// Reboot router via RouterOS REST API over local subnet or tunnel endpoint
@@ -1280,6 +1375,13 @@ class RouterDiscoveryService {
       hostOnly = hostOnly.split(':').first;
     }
     if (hostOnly.contains('/')) hostOnly = hostOnly.split('/').first;
+
+    if (isForbiddenIspGateway(hostOnly)) {
+      return {
+        'ok': false,
+        'message': '$hostOnly is an upstream ISP modem/dish gateway (e.g. Starlink) and cannot be configured as a MikroTik router.',
+      };
+    }
 
     // Unconditionally persist router credentials and endpoints locally
     try {
@@ -1825,7 +1927,7 @@ class RouterDiscoveryService {
         }
       } catch (_) {}
 
-      // WAN-Safe Mangle: Change TTL to 1 for all client destination subnets
+      // WAN-Safe Mangle: Change TTL to 1 for HotSpot client subnets only (never match WAN / Starlink 192.168.1.1)
       try {
         final mangleRes = await client.get(
           Uri.parse("$target/rest/ip/firewall/mangle"),
@@ -1849,7 +1951,8 @@ class RouterDiscoveryService {
           }
         }
 
-        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        // Scope strictly to local HotSpot client subnets to avoid Starlink WAN (192.168.1.1)
+        final subnets = ['192.168.88.0/24', '10.5.50.0/24', '172.16.10.0/24'];
         for (final subnet in subnets) {
           await client.put(
             Uri.parse("$target/rest/ip/firewall/mangle"),
@@ -1898,35 +2001,27 @@ class RouterDiscoveryService {
         ).timeout(const Duration(seconds: 2));
       } catch (_) {}
 
-      // Firewall Filter Drop tethered packets for all client subnets
-      // Drops routed packets from Linux, Android, and iOS tethering (TTL < 64)
-      // and Windows tethering (TTL equal 127, 126, 125)
+      // Clean up legacy Anti-Tethering filter drop rules that dropped forwarded WAN/Starlink packets
       try {
-        final subnets = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
-        for (final subnet in subnets) {
-          await client.put(
-            Uri.parse("$target/rest/ip/firewall/filter"),
-            headers: headers,
-            body: jsonEncode({
-              'chain': 'forward',
-              'src-address': subnet,
-              'action': 'drop',
-              'ttl': 'less-than:64',
-              'comment': 'WavePass Anti-Tethering: drop secondary hop ttl<64 for $subnet (Android/iOS/Linux)',
-            }),
-          ).timeout(const Duration(seconds: 2));
-          for (final wTtl in ['127', '126', '125']) {
-            await client.put(
-              Uri.parse("$target/rest/ip/firewall/filter"),
-              headers: headers,
-              body: jsonEncode({
-                'chain': 'forward',
-                'src-address': subnet,
-                'action': 'drop',
-                'ttl': 'equal:$wTtl',
-                'comment': 'WavePass Anti-Tethering: drop secondary Windows hop ttl=$wTtl for $subnet',
-              }),
-            ).timeout(const Duration(seconds: 2));
+        final filterRes = await client.get(
+          Uri.parse("$target/rest/ip/firewall/filter"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+        if (filterRes.statusCode == 200) {
+          final list = jsonDecode(filterRes.body);
+          if (list is List) {
+            for (final f in list) {
+              final comment = f['comment']?.toString() ?? '';
+              if (comment.contains('WavePass Anti-Tethering')) {
+                final id = f['.id'];
+                if (id != null) {
+                  await client.delete(
+                    Uri.parse("$target/rest/ip/firewall/filter/$id"),
+                    headers: headers,
+                  ).timeout(const Duration(seconds: 2));
+                }
+              }
+            }
           }
         }
         results['firewallFilter'] = true;
@@ -1954,7 +2049,9 @@ class RouterDiscoveryService {
     String? endpoint,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final effectiveIp = (ip != null && ip.isNotEmpty) ? ip : (prefs.getString(keyRouterLocalIp) ?? '192.168.88.1');
+    final savedIp = prefs.getString(keyRouterLocalIp);
+    final rawIp = (ip != null && ip.isNotEmpty) ? ip : (savedIp ?? '192.168.88.1');
+    final effectiveIp = isForbiddenIspGateway(rawIp) ? '192.168.88.1' : rawIp;
     final effectiveUser = (username != null && username.isNotEmpty) ? username : (prefs.getString(keyRouterUsername) ?? 'admin');
     final effectivePass = (currentPassword != null) ? currentPassword : (prefs.getString(keyRouterPassword) ?? '');
     final effectiveEndpoint = endpoint ?? prefs.getString(keyRouterTunnelEndpoint);
@@ -2021,7 +2118,11 @@ class RouterDiscoveryService {
     // 3. Always save locally to SharedPreferences so all app screens and background services immediately use the new password!
     await prefs.setString(keyRouterPassword, newPassword);
     await prefs.setString(keyRouterUsername, effectiveUser);
-    await prefs.setString(keyRouterLocalIp, effectiveIp);
+    if (!isForbiddenIspGateway(effectiveIp)) {
+      await prefs.setString(keyRouterLocalIp, effectiveIp);
+    } else {
+      await prefs.setString(keyRouterLocalIp, '192.168.88.1');
+    }
 
     return {
       'ok': true,
@@ -2317,6 +2418,12 @@ class RouterDiscoveryService {
     if (host.isEmpty) {
       return {'ok': false, 'message': 'Empty router address'};
     }
+    if (isForbiddenIspGateway(host)) {
+      return {
+        'ok': false,
+        'message': '$host is a reserved upstream ISP/modem gateway (e.g. Starlink dish) and cannot be used as the MikroTik router.',
+      };
+    }
 
     // 1. Native RouterOS API (:8728) with identity proof.
     try {
@@ -2370,7 +2477,15 @@ class RouterDiscoveryService {
   static Future<String> effectiveRouterTarget() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(keyRouterLocalIp) ?? '192.168.88.1';
+      final saved = prefs.getString(keyRouterLocalIp);
+      if (saved != null) {
+        if (isForbiddenIspGateway(saved)) {
+          await prefs.remove(keyRouterLocalIp);
+          return '192.168.88.1';
+        }
+        return saved;
+      }
+      return '192.168.88.1';
     } catch (_) {
       return '192.168.88.1';
     }

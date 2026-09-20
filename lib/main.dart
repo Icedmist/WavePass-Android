@@ -4,12 +4,20 @@ import 'core/services/supabase_service.dart';
 import 'core/services/venue_state_service.dart';
 import 'core/services/activation_code_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/router_discovery_service.dart';
 import 'core/router/app_router.dart';
 
 final GlobalKey<ScaffoldMessengerState> rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Immediately purge any cached blacklisted ISP gateways (e.g. Starlink dish at 192.168.1.1)
+  try {
+    await RouterDiscoveryService.sanitizeCachedRouterTarget();
+  } catch (e) {
+    debugPrint('Router target sanitize on startup: $e');
+  }
 
   try {
     await SupabaseService.initialize();

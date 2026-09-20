@@ -530,3 +530,24 @@
 - [x] **Hosted Subdomain Default**: Defaulted `_useHostedSubdomainPortal = true` with `SharedPreferences` persistence.
 - [x] **Verification**: `flutter analyze` passed with 0 issues; all 70 tests passed.
 - [x] PR [#114](https://github.com/Icedmist/WavePass-Android/pull/114) merged to `main`.
+
+### 44. Biometrics, 48-Hour Session Lifecycle, Portal Templates & Supabase Initialization Guard (Issue #96, PR #115)
+- [x] **Face ID & Biometrics (iOS & Android)**:
+  - Added `NSFaceIDUsageDescription` to `ios/Runner/Info.plist`.
+  - Migrated Android `MainActivity.kt` to `FlutterFragmentActivity` and added `USE_BIOMETRIC` permission in `AndroidManifest.xml`.
+  - Built `BiometricAuthService` integrating `package:local_auth` for secure credential enrollment and biometric re-authentication.
+  - Added biometric login trigger button and setup dialog on `LoginScreen`.
+- [x] **Session Expiration Guard (`SessionService`)**:
+  - Automatically expires sessions after 48 hours of inactivity.
+  - Surfaces friendly expiration notice banner upon forced sign-in redirect.
+- [x] **Supabase Client Initialization & Signup Guard**:
+  - Fixed `LateInitializationError: Field 'client' has not been initialized` by tracking `isInitialized` status in `SupabaseService`.
+  - Guarded `SupabaseService.instance.client` getter to throw an informative `StateError` instead of crashing unhandled.
+  - Guarded `SignupScreen._signup()` to display actionable guidance (*"Supabase is not configured. Rebuild or run with --dart-define=SUPABASE_ANON_KEY=<key>."*) when credentials are not injected.
+  - Fixed loading state hang when validation fails.
+- [x] **Captive Portal Templates & Wallet Guard**:
+  - Integrated portal theme templates (Onyx, Ivory, NeoPop, Aurora) and showcase HTML in `assets/portal_templates/` and `router_setup_screen.dart`.
+  - Added temporary locked Paystack checkout notice in `wallet_screen.dart`.
+- [x] **Verification**: `flutter analyze` clean (0 issues); 70/70 tests passed.
+- [x] PR [#115](https://github.com/Icedmist/WavePass-Android/pull/115) merged to `main`.
+

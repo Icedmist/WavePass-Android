@@ -73,7 +73,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _exportingPortalHtml = false;
   bool _uploadingPortalFiles = false;
   int _selectedPortalTabIndex = 0;
-  bool _useHostedSubdomainPortal = false;
+  final bool _useHostedSubdomainPortal = false;
   String _selectedPortalTemplate = 'onyx'; // 'onyx', 'ivory', 'neopop', 'aurora'
   String? _customPortalBgUrl;
   String? _customPortalLogoUrl;
@@ -120,7 +120,6 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     final savedTunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
     final savedUser = prefs.getString(RouterDiscoveryService.keyRouterUsername);
     final savedPass = prefs.getString(RouterDiscoveryService.keyRouterPassword);
-    final savedHosted = prefs.getBool('wavepass_use_hosted_portal');
     final savedTemplate = prefs.getString('wavepass_portal_template');
     final savedBg = prefs.getString('wavepass_portal_bg_url');
     final savedLogo = prefs.getString('wavepass_portal_logo_url');
@@ -134,7 +133,6 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
           _passCtrl.text = savedPass;
           _showCustomSettings = true;
         }
-        _useHostedSubdomainPortal = savedHosted ?? false;
         if (savedTemplate != null && savedTemplate.isNotEmpty) _selectedPortalTemplate = savedTemplate;
         if (savedBg != null && savedBg.isNotEmpty) _customPortalBgUrl = savedBg;
         if (savedLogo != null && savedLogo.isNotEmpty) {
@@ -3425,92 +3423,8 @@ $_rfc1321Md5Js
                     ),
                   ),
                   const SizedBox(height: 14),
-
-                  // Architecture Selector: Hosted Subdomain vs Standalone Router
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.containerBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              if (!_useHostedSubdomainPortal) {
-                                setState(() {
-                                  _useHostedSubdomainPortal = true;
-                                  _portalSuite = null;
-                                });
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setBool('wavepass_use_hosted_portal', true);
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                              decoration: BoxDecoration(
-                                color: _useHostedSubdomainPortal ? AppColors.primary : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                "🌐 Hosted Subdomain",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: _useHostedSubdomainPortal ? AppColors.white : AppColors.textLight,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              if (_useHostedSubdomainPortal) {
-                                setState(() {
-                                  _useHostedSubdomainPortal = false;
-                                  _portalSuite = null;
-                                });
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setBool('wavepass_use_hosted_portal', false);
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                              decoration: BoxDecoration(
-                                color: !_useHostedSubdomainPortal ? AppColors.primary : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                "💾 Standalone Router",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: !_useHostedSubdomainPortal ? AppColors.white : AppColors.textLight,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _useHostedSubdomainPortal
-                        ? "Permanently bounces connecting guests in 0s to your venue subdomain with offline voucher fallback."
-                        : "Embeds plans, Paystack, and voucher entry directly in on-router HTML.",
-                    style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontStyle: FontStyle.italic),
-                  ),
+                  _buildTemplatePickerCard(),
                   const SizedBox(height: 14),
-                  if (!_useHostedSubdomainPortal) ...[
-                    _buildTemplatePickerCard(),
-                    const SizedBox(height: 14),
-                  ],
 
                   // Segmented Tabs: login.html | status.html | logout.html
                   Container(

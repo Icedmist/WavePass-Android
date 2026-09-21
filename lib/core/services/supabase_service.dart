@@ -78,11 +78,12 @@ class SupabaseService {
         } catch (_) {}
       }
 
-      // 2. Only platform super admin is allowed to inspect the primary venue fallback
-      if (targetEmail == 'talk2icedmist@gmail.com') {
+      // 2. Fallback: If user is authenticated or platform super admin, allow fallback to Venue table
+      if (user != null || targetEmail == 'talk2icedmist@gmail.com') {
         final res = await client
             .from('Venue')
             .select('*')
+            .order('createdAt', ascending: false)
             .limit(1)
             .maybeSingle();
         return res;
@@ -113,8 +114,8 @@ class SupabaseService {
         } catch (_) {}
       }
 
-      if (targetEmail == 'talk2icedmist@gmail.com') {
-        final res = await client.from('Venue').select('*');
+      if (user != null || targetEmail == 'talk2icedmist@gmail.com') {
+        final res = await client.from('Venue').select('*').order('createdAt', ascending: false);
         return List<Map<String, dynamic>>.from(res);
       }
       return [];

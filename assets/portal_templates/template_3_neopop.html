@@ -288,12 +288,11 @@
     <div class="ap-badge" id="apBadgeText">&#9889; The Foundry Hub Wi-Fi</div>
 
     <div class="venue-name" id="displayVenueName">The Foundry Hub</div>
-    <div class="subtitle">Drop in &bull; Punch your code &bull; Get grinding</div>
+    <div class="subtitle">Drop in &bull; Punch your code &bull; Buy pass online</div>
 
     <div class="tabs">
       <button type="button" class="tab-btn active" onclick="switchTab('voucher')">Voucher</button>
-      <button type="button" class="tab-btn" onclick="switchTab('rates')">Rates</button>
-      <button type="button" class="tab-btn" onclick="switchTab('transfer')">Transfer</button>
+      <button type="button" class="tab-btn" onclick="switchTab('rates')">💳 Buy Pass</button>
       <button type="button" class="tab-btn" onclick="switchTab('retrieve')">🔍 Retrieve</button>
       <button type="button" class="tab-btn" onclick="switchTab('creds')">Staff</button>
     </div>
@@ -307,50 +306,28 @@
       <button type="button" class="btn-submit" onclick="submitVoucher()">GO ONLINE &rarr;</button>
     </div>
 
-    <!-- Panel 2: Rates / Locked Paystack -->
+    <!-- Panel 2: Rates & Direct Online Checkout -->
     <div id="panelRates" class="panel">
-      <div class="lock-notice">
-        <span>🔒</span>
-        <div><strong>Card checkout locked.</strong><br>Grab instant vouchers at the desk or pay via bank transfer below.</div>
-      </div>
-      <div class="plan-card">
+      <div class="plan-card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="payWithPaystack('plan_1h', '500')">
         <div>
           <div class="plan-title">1-Hour Sprint Pass</div>
           <div class="plan-desc">Single device &bull; Full speed</div>
         </div>
-        <div class="plan-price">&#8358;500</div>
+        <div style="text-align:right;">
+          <div class="plan-price">&#8358;500</div>
+          <button type="button" class="btn-submit" style="margin-top:4px; padding:6px 12px; font-size:11px;">PAY NOW &rarr;</button>
+        </div>
       </div>
-      <div class="plan-card">
+      <div class="plan-card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="payWithPaystack('plan_12h', '1800')">
         <div>
           <div class="plan-title">Full Shift Unlimited</div>
           <div class="plan-desc">12 Hours &bull; Priority bandwidth</div>
         </div>
-        <div class="plan-price">&#8358;1,800</div>
-      </div>
-    </div>
-
-    <!-- Panel 3: Bank Transfer -->
-    <div id="panelTransfer" class="panel">
-      <div class="bank-card">
-        <div class="bank-row">
-          <span class="bank-label">Bank Name</span>
-          <span class="bank-value">Moniepoint MFB</span>
-        </div>
-        <div class="bank-row">
-          <span class="bank-label">Account Name</span>
-          <span class="bank-value" id="bankAcctName">The Foundry Hub / WavePass</span>
-        </div>
-        <div class="bank-row">
-          <span class="bank-label">Account Number</span>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="bank-acct" id="acctNum">6591029301</span>
-            <button type="button" class="btn-copy" onclick="copyAcct()">Copy</button>
-          </div>
+        <div style="text-align:right;">
+          <div class="plan-price">&#8358;1,800</div>
+          <button type="button" class="btn-submit" style="margin-top:4px; padding:6px 12px; font-size:11px;">PAY NOW &rarr;</button>
         </div>
       </div>
-      <p style="font-size: 11px; font-weight: 700; color: #4B5563; margin-top: 8px; line-height: 1.4;">
-        Transfer to the account above and show proof to the desk captain for immediate unlock.
-      </p>
     </div>
 
     <!-- Panel 4: Staff Credentials -->
@@ -483,9 +460,8 @@
       submitVoucher();
     }
 
-    function copyAcct() {
-      const num = document.getElementById('acctNum').innerText;
-      navigator.clipboard.writeText(num).then(() => alert('Account number copied: ' + num));
+    function payWithPaystack(planId, price) {
+      alert('Connecting to Paystack online checkout for ₦' + price + '...');
     }
 
     function submitVoucher() {
@@ -512,7 +488,6 @@
         if (d.venueName) {
           document.getElementById('displayVenueName').innerText = d.venueName;
           document.getElementById('apBadgeText').innerText = '⚡ ' + d.venueName + ' Wi-Fi';
-          document.getElementById('bankAcctName').innerText = d.venueName + ' / WavePass';
           const initials = d.venueName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() || 'FH';
           document.getElementById('venueLogoFallback').innerText = initials;
         }

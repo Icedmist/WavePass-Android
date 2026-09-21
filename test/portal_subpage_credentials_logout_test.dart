@@ -95,38 +95,29 @@ void main() {
       expect(html, contains(r'name="sendin"'));
     });
 
-    test('Hosted mode login.html generates instant hosted subdomain redirector with offline fail-safe', () {
+    test('Captive portal login.html removes hosted subdomains and serves local gateway', () {
       final html = RouterSetupScreen.generateLoginHtml(
         'Apex Lounge',
         'apex-lounge',
         null,
         true,
-        true, // useHostedSubdomainPortal = true
+        false,
       );
 
-      // 1. Instant 0-second redirect to venue subdomain with device & CHAP parameters
-      expect(html, contains('https://apex-lounge.nexawavepass.com/portal'));
-      expect(html, contains('<meta http-equiv="refresh" content="0; url=https://apex-lounge.nexawavepass.com/portal'));
-      expect(html, contains(r'mac=$(mac)'));
-      expect(html, contains(r'ip=$(ip)'));
-      expect(html, contains(r'link-login=$(link-login-only)'));
-      expect(html, contains(r'chap-id=$(chap-id)'));
-      expect(html, contains(r'chap-challenge=$(chap-challenge)'));
-      expect(html, contains('window.location.replace(portalUrl)'));
+      // 1. Gateway IP instead of hosted subdomain
+      expect(html, contains('Gateway: <strong>192.168.88.1</strong>'));
+      expect(html, isNot(contains('apex-lounge.nexawavepass.com')));
 
-      // 2. Offline fail-safe form
-      expect(html, contains('id="offlineFallback"'));
-      expect(html, contains(r'action="$(link-login-only)"'));
-      expect(html, contains('placeholder="e.g. 123456"'));
-      expect(html, contains('setTimeout('));
+      // 2. Pure local portal without meta-refresh subdomain redirect
+      expect(html, isNot(contains('<meta http-equiv="refresh" content="0; url=https://apex-lounge.nexawavepass.com/portal')));
 
-      // 3. Programmatic on-box execution for query credentials
+      // 3. Form and execution
       expect(html, contains(r'form name="sendin"'));
       expect(html, contains('executeLogin('));
       expect(html, contains('hexMD5('));
     });
 
-    test('Standalone mode login.html renders custom venue plans dynamically', () {
+    test('Standalone mode login.html renders custom venue plans dynamically with direct online checkout', () {
       final customPlans = [
         {
           'id': 'plan_vip_day',
@@ -147,7 +138,7 @@ void main() {
         'apex-lounge',
         customPlans,
         true,
-        false, // standalone
+        false,
       );
 
       expect(html, contains('VIP All-Day Pass'));
@@ -156,34 +147,27 @@ void main() {
       expect(html, contains('₦5000'));
       expect(html, contains("payWithPaystack('plan_vip_day', '₦1500')"));
       expect(html, contains("payWithPaystack('plan_weekly', '₦5000')"));
-      expect(html, contains('Paystack Online'));
+      expect(html, contains('Direct Online Payment (Paystack)'));
       expect(html, contains('Need Internet to Pay?'));
       expect(html, contains(r'value="T-$(mac-esc)"'));
       expect(html, contains('placeholder="e.g. 123456"'));
     });
 
-    test('Standalone mode login.html displays Paystack Not Available when unconfigured', () {
+    test('Standalone mode login.html displays Paystack Offline when unconfigured', () {
       final html = RouterSetupScreen.generateLoginHtml(
         'Apex Lounge',
         'apex-lounge',
         null,
         false, // isPaystackConfigured = false
-        false, // standalone
+        false,
       );
 
-      expect(html, contains('Paystack Not Available'));
-      expect(html, contains('Online card/transfer payments are currently unavailable at this venue'));
-      expect(html, contains('class="btn-pay disabled"'));
-      expect(html, contains('disabled title="Paystack not available"'));
+      expect(html, contains('Online Payment Offline'));
+      expect(html, contains('Online card payments are currently unavailable at this venue'));
       expect(html, contains('Need Internet to Pay?'));
     });
 
     test('Captive portal suite caches active voucher credentials and provides 1-tap reconnect', () {
-      final hostedHtml = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', null, true, true);
-      expect(hostedHtml, contains("localStorage.setItem('wp-active-voucher'"));
-      expect(hostedHtml, contains("localStorage.getItem('wp-active-voucher')"));
-      expect(hostedHtml, contains('btn_offline_connect'));
-
       final standaloneHtml = RouterSetupScreen.generateLoginHtml('Apex Lounge', 'apex-lounge', null, true, false);
       expect(standaloneHtml, contains('savedVoucherBox'));
       expect(standaloneHtml, contains('Reconnect Active Voucher'));
@@ -195,49 +179,22 @@ void main() {
       expect(statusHtml, contains(r'var u = "$(username)";'));
     });
 
-    test('Standalone mode login.html renders venue bank accounts and transfer access request workflow', () {
-      final bankAccounts = [
-        {
-          'bankName': 'OPay',
-          'accountNumber': '8012345678',
-          'accountName': 'Apex Lounge Entertainment',
-        },
-        {
-          'bankName': 'GTBank',
-          'accountNumber': '0123456789',
-          'accountName': 'Apex Lounge Ltd',
-        }
-      ];
-
+    test('Standalone mode login.html removes bank transfer tab and enables direct online payment', () {
       final html = RouterSetupScreen.generateLoginHtml(
         'Apex Lounge',
         'apex-lounge',
-        null,
-        true,
-        false,
-        bankAccounts,
       );
 
-      // Tab and Panel checks
-      expect(html, contains('id="tabTransfer"'));
-      expect(html, contains('id="panelTransfer"'));
-      expect(html, contains('Direct Bank Transfer'));
+      // Bank transfer elements must NOT exist
+      expect(html, isNot(contains('id="tabTransfer"')));
+      expect(html, isNot(contains('id="panelTransfer"')));
+      expect(html, isNot(contains('Direct Bank Transfer')));
+      expect(html, isNot(contains('submitTransferPayment')));
+      expect(html, isNot(contains('loadDynamicBankAccounts')));
 
-      // Bank accounts display
-      expect(html, contains('OPay'));
-      expect(html, contains('8012345678'));
-      expect(html, contains('Apex Lounge Entertainment'));
-      expect(html, contains('GTBank'));
-      expect(html, contains('0123456789'));
-
-      // Inputs and action button
-      expect(html, contains('id="transfer_plan"'));
-      expect(html, contains('id="transfer_sender"'));
-      expect(html, contains('id="btn_transfer_completed"'));
-      expect(html, contains('submitTransferPayment'));
-
-      // Backend API Integration
-      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/transfer-request'));
+      // Paystack direct online checkout must exist and call retrieve-voucher
+      expect(html, contains('payWithPaystack'));
+      expect(html, contains('https://api.nexawavepass.com/api/v1/portal/init-payment'));
       expect(html, contains('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher'));
     });
 
@@ -261,7 +218,6 @@ void main() {
 
       // Endpoint check
       expect(html, contains('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher'));
-      expect(html, contains('loadDynamicBankAccounts'));
     });
   });
 

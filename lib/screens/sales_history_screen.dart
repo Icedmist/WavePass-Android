@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/theme/app_theme.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
@@ -26,17 +27,48 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     setState(() => _loading = true);
     try {
       final vid = VenueStateService.instance.currentVenueId;
-      if (vid == null || vid.isEmpty) {
-        if (mounted) setState(() => _loading = false);
-        return;
+      final list = <Map<String, dynamic>>[];
+
+      if (vid != null && vid.isNotEmpty) {
+        try {
+          final rows = await SupabaseService.instance.client
+              .from('Order')
+              .select('id, customerRef, amountMinor, createdAt, Plan(name)')
+              .eq('venueId', vid)
+              .order('createdAt', ascending: false)
+              .limit(100);
+          list.addAll(List<Map<String, dynamic>>.from(rows));
+        } catch (_) {}
       }
-      final rows = await SupabaseService.instance.client
-          .from('Order')
-          .select('id, customerRef, amountMinor, createdAt, Plan(name)')
-          .eq('venueId', vid)
-          .order('createdAt', ascending: false)
-          .limit(100);
-      final list = List<Map<String, dynamic>>.from(rows);
+
+      // Also merge local counter-sold and active vouchers
+      final existingCodes = list
+          .map((o) => (o['customerRef'] ?? o['id'] ?? '').toString().toUpperCase())
+          .toSet();
+
+      final localVouchers = await VoucherHistoryService.instance.getHistory();
+      for (final v in localVouchers) {
+        if ((v.sold || v.status == 'in_use' || v.usedAt != null) &&
+            !existingCodes.contains(v.code.toUpperCase())) {
+          final rawPrice = int.tryParse(v.price.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+          final amountMinor = rawPrice * 100;
+          list.add({
+            'id': 'counter_${v.code}',
+            'customerRef': v.code,
+            'amountMinor': amountMinor,
+            'createdAt': (v.usedAt ?? v.createdAt).toIso8601String(),
+            'Plan': {'name': '${v.planTitle} (Counter)'},
+            'isCounterSale': true,
+          });
+        }
+      }
+
+      list.sort((a, b) {
+        final dtA = DateTime.tryParse(a['createdAt']?.toString() ?? '') ?? DateTime(2000);
+        final dtB = DateTime.tryParse(b['createdAt']?.toString() ?? '') ?? DateTime(2000);
+        return dtB.compareTo(dtA);
+      });
+
       int total = 0;
       for (final o in list) {
         total += ((o['amountMinor'] as num?)?.toInt() ?? 0);

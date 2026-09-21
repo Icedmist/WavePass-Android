@@ -598,3 +598,29 @@
   - `flutter analyze` clean (0 issues).
   - All 81 tests passed (including 5 new tests in `test/venue_creation_and_plan_self_healing_test.dart`).
 - [x] PR [#121](https://github.com/Icedmist/WavePass-Android/pull/121) merged to `main`.
+
+### 48. Portal Bank Transfer Removal, Direct Online Paystack Checkout, Residual Subdomain Eradication & Bug Fixes (Issue #122, PR #123)
+- [x] **Removed Bank Transfer Feature**:
+  - Removed "Bank Transfer" tab and panel from captive portal HTML (`router_setup_screen.dart` and `assets/portal_templates/` templates 1–4: Onyx, Ivory, Neo-Pop, Aurora).
+  - Removed `submitTransferPayment()`, `copyAcct()`, `loadDynamicBankAccounts()`, and transfer status polling from portal scripts.
+  - Removed the "Venue Bank Accounts on Portal" setup card from `router_setup_screen.dart` UI.
+  - Removed bank account fetching and mock DVA restrictions from `_ensurePortalSuite()`.
+- [x] **Enabled Direct Online Paystack Checkout on Venue Login Page**:
+  - Fixed critical backend endpoint mismatch: updated payment verification callback from `/api/v1/portal/verify-payment` (404 Not Found) to `/api/v1/portal/retrieve-voucher?reference=...`.
+  - Fixed foreign key constraint in `init-payment`: passed UUID `venueId` instead of slug to prevent Prisma foreign key failures on checkout.
+  - Mock DVA accounts no longer disable Paystack; online checkout remains active with automated guest voucher fulfillment upon payment.
+  - Unlocked rates/plans in all portal templates (`assets/portal_templates/`) with active "Pay Online" buttons.
+- [x] **Residual Subdomain & Slug Eradication**:
+  - Replaced `${venue['slug']}.nexawavepass.com` in `home_dashboard_screen.dart` with "Local Hotspot Gateway".
+  - Replaced subdomain in voucher preview, thermal PDF printout, and share instructions in `sell_pass_screen.dart` with gateway IP `192.168.88.1`.
+  - Replaced subdomain in `batch_vouchers_screen.dart` cutout cards with `192.168.88.1`.
+  - Replaced captive portal footer subdomain tag in `router_setup_screen.dart` with `Gateway: 192.168.88.1`.
+  - Replaced subdomain text in `system_monitor_screen.dart` with Venue ID.
+- [x] **Merged Counter Sales into Sales History & Router Scanner Fix**:
+  - In `sales_history_screen.dart`, merged offline and counter-sold vouchers from `VoucherHistoryService` into the sales history list, displaying both online orders and counter cash sales with accurate revenue totals.
+  - In `barcode_scanner_screen.dart`, resolved actual venue UUID via `VenueStateService` and validated active venue presence before router registration instead of falling back to `'default'`.
+  - Registered `assets/portal_templates/` in `pubspec.yaml`.
+- [x] **Verification**:
+  - `flutter analyze` clean (0 issues).
+  - Full test suite passed (81 tests, 0 failures), including updated portal suite tests in `test/portal_subpage_credentials_logout_test.dart`.
+

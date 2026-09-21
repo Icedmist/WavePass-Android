@@ -368,7 +368,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
               child: Column(
                 children: [
                   Text((_venueName ?? 'WavePass Venue').toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-                  Text('${_venueSlug ?? 'venue'}.nexawavepass.com', style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+                  const Text('WavePass Wi-Fi Access', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
                   const Divider(height: 20),
                   Text(selectedPlan['title']?.toString() ?? 'Pass', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   Text(selectedPlan['price']?.toString() ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -454,7 +454,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
               pw.Text('Price: ${selectedPlan['price']}', style: const pw.TextStyle(fontSize: 9)),
               pw.Divider(thickness: 0.5),
               pw.SizedBox(height: 4),
-              pw.Text('Connect to Wi-Fi • Or enter code at 192.168.88.1 / ${_venueSlug ?? 'venue'}.nexawavepass.com', style: const pw.TextStyle(fontSize: 7), textAlign: pw.TextAlign.center),
+              pw.Text('Connect to Wi-Fi • Or enter code at 192.168.88.1', style: const pw.TextStyle(fontSize: 7), textAlign: pw.TextAlign.center),
               pw.Text(DateTime.now().toString().split('.')[0], style: const pw.TextStyle(fontSize: 7)),
             ],
           ),
@@ -1115,7 +1115,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "Or connect to Wi-Fi and enter code at 192.168.88.1 or ${_venueSlug ?? 'venue'}.nexawavepass.com.",
+                          "Or connect to Wi-Fi and enter code at 192.168.88.1.",
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 11, color: AppColors.textLight, height: 1.3),
                         ),

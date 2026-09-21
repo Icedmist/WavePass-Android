@@ -67,7 +67,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     if (v != null && mounted) {
       setState(() {
         _venueName = v['name']?.toString() ?? 'Your Venue';
-        _venueSub = v['slug'] != null ? '${v['slug']}.nexawavepass.com' : '—';
+        _venueSub = 'Local Hotspot Gateway';
       });
       final vid = v['id']?.toString();
       if (vid != null && vid.isNotEmpty) {
@@ -158,7 +158,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         if (!mounted) return;
         setState(() {
           _venueName = venue!['name'] ?? 'Your Venue';
-          _venueSub = venue['slug'] != null ? '${venue['slug']}.nexawavepass.com' : '—';
+          _venueSub = 'Local Hotspot Gateway';
         });
         vid = venue['id'] as String?;
         _venueId = vid;

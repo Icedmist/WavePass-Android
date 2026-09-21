@@ -183,7 +183,7 @@ class _SystemMonitorScreenState extends State<SystemMonitorScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                "Slug: ${v['slug']}.nexawavepass.com",
+                                "Venue ID: ${v['id'] ?? '—'}",
                                 style: const TextStyle(fontSize: 12, color: AppColors.textLight),
                               ),
                               const SizedBox(height: 10),

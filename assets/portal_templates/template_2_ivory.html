@@ -286,12 +286,11 @@
     </div>
 
     <div class="venue-name" id="displayVenueName">The Grandview Bistro</div>
-    <div class="subtitle">Complimentary guest access &bull; Enter your pass to begin</div>
+    <div class="subtitle">Complimentary guest access &bull; Enter your pass or buy online</div>
 
     <div class="tabs">
       <button type="button" class="tab-btn active" onclick="switchTab('voucher')">Voucher</button>
-      <button type="button" class="tab-btn" onclick="switchTab('rates')">Rates</button>
-      <button type="button" class="tab-btn" onclick="switchTab('transfer')">Bank Transfer</button>
+      <button type="button" class="tab-btn" onclick="switchTab('rates')">💳 Buy Pass</button>
       <button type="button" class="tab-btn" onclick="switchTab('retrieve')">🔍 Retrieve</button>
       <button type="button" class="tab-btn" onclick="switchTab('creds')">Staff</button>
     </div>
@@ -305,50 +304,28 @@
       <button type="button" class="btn-submit" onclick="submitVoucher()">Connect to Wi-Fi &rarr;</button>
     </div>
 
-    <!-- Panel 2: Rates / Locked Paystack -->
+    <!-- Panel 2: Rates & Direct Online Checkout -->
     <div id="panelRates" class="panel">
-      <div class="lock-notice">
-        <span>🔒</span>
-        <div><strong>Online card checkout is not available yet.</strong><br>Please purchase pass vouchers with our front desk staff or use direct bank transfer.</div>
-      </div>
-      <div class="plan-card">
+      <div class="plan-card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="payWithPaystack('plan_2h', '500')">
         <div>
           <div class="plan-title">2-Hour Dining Pass</div>
           <div class="plan-desc">Single device &bull; Full speed access</div>
         </div>
-        <div class="plan-price">&#8358;500</div>
+        <div style="text-align:right;">
+          <div class="plan-price">&#8358;500</div>
+          <button type="button" class="btn-submit" style="margin-top:4px; padding:6px 12px; font-size:11px;">Pay Online &rarr;</button>
+        </div>
       </div>
-      <div class="plan-card">
+      <div class="plan-card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="payWithPaystack('plan_24h', '1500')">
         <div>
           <div class="plan-title">All-Day Guest Pass</div>
           <div class="plan-desc">24 Hours access &bull; Work & stream</div>
         </div>
-        <div class="plan-price">&#8358;1,500</div>
-      </div>
-    </div>
-
-    <!-- Panel 3: Bank Transfer -->
-    <div id="panelTransfer" class="panel">
-      <div class="bank-card">
-        <div class="bank-row">
-          <span class="bank-label">Bank Name</span>
-          <span class="bank-value">Moniepoint MFB</span>
-        </div>
-        <div class="bank-row">
-          <span class="bank-label">Account Name</span>
-          <span class="bank-value" id="bankAcctName">Grandview Bistro / WavePass</span>
-        </div>
-        <div class="bank-row">
-          <span class="bank-label">Account Number</span>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="bank-acct" id="acctNum">7491028391</span>
-            <button type="button" class="btn-copy" onclick="copyAcct()">Copy</button>
-          </div>
+        <div style="text-align:right;">
+          <div class="plan-price">&#8358;1,500</div>
+          <button type="button" class="btn-submit" style="margin-top:4px; padding:6px 12px; font-size:11px;">Pay Online &rarr;</button>
         </div>
       </div>
-      <p style="font-size: 11px; color: #64748B; margin-top: 8px; line-height: 1.4;">
-        Transfer to the account above and present confirmation to staff for your instant voucher.
-      </p>
     </div>
 
     <!-- Panel 4: Staff Credentials -->
@@ -481,9 +458,8 @@
       submitVoucher();
     }
 
-    function copyAcct() {
-      const num = document.getElementById('acctNum').innerText;
-      navigator.clipboard.writeText(num).then(() => alert('Account number copied: ' + num));
+    function payWithPaystack(planId, price) {
+      alert('Connecting to Paystack online payment gateway for ₦' + price + '...');
     }
 
     function submitVoucher() {
@@ -510,7 +486,6 @@
         if (d.venueName) {
           document.getElementById('displayVenueName').innerText = d.venueName;
           document.getElementById('apBadgeText').innerText = d.venueName + ' Wi-Fi';
-          document.getElementById('bankAcctName').innerText = d.venueName + ' / WavePass';
           const initials = d.venueName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() || 'GB';
           document.getElementById('venueLogoFallback').innerText = initials;
         }

@@ -30,6 +30,7 @@ class RouterSetupScreen extends StatefulWidget {
     String templateId = 'onyx',
     String? bgImageUrl,
     String? logoUrl,
+    String? venueId,
   ]) =>
       _RouterSetupScreenState._generateLoginHtml(
         venueName,
@@ -41,6 +42,7 @@ class RouterSetupScreen extends StatefulWidget {
         templateId,
         bgImageUrl,
         logoUrl,
+        venueId,
       );
 
   static String generateStatusHtml(String venueName, String slug) =>
@@ -535,13 +537,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     setState(() => _exportingScript = true);
     try {
       final venue = VenueStateService.instance.currentVenue ?? await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
-      final slug = venue['slug']?.toString() ?? 'venue';
       final venueName = venue['name']?.toString() ?? 'WavePass';
 
       final script = """
 # ========================================================
 # WavePass MikroTik HotSpot Quick Provisioning Script
-# Venue: $venueName ($slug)
+# Venue: $venueName
 # Generated: ${DateTime.now().toIso8601String()}
 # Uses standard admin credentials; no extra users created.
 # ========================================================
@@ -659,7 +660,7 @@ add name="wavepass-cleanup" interval=1m on-event="wavepass-cleanup" comment="Wav
 # 7. System Identity
 # --------------------------------------------------------
 /system identity
-set name="WavePass-$slug"
+set name="WavePass-Hotspot"
 
 # Setup complete! Hotspot online and single-device login active.
 """;
@@ -812,281 +813,8 @@ set name="WavePass-$slug"
     String templateId = 'onyx',
     String? bgImageUrl,
     String? logoUrl,
+    String? venueId,
   ]) {
-    if (useHostedSubdomainPortal) {
-      return """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <!-- Instant noscript fallback redirect to hosted venue subdomain (bypassed when JS handles programmatic auth) -->
-  <noscript>
-    <meta http-equiv="refresh" content="0; url=https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)">
-  </noscript>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #000000;
-      color: #FFFFFF;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      text-align: center;
-    }
-    .card {
-      background: #0C0C0C;
-      border: 1px solid #262626;
-      border-radius: 20px;
-      padding: 28px 24px;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
-    }
-    .badge {
-      display: inline-block;
-      padding: 4px 12px;
-      background: #171717;
-      border: 1px solid #FFFFFF;
-      border-radius: 20px;
-      color: #FFFFFF;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 12px;
-    }
-    .spinner {
-      width: 42px;
-      height: 42px;
-      border: 3px solid rgba(255, 255, 255, 0.15);
-      border-top-color: #FFFFFF;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 16px auto;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .logo {
-      font-size: 22px;
-      font-weight: 800;
-      color: #FFFFFF;
-      margin-bottom: 4px;
-    }
-    .subtitle {
-      font-size: 13px;
-      color: #A1A1AA;
-      margin-bottom: 20px;
-    }
-    .btn-portal {
-      display: block;
-      width: 100%;
-      padding: 13px;
-      background: #FFFFFF;
-      color: #000000;
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 800;
-      border-radius: 10px;
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 4px 14px rgba(255, 255, 255, 0.2);
-      transition: transform 0.15s, background 0.15s;
-    }
-    .btn-portal:hover {
-      background: #E4E4E7;
-    }
-    .btn-portal:active {
-      transform: scale(0.98);
-    }
-    .fallback-box {
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid #262626;
-      text-align: left;
-    }
-    .fallback-title {
-      font-size: 12px;
-      font-weight: 700;
-      color: #FFFFFF;
-      margin-bottom: 8px;
-    }
-    .fallback-desc {
-      font-size: 11px;
-      color: #A1A1AA;
-      margin-bottom: 12px;
-      line-height: 1.4;
-    }
-    input[type="text"] {
-      width: 100%;
-      padding: 11px 13px;
-      background: #050505;
-      border: 1.5px solid #262626;
-      border-radius: 9px;
-      color: #FFFFFF;
-      font-size: 14px;
-      font-weight: 600;
-      text-transform: uppercase;
-      outline: none;
-      margin-bottom: 10px;
-    }
-    input[type="text"]:focus {
-      border-color: #FFFFFF;
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
-    }
-    .btn-fallback {
-      width: 100%;
-      padding: 11px;
-      background: #FFFFFF;
-      border: none;
-      color: #000000;
-      font-size: 13px;
-      font-weight: 800;
-      border-radius: 9px;
-      cursor: pointer;
-    }
-    .btn-fallback:hover {
-      background: #E4E4E7;
-    }
-    .footer {
-      margin-top: 20px;
-      font-size: 11px;
-      color: #71717A;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <span class="badge">Wi-Fi Gateway</span>
-    <div class="logo">$venueName</div>
-    <div class="subtitle">Opening venue portal...</div>
-
-    <div class="spinner"></div>
-
-    <a id="portalBtn" href="https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)" class="btn-portal">
-      Continue to Portal &rarr;
-    </a>
-
-    <!-- Emergency Offline Fail-safe (revealed if venue internet/DNS is unreachable after 3.5s) -->
-    <div id="offlineFallback" class="fallback-box" style="display:none;">
-      <div class="fallback-title">⚠️ Network Offline?</div>
-      <div class="fallback-desc">If the venue uplink is temporarily disconnected, enter your cash voucher code below to connect directly:</div>
-      <form name="offline_sendin" action="\$(link-login-only)" method="post">
-        <input type="hidden" name="dst" value="\$(link-orig)">
-        <input type="hidden" name="popup" value="true">
-        <input type="hidden" name="password" id="dst_pass_offline">
-        <input type="text" name="username" id="dst_user_offline" placeholder="e.g. 123456" autocomplete="off" autocorrect="off" autocapitalize="characters">
-        <button type="submit" id="btn_offline_connect" class="btn-fallback" onclick="document.getElementById('dst_pass_offline').value=document.getElementById('dst_user_offline').value.trim();">Connect Directly &rarr;</button>
-      </form>
-    </div>
-
-    <!-- Hidden standard RouterOS Hotspot Form for Programmatic Execution -->
-    <form name="sendin" action="\$(link-login-only)" method="post" style="display:none;">
-      <input type="hidden" name="username" id="dst_user">
-      <input type="hidden" name="password" id="dst_pass">
-      <input type="hidden" name="dst" id="dst_target" value="\$(link-orig)">
-      <input type="hidden" name="popup" value="false">
-    </form>
-
-    <div class="footer">
-      MAC: <strong>\$(mac)</strong> &bull; IP: <strong>\$(ip)</strong>
-    </div>
-  </div>
-
-  <script>
-$_rfc1321Md5Js
-
-    function executeLogin(username, password) {
-      var u = (username || '').trim();
-      var p = (password || '').trim();
-      if (!u) return;
-      document.getElementById('dst_user').value = u;
-
-      var chapId = "\$(chap-id)";
-      var chapChallenge = "\$(chap-challenge)";
-
-      if (chapId && chapChallenge && chapId !== "" && chapChallenge !== "" && chapId.indexOf("\$(") === -1) {
-        document.getElementById('dst_pass').value = hexMD5(chapId + p + chapChallenge);
-      } else {
-        document.getElementById('dst_pass').value = p;
-      }
-
-      var dstParam = (typeof params !== "undefined" && params) ? (params.get('dst') || params.get('link-orig')) : null;
-      if (dstParam) {
-        document.getElementById('dst_target').value = dstParam;
-      }
-
-      document.sendin.submit();
-    }
-
-    var portalUrl = "https://$slug.nexawavepass.com/portal?mac=\$(mac)&ip=\$(ip)&link-orig=\$(link-orig-esc)&link-login=\$(link-login-only)&venue=$slug&chap-id=\$(chap-id)&chap-challenge=\$(chap-challenge)&logged-in=\$(logged-in)&session-time-left=\$(session-time-left)&router-user=\$(username)&error=\$(error-esc)";
-
-    var loggedIn = false;
-    var params = null;
-    try {
-      params = new URLSearchParams(window.location.search);
-      var c = params.get('code') || params.get('voucher');
-      var u = params.get('username') || params.get('user');
-      var p = params.get('password') || params.get('pass');
-      var trial = params.get('trial');
-
-      if (trial === 'yes' || trial === '1') {
-        loggedIn = true;
-        var targetTrialUser = 'T-' + '\$(mac-esc)';
-        var trialDst = params.get('dst') || '\$(link-orig-esc)';
-        var trialUrl = '\$(link-login-only)?dst=' + encodeURIComponent(trialDst) + '&username=' + encodeURIComponent(targetTrialUser);
-        window.location.replace(trialUrl);
-        return;
-      } else if (c) {
-        loggedIn = true;
-        try { localStorage.setItem('wp-active-voucher', c.toUpperCase()); } catch (e) {}
-        executeLogin(c.toUpperCase(), c.toUpperCase());
-      } else if (u && p) {
-        loggedIn = true;
-        try { localStorage.setItem('wp-active-user', u); localStorage.setItem('wp-active-pass', p); } catch (e) {}
-        executeLogin(u, p);
-      }
-    } catch (e) {}
-
-    if (!loggedIn) {
-      // Check for RouterOS error returned after a failed login
-      var routerError = "\$(error-esc)";
-      if (routerError && routerError !== "" && routerError.indexOf("\$(") === -1) {
-        portalUrl += "&error=" + encodeURIComponent(routerError);
-      }
-
-      // 1. Instant transparent navigation to hosted subdomain
-      try {
-        window.location.replace(portalUrl);
-      } catch (e) {
-        window.location.href = portalUrl;
-      }
-
-      // 2. Fail-safe timeout: If WAN dropped or DNS failed, surface local voucher form after 3.5s
-      setTimeout(function() {
-        var fb = document.getElementById('offlineFallback');
-        if (fb) {
-          fb.style.display = 'block';
-          try {
-            var cachedV = localStorage.getItem('wp-active-voucher');
-            if (cachedV) {
-              var inputOffline = document.getElementById('dst_user_offline');
-              if (inputOffline && !inputOffline.value) {
-                inputOffline.value = cachedV;
-                var btnOffline = document.getElementById('btn_offline_connect');
-                if (btnOffline) btnOffline.innerText = 'Reconnect Voucher (' + cachedV + ') \u2192';
-              }
-            }
-          } catch(e) {}
-        }
-      }, 3500);
-    }
-  </script>
-</body>
-</html>""";
-    }
     final safePlans = (plans != null && plans.isNotEmpty)
         ? plans
         : [
@@ -1096,7 +824,6 @@ $_rfc1321Md5Js
           ];
 
     final plansBuffer = StringBuffer();
-    final transferPlanOptionsBuffer = StringBuffer();
     for (final p in safePlans) {
       final pid = p['id']?.toString() ?? 'plan';
       final pname = p['name']?.toString() ?? 'Internet Pass';
@@ -1121,9 +848,8 @@ $_rfc1321Md5Js
                   ? '${((p['durationSeconds'] as num) / 3600).round()}h'
                   : '1h'));
 
-      final payBtn = isPaystackConfigured
-          ? '<button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack(\'$pid\', \'$pprice\')">Pay $pprice &rarr;</button>'
-          : '<button type="button" id="btn_plan_$pid" class="btn-pay disabled" disabled title="Paystack not available">Paystack Not Available</button>';
+      final payBtn =
+          '<button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack(\'$pid\', \'$pprice\')">Pay $pprice Online &rarr;</button>';
 
       plansBuffer.writeln('''
         <div class="plan-item">
@@ -1133,36 +859,6 @@ $_rfc1321Md5Js
             <div class="plan-price">$pprice</div>
           </div>
           $payBtn
-        </div>''');
-
-      transferPlanOptionsBuffer.writeln(
-        '<option value="$pid" data-price="$pprice">$pname ($pduration) — $pprice</option>',
-      );
-    }
-
-    final bankAccountsBuffer = StringBuffer();
-    if (bankAccounts != null && bankAccounts.isNotEmpty) {
-      for (int i = 0; i < bankAccounts.length; i++) {
-        final b = bankAccounts[i];
-        final bName = b['bankName']?.toString() ?? b['bank_name']?.toString() ?? 'Bank';
-        final acctNum = b['accountNumber']?.toString() ?? b['account_number']?.toString() ?? '';
-        final acctName = b['accountName']?.toString() ?? b['account_name']?.toString() ?? venueName;
-        bankAccountsBuffer.writeln('''
-        <div class="bank-card">
-          <div class="bank-name">$bName</div>
-          <div class="bank-account-row">
-            <span class="bank-number" id="bank_num_$i">$acctNum</span>
-            <button type="button" class="btn-copy" onclick="copyText('$acctNum')">📋 Copy</button>
-          </div>
-          <div class="bank-holder">$acctName</div>
-        </div>''');
-      }
-    } else {
-      bankAccountsBuffer.writeln('''
-        <div id="dynamicBankAccounts">
-          <div class="status-notice" id="bankAccountsPlaceholder">
-            Loading venue bank account details...
-          </div>
         </div>''');
     }
 
@@ -1651,11 +1347,10 @@ $_rfc1321Md5Js
     <div class="error-msg">\$(error)</div>
     \$(endif)
 
-    <!-- Segmented Tab Switcher (Voucher, Buy Online, Transfer, Retrieve, User & Pass) -->
+    <!-- Segmented Tab Switcher (Voucher, Buy Online, Retrieve, User & Pass) -->
     <div class="tabs">
       <button type="button" id="tabVoucher" class="tab-btn active" onclick="switchTab('voucher')">🎟️ Voucher Code</button>
       <button type="button" id="tabPlans" class="tab-btn" onclick="switchTab('plans')">💳 Buy Pass</button>
-      <button type="button" id="tabTransfer" class="tab-btn" onclick="switchTab('transfer')">🏦 Bank Transfer</button>
       <button type="button" id="tabRetrieve" class="tab-btn" onclick="switchTab('retrieve')">🔍 Retrieve Pass</button>
       <button type="button" id="tabCreds" class="tab-btn" onclick="switchTab('creds')">👤 Username &amp; Password</button>
     </div>
@@ -1677,17 +1372,17 @@ $_rfc1321Md5Js
     <!-- Panel 2: Venue Plans & Paystack Checkout -->
     <div id="panelPlans" style="display:none;">
       <div class="paystack-status-banner">
-        <span>Payment Gateway</span>
+        <span>Instant Checkout</span>
         <div class="status-indicator">
           <span class="status-dot ${isPaystackConfigured ? '' : 'disabled'}"></span>
           <span style="color: ${isPaystackConfigured ? '#FFFFFF' : '#71717A'};">
-            ${isPaystackConfigured ? 'Paystack Online' : 'Paystack Not Available'}
+            ${isPaystackConfigured ? 'Direct Online Payment (Paystack)' : 'Online Payment Offline'}
           </span>
         </div>
       </div>
       ${!isPaystackConfigured ? '''
       <div class="status-notice">
-        ⚠️ Online card/transfer payments are currently unavailable at this venue. Please connect using a cash voucher from the counter.
+        ⚠️ Online card payments are currently unavailable at this venue. Please connect using a cash voucher from the counter.
       </div>''' : ''}
       <div class="form-group">
         <label for="pay_email">Receipt Email (Optional)</label>
@@ -1708,52 +1403,21 @@ $_rfc1321Md5Js
       </div>
     </div>
 
-    <!-- Panel: Bank Transfer -->
-    <div id="panelTransfer" style="display:none;">
-      <div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px; text-align:left;">
-        Direct Bank Transfer
-      </div>
-      <div style="font-size:11px; color:#A1A1AA; margin-bottom:12px; text-align:left; line-height:1.4;">
-        Transfer pass amount to any venue account below. Once transferred, click &ldquo;Payment Completed&rdquo; to notify the venue owner for instant access approval.
-      </div>
-      <div id="bankAccountsContainer">
-        ${bankAccountsBuffer.toString()}
-      </div>
-      <div class="form-group" style="margin-top:10px;">
-        <label for="transfer_plan">Select Wi-Fi Plan</label>
-        <select id="transfer_plan" class="select-input">
-          ${transferPlanOptionsBuffer.toString()}
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="transfer_sender">Sender Name (from bank narration / receipt)</label>
-        <input type="text" id="transfer_sender" placeholder="e.g. Alex Johnson" autocomplete="name">
-      </div>
-      <div class="form-group">
-        <label for="transfer_notes">Phone Number or Note (Optional)</label>
-        <input type="text" id="transfer_notes" placeholder="e.g. 08012345678">
-      </div>
-      <div id="transferStatusBox" style="display:none;" class="status-notice"></div>
-      <button type="button" id="btn_transfer_completed" class="btn-submit" onclick="submitTransferPayment()">
-        ✅ Payment Completed &rarr;
-      </button>
-    </div>
-
     <!-- Panel: Voucher Retrieval -->
     <div id="panelRetrieve" style="display:none;">
       <div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px; text-align:left;">
         Retrieve Active Pass
       </div>
       <div style="font-size:11px; color:#A1A1AA; margin-bottom:12px; text-align:left; line-height:1.4;">
-        Already transferred or bought a pass? Retrieve your active pass for this device or reconnect.
+        Already bought a pass online or have an active session? Retrieve your pass for this device to connect.
       </div>
       <div class="form-group">
         <label for="retrieve_mac">Device MAC (Auto-detected)</label>
         <input type="text" id="retrieve_mac" class="input-upper" value="\$(mac)" placeholder="00:00:00:00:00:00">
       </div>
       <div class="form-group">
-        <label for="retrieve_query">Or Phone / Transfer Reference / Code</label>
-        <input type="text" id="retrieve_query" placeholder="e.g. TRF-..., phone number, or voucher">
+        <label for="retrieve_query">Or Payment Reference / Voucher Code / Phone</label>
+        <input type="text" id="retrieve_query" placeholder="e.g. Reference, phone number, or voucher">
       </div>
       <div id="retrieveStatusBox" style="display:none;" class="status-notice"></div>
       <button type="button" id="btn_retrieve" class="btn-submit" onclick="retrieveActivePass()">
@@ -1784,13 +1448,13 @@ $_rfc1321Md5Js
 
     <div class="footer">
       MAC: <strong>\$(mac)</strong> &bull; IP: <strong>\$(ip)</strong><br>
-      Venue Subdomain: <strong>$slug.nexawavepass.com</strong>
+      Gateway: <strong>192.168.88.1</strong>
     </div>
   </div>
 
   <script>
     window.switchTab = function(mode) {
-      var tabs = ['voucher', 'plans', 'transfer', 'retrieve', 'creds'];
+      var tabs = ['voucher', 'plans', 'retrieve', 'creds'];
       for (var i = 0; i < tabs.length; i++) {
         var t = tabs[i];
         var cap = t.charAt(0).toUpperCase() + t.slice(1);
@@ -1822,106 +1486,6 @@ $_rfc1321Md5Js
 
 $_rfc1321Md5Js
 
-    function copyText(val) {
-      if (!val) return;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(val).then(function() {
-          alert('Copied ' + val + ' to clipboard!');
-        }).catch(function() {
-          prompt('Copy account number:', val);
-        });
-      } else {
-        prompt('Copy account number:', val);
-      }
-    }
-
-    var transferPollTimer = null;
-    function submitTransferPayment() {
-      var sender = document.getElementById('transfer_sender') ? document.getElementById('transfer_sender').value.trim() : '';
-      if (!sender) {
-        alert('Please enter your sender name or bank narration so the venue owner can identify your transfer.');
-        return;
-      }
-      var planSelect = document.getElementById('transfer_plan');
-      var planId = planSelect ? planSelect.value : '';
-      var notes = document.getElementById('transfer_notes') ? document.getElementById('transfer_notes').value.trim() : '';
-
-      var rawMac = "\$(mac)";
-      var mac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : (localStorage.getItem('wp-device-mac') || '02:00:00:00:00:01');
-      try { localStorage.setItem('wp-device-mac', mac); } catch(e){}
-
-      var btn = document.getElementById('btn_transfer_completed');
-      var originalText = btn ? btn.innerText : 'Payment Completed';
-      if (btn) {
-        btn.innerText = 'Notifying Venue Owner...';
-        btn.disabled = true;
-      }
-
-      var statusBox = document.getElementById('transferStatusBox');
-      if (statusBox) {
-        statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">Sending transfer notification...</div>';
-        statusBox.style.display = 'block';
-      }
-
-      var payload = {
-        venueSlug: '$slug',
-        mac: mac,
-        planId: planId,
-        senderName: sender,
-        notes: notes
-      };
-
-      fetch('https://api.nexawavepass.com/api/v1/portal/transfer-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        if (!data || !data.ok) {
-          throw new Error((data && data.message) || 'Failed to submit transfer request');
-        }
-
-        if (statusBox) {
-          statusBox.innerHTML = '<div style="font-size:13px; font-weight:800; color:#FFFFFF; margin-bottom:4px;">⏳ Request Sent to Venue Owner!</div>' +
-            '<div style="font-size:11px; color:#A1A1AA; line-height:1.4;">Notification sent with 1-tap approval button to the venue owner. Auto-checking for approval...</div>' +
-            '<div class="spinner" style="width:24px;height:24px;margin:10px auto 0;"></div>';
-          statusBox.style.display = 'block';
-        }
-
-        // Auto-poll retrieve-voucher every 3s
-        if (transferPollTimer) clearInterval(transferPollTimer);
-        transferPollTimer = setInterval(function() {
-          fetch('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?mac=' + encodeURIComponent(mac) + '&venueId=' + encodeURIComponent('$slug'))
-            .then(function(r) { return r.json(); })
-            .then(function(vRes) {
-              if (vRes && vRes.found && vRes.voucherCode) {
-                clearInterval(transferPollTimer);
-                if (statusBox) {
-                  statusBox.innerHTML = '<div style="font-size:13px; font-weight:800; color:#FFFFFF;">🎉 Access Approved!</div>' +
-                    '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">Pass: <strong>' + vRes.voucherCode + '</strong>. Connecting to Wi-Fi...</div>';
-                }
-                try { localStorage.setItem('wp-active-voucher', vRes.voucherCode); } catch(e){}
-                setTimeout(function() {
-                  executeLogin(vRes.voucherCode, vRes.voucherCode);
-                }, 1200);
-              }
-            })
-            .catch(function() {});
-        }, 3000);
-      })
-      .catch(function(err) {
-        if (btn) {
-          btn.innerText = originalText;
-          btn.disabled = false;
-        }
-        if (statusBox) {
-          statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (err.message || 'Error submitting transfer request.') + '</div>';
-          statusBox.style.display = 'block';
-        }
-      });
-    }
-
     var retrievePollTimer = null;
     function retrieveActivePass() {
       var macInp = document.getElementById('retrieve_mac') ? document.getElementById('retrieve_mac').value.trim() : '';
@@ -1939,12 +1503,13 @@ $_rfc1321Md5Js
       var statusBox = document.getElementById('retrieveStatusBox');
       if (statusBox) statusBox.style.display = 'none';
 
-      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent('$slug') + '&venue=' + encodeURIComponent('$slug');
+      var effectiveVenueId = '$venueId' || '$slug';
+      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(effectiveVenueId);
       if (mac) url += '&mac=' + encodeURIComponent(mac);
       if (qInp) {
-        url += '&q=' + encodeURIComponent(qInp) + '&query=' + encodeURIComponent(qInp);
+        url += '&q=' + encodeURIComponent(qInp);
         if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
-        if (qInp.indexOf('TRF-') === 0 || qInp.indexOf('BT-') === 0) url += '&reference=' + encodeURIComponent(qInp);
+        if (qInp.indexOf('REF-') === 0 || qInp.indexOf('PAY-') === 0 || qInp.indexOf('WP-') === 0) url += '&reference=' + encodeURIComponent(qInp);
       }
 
       function handleVoucherFound(vData) {
@@ -1958,7 +1523,6 @@ $_rfc1321Md5Js
             '<div style="font-size:11px; color:#A1A1AA; margin-bottom:10px;">' + (vData.planName || 'Wi-Fi') + (vData.remainingFormatted ? ' &bull; ' + vData.remainingFormatted + ' remaining' : '') + '</div>' +
             '<div style="display:flex; gap:8px; justify-content:center;">' +
               '<button type="button" class="btn-submit" style="margin-top:0; padding:10px 14px; font-size:12px; background:#10B981; color:#000000; flex:1;" onclick="executeLogin(&quot;' + vData.voucherCode + '&quot;, &quot;' + vData.voucherCode + '&quot;)">⚡ Connect Now &rarr;</button>' +
-              '<button type="button" class="btn-fallback" style="margin-top:0; padding:10px 14px; font-size:12px; flex:1;" onclick="copyText(&quot;' + vData.voucherCode + '&quot;)">📋 Copy Code</button>' +
             '</div>';
           statusBox.style.display = 'block';
         }
@@ -1977,29 +1541,9 @@ $_rfc1321Md5Js
 
           if (data && data.found && data.voucherCode) {
             handleVoucherFound(data);
-          } else if (data && data.pendingApproval) {
-            if (statusBox) {
-              statusBox.innerHTML = '<div style="font-weight:800; color:#FFFFFF;">⏳ Transfer Awaiting Approval</div>' +
-                '<div style="font-size:11px; color:#A1A1AA; margin-top:4px;">' + (data.message || 'Waiting for venue owner approval...') + '</div>' +
-                '<div class="spinner" style="width:24px;height:24px;margin:10px auto 0;"></div>';
-              statusBox.style.display = 'block';
-            }
-
-            if (retrievePollTimer) clearInterval(retrievePollTimer);
-            retrievePollTimer = setInterval(function() {
-              fetch(url)
-                .then(function(pr) { return pr.json(); })
-                .then(function(pData) {
-                  if (pData && pData.found && pData.voucherCode) {
-                    clearInterval(retrievePollTimer);
-                    handleVoucherFound(pData);
-                  }
-                })
-                .catch(function() {});
-            }, 3000);
           } else {
             if (statusBox) {
-              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code or phone.') + '</div>';
+              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code.') + '</div>';
               statusBox.style.display = 'block';
             }
           }
@@ -2016,44 +1560,10 @@ $_rfc1321Md5Js
         });
     }
 
-    function loadDynamicBankAccounts() {
-      var container = document.getElementById('dynamicBankAccounts');
-      if (!container) return;
-      fetch('https://api.nexawavepass.com/api/v1/portal/info?venue=' + encodeURIComponent('$slug'))
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data && data.bankAccounts && data.bankAccounts.length > 0) {
-            var html = '';
-            for (var i = 0; i < data.bankAccounts.length; i++) {
-              var b = data.bankAccounts[i];
-              var num = b.accountNumber || '';
-              var name = b.bankName || 'Bank';
-              var holder = b.accountName || '$venueName';
-              html += '<div class="bank-card">' +
-                '<div class="bank-name">' + name + '</div>' +
-                '<div class="bank-account-row">' +
-                  '<span class="bank-number">' + num + '</span>' +
-                  '<button type="button" class="btn-copy" onclick="copyText("' + num + '")">📋 Copy</button>' +
-                '</div>' +
-                '<div class="bank-holder">' + holder + '</div>' +
-              '</div>';
-            }
-            container.innerHTML = html;
-          } else {
-            var ph = document.getElementById('bankAccountsPlaceholder');
-            if (ph) ph.innerText = 'No bank accounts registered by this venue yet. Please use Card payment or Counter Voucher.';
-          }
-        })
-        .catch(function() {
-          var ph = document.getElementById('bankAccountsPlaceholder');
-          if (ph) ph.innerText = 'Venue bank accounts offline. Please ask counter for details.';
-        });
-    }
-
     function payWithPaystack(planId, price) {
       var isConfigured = $isPaystackConfigured;
       if (!isConfigured) {
-        alert('Paystack is not configured for this venue. Please connect using a cash voucher from the counter.');
+        alert('Online payment is not available at this moment. Please connect using a cash voucher from the counter.');
         return;
       }
       var email = document.getElementById('pay_email') ? document.getElementById('pay_email').value.trim() : '';
@@ -2066,11 +1576,12 @@ $_rfc1321Md5Js
         btn.disabled = true;
       }
 
+      var effectiveVenueId = '$venueId' || '$slug';
       var initPayload = {
         mac: mac,
         planId: planId,
         email: email || undefined,
-        venueId: '$slug'
+        venueId: effectiveVenueId
       };
 
       fetch('https://api.nexawavepass.com/api/v1/portal/init-payment', {
@@ -2087,7 +1598,6 @@ $_rfc1321Md5Js
       .then(function(data) {
         if (!data) throw new Error('Invalid payment initialization response');
 
-        // Check if Paystack Inline popup is loaded
         if (window.PaystackPop) {
           var handler = PaystackPop.setup({
             key: 'pk_live_34438c1d62f92132561142576056470fbc70e4ce',
@@ -2097,7 +1607,8 @@ $_rfc1321Md5Js
             callback: function(response) {
               if (btn) btn.innerText = 'Activating Wi-Fi...';
               var ref = (response && response.reference) || data.reference;
-              fetch('https://api.nexawavepass.com/api/v1/portal/verify-payment?reference=' + encodeURIComponent(ref))
+              // Call retrieve-voucher endpoint with reference and venueId
+              fetch('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?reference=' + encodeURIComponent(ref) + '&venueId=' + encodeURIComponent(effectiveVenueId))
                 .then(function(vRes) { return vRes.json(); })
                 .then(function(vData) {
                   var vCode = (vData && (vData.voucherCode || vData.code || (vData.voucher && vData.voucher.code))) || '';
@@ -2121,7 +1632,6 @@ $_rfc1321Md5Js
           });
           handler.openIframe();
         } else if (data.authorization_url) {
-          // Direct navigation to Paystack checkout page
           window.location.href = data.authorization_url;
         } else {
           throw new Error(data.message || 'No checkout URL returned.');
@@ -2214,8 +1724,6 @@ $_rfc1321Md5Js
           document.getElementById('cred_user').value = u;
         } else if (mode === 'plans' || mode === 'pay') {
           switchTab('plans');
-        } else if (mode === 'transfer' || mode === 'bank') {
-          switchTab('transfer');
         } else if (mode === 'retrieve') {
           switchTab('retrieve');
         } else {
@@ -2234,7 +1742,6 @@ $_rfc1321Md5Js
             }
           }
         }
-        loadDynamicBankAccounts();
       } catch (e) {}
     });
   </script>
@@ -2591,39 +2098,8 @@ $_rfc1321Md5Js
     if (plans.isEmpty) {
       plans = await VenueStateService.instance.refreshPlans();
     }
-    final dva = venue['dva'] ?? venue['virtual_account'];
-    bool isPaystackConfigured = true;
-    if (dva is Map) {
-      final meta = dva['metadata'];
-      if (meta is Map && (meta['mock'] == true || meta['mock']?.toString() == 'true')) {
-        isPaystackConfigured = false;
-      }
-      final bank = (dva['bankName']?.toString() ?? dva['bank_name']?.toString() ?? '').toLowerCase();
-      if (bank.contains('mock')) {
-        isPaystackConfigured = false;
-      }
-    } else if (venue['paystack_configured'] == false) {
-      isPaystackConfigured = false;
-    }
-
-    List<Map<String, dynamic>> bankAccounts = [];
-    try {
-      final info = await WavePassApi.instance.getPortalVenueInfo(venueSlug: slug);
-      if (info['bankAccounts'] is List) {
-        bankAccounts = List<Map<String, dynamic>>.from(
-          (info['bankAccounts'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
-        );
-      }
-    } catch (_) {
-      try {
-        final venueId = venue['id']?.toString() ?? slug;
-        final res = await WavePassApi.instance.listBankAccounts(venueId);
-        final list = (res is Map && res['data'] is List) ? res['data'] : (res is List ? res : []);
-        bankAccounts = List<Map<String, dynamic>>.from(
-          list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
-        );
-      } catch (_) {}
-    }
+    final isPaystackConfigured = venue['paystack_configured'] != false;
+    final venueId = venue['id']?.toString();
 
     final effectiveLogo = (_customPortalLogoUrl != null && _customPortalLogoUrl!.trim().isNotEmpty)
         ? _customPortalLogoUrl!.trim()
@@ -2638,10 +2114,11 @@ $_rfc1321Md5Js
         plans,
         isPaystackConfigured,
         _useHostedSubdomainPortal,
-        bankAccounts,
+        null,
         _selectedPortalTemplate,
         _customPortalBgUrl,
         effectiveLogo,
+        venueId,
       ),
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
@@ -3375,54 +2852,6 @@ $_rfc1321Md5Js
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  InkWell(
-                    onTap: () async {
-                      final venue = VenueStateService.instance.currentVenue;
-                      final venueId = venue?['id']?.toString() ?? 'default';
-                      await context.push('/wallet', extra: venueId);
-                      setState(() => _portalSuite = null);
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.account_balance_rounded, size: 18, color: AppColors.primary),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Venue Bank Accounts on Portal",
-                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.primary),
-                                ),
-                                Text(
-                                  "Add bank accounts to show on your portal for direct guest transfers.",
-                                  style: TextStyle(fontSize: 11, color: AppColors.textLight),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded, color: AppColors.primary, size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   _buildTemplatePickerCard(),
                   const SizedBox(height: 14),
 

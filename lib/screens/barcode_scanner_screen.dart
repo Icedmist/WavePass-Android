@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 
 class BarcodeScannerScreen extends StatefulWidget {
@@ -46,8 +47,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     }
 
     try {
-      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
-      final venueId = venue['id']?.toString() ?? 'default';
+      final venue = VenueStateService.instance.currentVenue ??
+          await SupabaseService.instance.getPrimaryVenue() ??
+          await WavePassApi.instance.getDefaultVenue();
+      final venueId = venue['id']?.toString() ?? '';
+      if (venueId.isEmpty || venueId == 'default') {
+        throw Exception('No active venue found. Please select or create a venue first.');
+      }
       await WavePassApi.instance.createRouter(
         venueId: venueId,
         name: 'MikroTik-$cleanSerial',

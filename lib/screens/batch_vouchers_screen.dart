@@ -319,7 +319,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       final pdf = pw.Document();
       final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
-      final slug = venue['slug']?.toString() ?? 'venue';
 
       final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
       final planName = plan['name']?.toString() ?? 'Pass';
@@ -409,7 +408,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     ),
                     pw.SizedBox(height: 2),
                     pw.Text(
-                      'Connect Wi-Fi & scan QR or visit $slug.nexawavepass.com',
+                      'Connect to Wi-Fi & scan QR or enter code at 192.168.88.1',
                       style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
                     ),
                   ],

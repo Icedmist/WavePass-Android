@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/supabase_service.dart';
@@ -5,12 +6,27 @@ import 'core/services/venue_state_service.dart';
 import 'core/services/activation_code_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/router_discovery_service.dart';
+import 'core/widgets/graceful_error_widget.dart';
 import 'core/router/app_router.dart';
 
 final GlobalKey<ScaffoldMessengerState> rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. Global error traps to permanently prevent app crashes
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('Global FlutterError: ${details.exceptionAsString()}');
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('Global Uncaught Error: $error\n$stack');
+    return true; // Handled, prevents fatal process abort
+  };
+
+  // Graceful fallback widget instead of the default red screen of death
+  ErrorWidget.builder = buildGracefulErrorWidget;
 
   // Immediately purge any cached blacklisted ISP gateways (e.g. Starlink dish at 192.168.1.1)
   try {

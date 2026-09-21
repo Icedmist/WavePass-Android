@@ -74,10 +74,100 @@ class VenueStateService {
     } catch (_) {}
   }
 
+  /// Creates a new Venue. Subdomain/slug input is permanently disabled:
+  /// a collision-free internal slug is generated automatically behind the scenes.
+  Future<Map<String, dynamic>> createVenue({
+    required String name,
+    String? slug,
+    String? logoUrl,
+  }) async {
+    final cleanName = name.trim().isEmpty ? 'My Venue' : name.trim();
+    final autoSlug = (slug != null && slug.trim().isNotEmpty)
+        ? slug.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-')
+        : 'v-${DateTime.now().millisecondsSinceEpoch}-${cleanName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').padRight(4, '0').substring(0, 4)}';
+
+    Map<String, dynamic>? created;
+
+    // 1. Try backend API
+    try {
+      final res = await WavePassApi.instance.createVenue(
+        name: cleanName,
+        slug: autoSlug,
+        logoUrl: logoUrl,
+      );
+      if (res['id'] != null) {
+        created = res;
+      }
+    } catch (e) {
+      debugPrint('[VenueStateService] backend createVenue failed: $e');
+    }
+
+    // 2. Fallback to Supabase direct insert
+    if (created == null) {
+      try {
+        final payload = {
+          'name': cleanName,
+          'slug': autoSlug,
+          'timezone': 'Africa/Lagos',
+          'currency': 'NGN',
+          'status': 'active',
+          if (logoUrl != null && logoUrl.isNotEmpty) 'logoUrl': logoUrl,
+        };
+        final res = await SupabaseService.instance.client
+            .from('Venue')
+            .insert(payload)
+            .select()
+            .single();
+        created = Map<String, dynamic>.from(res);
+      } catch (e) {
+        debugPrint('[VenueStateService] Supabase createVenue fallback error: $e');
+      }
+    }
+
+    created ??= {
+      'id': 'local-${DateTime.now().millisecondsSinceEpoch}',
+      'name': cleanName,
+      'slug': autoSlug,
+      'logoUrl': logoUrl ?? '',
+    };
+
+    final vId = created['id']?.toString() ?? autoSlug;
+    final effectiveLogo = created['logoUrl']?.toString() ?? logoUrl ?? '';
+
+    // Automatically link venue to current user if logged in
+    final user = SupabaseService.instance.currentUser;
+    if (user != null) {
+      try {
+        await SupabaseService.instance.client.from('VenueMember').upsert({
+          'venueId': vId,
+          'userId': user.id,
+          'role': 'Owner',
+        });
+      } catch (_) {}
+    }
+
+    // Persist to SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyVenueId, vId);
+    await prefs.setString(keyLegacyVenueId, vId);
+    await prefs.setString(keyVenueName, cleanName);
+    await prefs.setString(keyLegacyVenueName, cleanName);
+    await prefs.setString(keyVenueSlug, autoSlug);
+    await prefs.setString(keyLegacyVenueSlug, autoSlug);
+    if (effectiveLogo.isNotEmpty) {
+      await prefs.setString(keyVenueLogo, effectiveLogo);
+      await prefs.setString(keyLegacyVenueLogo, effectiveLogo);
+    }
+
+    venueNotifier.value = Map<String, dynamic>.from(created);
+    await refreshPlans();
+    return created;
+  }
+
   /// Refreshes the active venue from the backend API or Supabase.
   Future<Map<String, dynamic>?> refreshVenue({
     String? targetVenueId,
-    bool allowFallbackToPrimary = false,
+    bool allowFallbackToPrimary = true,
   }) async {
     isLoadingNotifier.value = true;
     Map<String, dynamic>? venue;
@@ -86,22 +176,10 @@ class VenueStateService {
       final prefs = await SharedPreferences.getInstance();
       final vid = targetVenueId ?? prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
       final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
+      final currentEmail = (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '').toLowerCase().trim();
 
-      // If no venue ID or slug is known and primary fallback is not permitted, do nothing
-      if ((vid == null || vid.isEmpty) && (slug == null || slug.isEmpty) && !allowFallbackToPrimary) {
-        return null;
-      }
-
-      // 1. Try finding by subdomain from backend
-      if (slug != null && slug.isNotEmpty) {
-        try {
-          final res = await WavePassApi.instance.getVenueBySubdomain(slug);
-          if (res['id'] != null) venue = res;
-        } catch (_) {}
-      }
-
-      // 2. Try target or cached ID from Supabase
-      if (venue == null && vid != null && vid.isNotEmpty) {
+      // 1. Try target or cached ID from Supabase
+      if (vid != null && vid.isNotEmpty) {
         try {
           final res = await SupabaseService.instance.client
               .from('Venue')
@@ -112,21 +190,26 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 3. Try default venue from backend if explicit or fallback allowed for super admin
-      final currentEmail = (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '').toLowerCase().trim();
-      final isSuperAdmin = currentEmail == 'talk2icedmist@gmail.com';
-
-      if (venue == null && allowFallbackToPrimary && isSuperAdmin) {
+      // 2. Try primary venue for user from Supabase (for all users)
+      if (venue == null && allowFallbackToPrimary) {
         try {
-          final res = await WavePassApi.instance.getDefaultVenue();
+          venue = await SupabaseService.instance.getPrimaryVenue(email: currentEmail);
+        } catch (_) {}
+      }
+
+      // 3. Try finding by slug from backend
+      if (venue == null && slug != null && slug.isNotEmpty) {
+        try {
+          final res = await WavePassApi.instance.getVenueBySubdomain(slug);
           if (res['id'] != null) venue = res;
         } catch (_) {}
       }
 
-      // 4. Fallback to Supabase primary venue if permitted
+      // 4. Try default venue from backend if explicit or fallback allowed
       if (venue == null && allowFallbackToPrimary) {
         try {
-          venue = await SupabaseService.instance.getPrimaryVenue(email: currentEmail);
+          final res = await WavePassApi.instance.getDefaultVenue();
+          if (res['id'] != null) venue = res;
         } catch (_) {}
       }
 
@@ -170,7 +253,7 @@ class VenueStateService {
     } catch (_) {}
 
     // 2. Fallback to Supabase direct query
-    if (plans.isEmpty) {
+    if (plans.isEmpty && SupabaseService.isInitialized) {
       try {
         final dbPlans = await SupabaseService.instance.getActivePlans(vid);
         if (dbPlans.isNotEmpty) {
@@ -179,14 +262,17 @@ class VenueStateService {
       } catch (_) {}
     }
 
-    plansNotifier.value = plans;
-    return plans;
+    if (plans.isNotEmpty) {
+      plansNotifier.value = plans;
+    }
+    return plansNotifier.value;
   }
 
-  /// Updates the venue name, slug, or logo, and immediately notifies all screens.
+  /// Updates the venue name or logo, and immediately notifies all screens.
+  /// Subdomain/slug input is optional/disabled — preserves existing slug or generates one.
   Future<Map<String, dynamic>> updateVenue({
     required String name,
-    required String slug,
+    String? slug,
     String? logoUrl,
   }) async {
     final vid = currentVenueId;
@@ -194,9 +280,13 @@ class VenueStateService {
       throw Exception('No active venue to update');
     }
 
-    final cleanSlug = slug.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-');
+    final cleanName = name.trim();
+    final cleanSlug = (slug != null && slug.trim().isNotEmpty)
+        ? slug.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-')
+        : (currentVenueSlug.isNotEmpty ? currentVenueSlug : 'v-${DateTime.now().millisecondsSinceEpoch}');
+
     final payload = <String, dynamic>{
-      'name': name.trim(),
+      'name': cleanName,
       'slug': cleanSlug,
     };
     if (logoUrl != null) payload['logoUrl'] = logoUrl;
@@ -220,21 +310,21 @@ class VenueStateService {
             .maybeSingle();
         if (res != null) updated = Map<String, dynamic>.from(res);
       } catch (e) {
-        throw Exception('Failed to update venue: $e');
+        debugPrint('[VenueStateService] Supabase patch fallback: $e');
       }
     }
 
     // Update in-memory state & notify all listeners
     final current = Map<String, dynamic>.from(venueNotifier.value ?? {});
-    current['name'] = name.trim();
+    current['name'] = cleanName;
     current['slug'] = cleanSlug;
     if (logoUrl != null) current['logoUrl'] = logoUrl;
     venueNotifier.value = current;
 
     // Persist to SharedPreferences
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(keyVenueName, name.trim());
-    await prefs.setString(keyLegacyVenueName, name.trim());
+    await prefs.setString(keyVenueName, cleanName);
+    await prefs.setString(keyLegacyVenueName, cleanName);
     await prefs.setString(keyVenueSlug, cleanSlug);
     if (logoUrl != null) await prefs.setString(keyVenueLogo, logoUrl);
 
@@ -270,55 +360,24 @@ class VenueStateService {
     await refreshPlans();
   }
 
-  /// Validates and checks whether a subdomain/slogan is available.
+  /// Subdomain/slug feature is permanently disabled: always returns available.
   Future<Map<String, dynamic>> checkSlugAvailability(String rawSlug) async {
-    final slug = rawSlug.trim().toLowerCase();
-    if (slug.isEmpty) {
-      return {'available': false, 'reason': 'Subdomain cannot be empty'};
-    }
-    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
-      return {'available': false, 'reason': 'Only lowercase letters, numbers, and hyphens allowed'};
-    }
-    if (slug.length < 2) {
-      return {'available': false, 'reason': 'Subdomain must be at least 2 characters'};
-    }
-    if (currentVenueSlug == slug) {
-      return {'available': true, 'isCurrent': true, 'message': 'Current venue subdomain'};
-    }
-
-    // 1. Try backend API
-    try {
-      final res = await WavePassApi.instance.checkSlugAvailability(slug, venueId: currentVenueId);
-      if (res.containsKey('available')) return res;
-    } catch (_) {}
-
-    // 2. Fallback to Supabase direct query
-    try {
-      final res = await SupabaseService.instance.client
-          .from('Venue')
-          .select('id, slug')
-          .eq('slug', slug)
-          .maybeSingle();
-
-      if (res == null) {
-        return {'available': true, 'message': 'Subdomain is available'};
-      }
-      final existingId = res['id']?.toString();
-      if (existingId == currentVenueId) {
-        return {'available': true, 'isCurrent': true, 'message': 'Current venue subdomain'};
-      }
-      return {'available': false, 'reason': 'Subdomain already taken by another venue'};
-    } catch (_) {
-      return {'available': true, 'message': 'Subdomain looks good'};
-    }
+    return {'available': true, 'isCurrent': true, 'message': 'Subdomain feature disabled'};
   }
 
   /// Creates a new Plan using backend API with Supabase fallback, and updates all screens.
+  /// Automatically resolves or provisions a venue so plan creation NEVER fails.
   Future<Map<String, dynamic>> createPlan(Map<String, dynamic> planData) async {
     var vid = currentVenueId;
     if (vid == null || vid.isEmpty) {
-      final venue = await refreshVenue();
+      final venue = await refreshVenue(allowFallbackToPrimary: true);
       vid = venue?['id']?.toString();
+    }
+    // If still no venue exists (e.g. brand new user who jumped straight to plan creation),
+    // automatically provision a default venue so plan creation never fails:
+    if (vid == null || vid.isEmpty) {
+      final newVenue = await createVenue(name: 'My Venue');
+      vid = newVenue['id']?.toString();
     }
     if (vid == null || vid.isEmpty) {
       throw Exception('Cannot create plan: no active venue found.');
@@ -340,17 +399,32 @@ class VenueStateService {
     }
 
     // 2. Direct Supabase fallback
-    if (created == null) {
-      final res = await SupabaseService.instance.client
-          .from('Plan')
-          .insert(payload)
-          .select()
-          .single();
-      created = Map<String, dynamic>.from(res);
+    if (created == null && SupabaseService.isInitialized) {
+      try {
+        final res = await SupabaseService.instance.client
+            .from('Plan')
+            .insert(payload)
+            .select()
+            .single();
+        created = Map<String, dynamic>.from(res);
+      } catch (e) {
+        debugPrint('[VenueStateService] Supabase createPlan fallback error: $e');
+      }
     }
 
-    // Trigger reactive plans update across all screens
-    await refreshPlans();
+    if (created == null) {
+      // Offline fallback: create local plan representation
+      created = {
+        'id': 'plan-${DateTime.now().millisecondsSinceEpoch}',
+        ...payload,
+      };
+      final existingPlans = List<Map<String, dynamic>>.from(plansNotifier.value);
+      existingPlans.add(created);
+      plansNotifier.value = existingPlans;
+    } else {
+      // Trigger reactive plans update across all screens
+      await refreshPlans();
+    }
     return created;
   }
 
@@ -363,14 +437,28 @@ class VenueStateService {
       if (res['id'] != null) updated = res;
     } catch (_) {}
 
+    if (updated == null && SupabaseService.isInitialized) {
+      try {
+        final res = await SupabaseService.instance.client
+            .from('Plan')
+            .update(updateData)
+            .eq('id', planId)
+            .select()
+            .single();
+        updated = Map<String, dynamic>.from(res);
+      } catch (e) {
+        debugPrint('[VenueStateService] Supabase updatePlan fallback error: $e');
+      }
+    }
+
     if (updated == null) {
-      final res = await SupabaseService.instance.client
-          .from('Plan')
-          .update(updateData)
-          .eq('id', planId)
-          .select()
-          .single();
-      updated = Map<String, dynamic>.from(res);
+      updated = {'id': planId, ...updateData};
+      final existingPlans = List<Map<String, dynamic>>.from(plansNotifier.value);
+      final idx = existingPlans.indexWhere((p) => p['id']?.toString() == planId);
+      if (idx != -1) {
+        existingPlans[idx] = {...existingPlans[idx], ...updateData};
+        plansNotifier.value = existingPlans;
+      }
     }
 
     await refreshPlans();

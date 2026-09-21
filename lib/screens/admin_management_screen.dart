@@ -31,17 +31,10 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   bool _savingVenue = false;
 
   final _nameCtrl = TextEditingController();
-  final _slugCtrl = TextEditingController();
   final _logoCtrl = TextEditingController();
   XFile? _pickedLogo;
   String? _uploadedLogoUrl;
   bool _uploadingLogo = false;
-
-  // Real-time Subdomain / Slogan Availability
-  Timer? _slugDebounce;
-  bool _isCheckingSlug = false;
-  bool? _isSlugAvailable;
-  String? _slugStatusMessage;
 
   // Router Connectivity
   String? _routerId;
@@ -71,11 +64,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
   @override
   void dispose() {
-    _slugDebounce?.cancel();
     VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
     VenueStateService.instance.plansNotifier.removeListener(_onPlansChanged);
     _nameCtrl.dispose();
-    _slugCtrl.dispose();
     _logoCtrl.dispose();
     super.dispose();
   }
@@ -92,7 +83,6 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         _venueName = name;
         _venueSlug = slug;
         if (_nameCtrl.text.isEmpty) _nameCtrl.text = name;
-        if (_slugCtrl.text.isEmpty) _slugCtrl.text = slug;
         if (_logoCtrl.text.isEmpty) _logoCtrl.text = logo;
       });
     }
@@ -130,46 +120,6 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     }
   }
 
-  void _onSlugChanged(String raw) {
-    _slugDebounce?.cancel();
-    final slug = raw.trim().toLowerCase();
-    if (slug.isEmpty) {
-      setState(() {
-        _isCheckingSlug = false;
-        _isSlugAvailable = null;
-        _slugStatusMessage = null;
-      });
-      return;
-    }
-    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
-      setState(() {
-        _isCheckingSlug = false;
-        _isSlugAvailable = false;
-        _slugStatusMessage = 'Only lowercase letters, numbers, and hyphens allowed';
-      });
-      return;
-    }
-    setState(() {
-      _isCheckingSlug = true;
-      _slugStatusMessage = 'Checking availability...';
-    });
-    _slugDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final res = await VenueStateService.instance.checkSlugAvailability(slug);
-      if (!mounted) return;
-      setState(() {
-        _isCheckingSlug = false;
-        _isSlugAvailable = res['available'] == true;
-        if (res['isCurrent'] == true) {
-          _slugStatusMessage = 'Current venue subdomain';
-        } else if (res['available'] == true) {
-          _slugStatusMessage = 'Available: https://$slug.nexawavepass.com';
-        } else {
-          _slugStatusMessage = res['reason']?.toString() ?? 'Subdomain already taken';
-        }
-      });
-    });
-  }
-
   Future<void> _loadAllData() async {
     await _loadVenue();
     if (_venueId != null) {
@@ -201,7 +151,6 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
           _venueName = name;
           _venueSlug = slug;
           _nameCtrl.text = name;
-          _slugCtrl.text = slug;
           _logoCtrl.text = logo;
         });
       }
@@ -285,7 +234,6 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     try {
       final isLocalMode = _routerConnectionMode == 'local' || _routerEndpoint.contains('192.168.');
       bool isOnline = false;
-
       if (isLocalMode) {
         final prefs = await SharedPreferences.getInstance();
         final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
@@ -412,37 +360,28 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
   Future<void> _saveVenue() async {
     if (_venueId == null) return;
-    final slug = _slugCtrl.text.trim().toLowerCase();
-    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Slug must be lowercase alphanumeric and hyphens only.')),
-      );
-      return;
-    }
-    if (_isSlugAvailable == false) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_slugStatusMessage ?? 'Subdomain is not available. Please pick another.'), backgroundColor: AppColors.accentRed),
+        const SnackBar(content: Text('Venue name is required.')),
       );
       return;
     }
     final logoUrl = (_uploadedLogoUrl ?? _logoCtrl.text.trim()).trim();
-    // Logo optional on edit — omit when empty so backend keeps existing logo.
 
     setState(() => _savingVenue = true);
     try {
       await VenueStateService.instance.updateVenue(
-        name: _nameCtrl.text.trim(),
-        slug: slug,
+        name: name,
         logoUrl: logoUrl.isEmpty ? null : logoUrl,
       );
       if (!mounted) return;
       setState(() {
-        _venueName = _nameCtrl.text.trim();
-        _venueSlug = slug;
+        _venueName = name;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Venue updated! Lives at $slug.nexawavepass.com'),
+        const SnackBar(
+          content: Text('Venue identity and branding updated!'),
           backgroundColor: AppColors.accentGreen,
         ),
       );
@@ -859,7 +798,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ─── 3. SUBDOMAIN & BRANDING CARD ───
+            // ─── 3. VENUE IDENTITY & BRANDING CARD ───
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -870,34 +809,18 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "SUBDOMAIN & VENUE IDENTITY",
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          "${_slugCtrl.text.isNotEmpty ? _slugCtrl.text.toLowerCase() : _venueSlug}.nexawavepass.com",
-                          style: const TextStyle(fontSize: 10, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
+                  const Text(
+                    "VENUE IDENTITY & BRANDING",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      letterSpacing: 0.8,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    "Your guests will see this branding on their captive login portal.",
+                    "Your guests will see this branding on their captive login portal and receipts.",
                     style: TextStyle(fontSize: 12, color: AppColors.textLight),
                   ),
                   const SizedBox(height: 16),
@@ -912,65 +835,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _slugCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Portal Subdomain / Slogan (URL Slug)',
-                        border: const OutlineInputBorder(),
-                        helperText: 'https://${_slugCtrl.text.isEmpty ? 'venue' : _slugCtrl.text.toLowerCase()}.nexawavepass.com',
-                        helperStyle: const TextStyle(fontSize: 11, color: AppColors.accentGreen, fontFamily: 'monospace'),
-                      ),
-                      onChanged: _onSlugChanged,
-                    ),
-                    if (_isCheckingSlug || _slugStatusMessage != null) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: _isCheckingSlug
-                              ? Colors.grey.withValues(alpha: 0.08)
-                              : _isSlugAvailable == true
-                                  ? AppColors.accentGreen.withValues(alpha: 0.08)
-                                  : AppColors.accentRed.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _isCheckingSlug
-                                ? Colors.grey.withValues(alpha: 0.25)
-                                : _isSlugAvailable == true
-                                    ? AppColors.accentGreen.withValues(alpha: 0.35)
-                                    : AppColors.accentRed.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            if (_isCheckingSlug)
-                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primary))
-                            else if (_isSlugAvailable == true)
-                              const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accentGreen)
-                            else
-                              const Icon(Icons.cancel_rounded, size: 14, color: AppColors.accentRed),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _slugStatusMessage ?? '',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: _isCheckingSlug
-                                      ? AppColors.textMuted
-                                      : _isSlugAvailable == true
-                                          ? AppColors.accentGreen
-                                          : AppColors.accentRed,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 14),
-                    const Text('Venue Portal Logo *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                    const Text('Venue Portal Logo (Optional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
                     const SizedBox(height: 6),
                     InkWell(
                       onTap: _pickAdminLogo,
@@ -1021,7 +887,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                         icon: _savingVenue
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save_rounded, size: 18),
-                        label: Text(_savingVenue ? 'Saving Changes...' : 'Save Subdomain & Branding'),
+                        label: Text(_savingVenue ? 'Saving Changes...' : 'Save Venue & Branding'),
                       ),
                     ),
                   ],

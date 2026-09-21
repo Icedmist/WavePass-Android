@@ -9,7 +9,6 @@ import '../core/router/app_router.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
-import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -23,7 +22,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   final _venueName = TextEditingController();
-  final _venueSlug = TextEditingController();
   final _venueLogo = TextEditingController(text: 'https://nexawavepass.com/logo.png');
   XFile? _pickedLogo;
   String? _uploadedLogoUrl;
@@ -84,10 +82,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
     {
       'tag': '08 / YOUR VENUE',
-      'title': 'Create Your Venue',
-      'subtitle': 'Pick a subdomain and set your pricing — logo optional, go live in seconds.',
+      'title': 'Name Your Venue',
+      'subtitle': 'Set your venue name and pricing — logo optional, go live in seconds.',
       'icon': Icons.store_rounded,
-      'badge': 'Subdomain • Pricing Required',
+      'badge': 'Venue Name • Instant Setup',
     },
   ];
 
@@ -95,7 +93,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void dispose() {
     _pageController.dispose();
     _venueName.dispose();
-    _venueSlug.dispose();
     _venueLogo.dispose();
     super.dispose();
   }
@@ -132,53 +129,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _createVenueAndFinish() async {
     final name = _venueName.text.trim();
-    final slug = _venueSlug.text.trim().toLowerCase();
     // Logo is optional — backend defaults to https://nexawavepass.com/logo.png.
     // Never block venue creation on image upload (storage/RLS failures fall back silently).
     final logoUrl = (_uploadedLogoUrl ?? _venueLogo.text.trim()).trim();
     final logoToSend = logoUrl.isEmpty || logoUrl == 'https://nexawavepass.com/logo.png' ? null : logoUrl;
-    if (name.isEmpty || slug.isEmpty) {
-      setState(() => _venueError = 'Venue name and subdomain (slug) are required — your portal will be $slug.nexawavepass.com. Logo is optional.');
-      return;
-    }
-    if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
-      setState(() => _venueError = 'Subdomain must be lowercase a-z, 0-9 and hyphens only (e.g. my-venue).');
+    if (name.isEmpty) {
+      setState(() => _venueError = 'Venue name is required to continue. Logo is optional.');
       return;
     }
     setState(() { _creatingVenue = true; _venueError = null; });
     try {
-      final res = await WavePassApi.instance.createVenue(name: name, slug: slug, logoUrl: logoToSend);
+      final res = await VenueStateService.instance.createVenue(name: name, logoUrl: logoToSend);
       if (res.containsKey('message') && res['id'] == null) {
-        // Backend returned an error payload without throwing (e.g. 400/409 decoded as map)
         final msg = res['message']?.toString() ?? 'Venue creation failed';
-        if (msg.toLowerCase().contains('already exists') || msg.toLowerCase().contains('taken')) {
-          setState(() => _venueError = 'Subdomain "$slug" is already taken — try another.');
-        } else {
-          setState(() => _venueError = 'Failed: $msg');
-        }
+        setState(() => _venueError = 'Failed: $msg');
         return;
       }
-      final vId = res['id']?.toString() ?? slug;
-      final vName = name;
-      final vSlug = slug;
-      final effectiveLogo = logoToSend ?? 'https://nexawavepass.com/logo.png';
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
-      await prefs.setString('wavepass_active_venue_id', vId);
-      await prefs.setString('venueId', vId);
-      await prefs.setString('wavepass_active_venue_name', vName);
-      await prefs.setString('venueName', vName);
-      await prefs.setString('wavepass_active_venue_slug', vSlug);
-      await prefs.setString('venueSlug', vSlug);
-      await prefs.setString('wavepass_active_venue_logo', effectiveLogo);
-      await prefs.setString('venueLogo', effectiveLogo);
-
-      VenueStateService.instance.venueNotifier.value = {
-        'id': vId,
-        'name': vName,
-        'slug': vSlug,
-        'logoUrl': effectiveLogo,
-      };
 
       if (!mounted) return;
       // Prompt user to enable device notifications for customer transfer approvals & sales
@@ -230,73 +198,82 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: [
-              // Top Action Row
+              // Top Bar: Brand + Skip
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            "W",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       const Text(
                         "WavePass",
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.w900,
                           color: AppColors.primary,
+                          letterSpacing: -0.5,
                         ),
                       ),
                     ],
                   ),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: _goToLogin,
-                        child: const Text(
-                          "Sign In",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
+                  if (_currentPage < _slides.length - 1)
+                    TextButton(
+                      onPressed: _goToLogin,
+                      child: const Text(
+                        "Skip",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textLight,
                         ),
                       ),
-                      TextButton(
-                        onPressed: _goToSignup,
-                        child: const Text(
-                          "Sign Up",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textLight,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
                 ],
               ),
-              const SizedBox(height: 12),
-              // Progress + estimate
-              Row(children: [
-                Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: (_currentPage + 1) / _slides.length, minHeight: 4, backgroundColor: Colors.black12, valueColor: const AlwaysStoppedAnimation(AppColors.accentGreen)))),
-                const SizedBox(width: 8),
-                Text('${_currentPage + 1}/${_slides.length} • 2 min', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textLight, fontFamily: 'monospace')),
-              ]),
               const SizedBox(height: 16),
-              // Venue type personalization (on first two cards)
-              if (_currentPage <= 1)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Wrap(spacing: 6, runSpacing: 6, children: ['Café', 'Hotel', 'Hostel', 'Event'].map((t) => ChoiceChip(label: Text(t, style: const TextStyle(fontSize: 11)), selected: _venueType == t, onSelected: (_) { HapticFeedback.selectionClick(); setState(() => _venueType = t); }, selectedColor: AppColors.primary, labelStyle: TextStyle(color: _venueType == t ? Colors.white : AppColors.primary, fontWeight: FontWeight.w700))).toList()),
+
+              // Venue type selector chip bar on the welcome screen
+              if (_currentPage == 0)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: ['Café', 'Hotel', 'Church', 'Campus'].map((type) {
+                      final selected = _venueType == type;
+                      return ChoiceChip(
+                        label: Text(type, style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w800 : FontWeight.w500, color: selected ? Colors.white : AppColors.textLight)),
+                        selected: selected,
+                        selectedColor: AppColors.primary,
+                        backgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        onSelected: (_) => setState(() => _venueType = type),
+                      );
+                    }).toList(),
+                  ),
                 ),
 
               // Carousel View
@@ -326,9 +303,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             Text(slide['subtitle'] as String, style: const TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4)),
                             const SizedBox(height: 16),
                             TextField(controller: _venueName, decoration: const InputDecoration(hintText: 'Venue name (e.g. Cafe Lagos)', labelText: 'Venue Name *')),
-                            const SizedBox(height: 10),
-                            TextField(controller: _venueSlug, decoration: InputDecoration(hintText: 'my-venue', labelText: 'Subdomain (slug) *', helperText: _venueSlug.text.isEmpty ? 'your-venue.nexawavepass.com' : '${_venueSlug.text.toLowerCase()}.nexawavepass.com'), onChanged: (_) => setState(() {})),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 16),
                             // Venue logo upload (optional)
                             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               const Text('Venue Logo (optional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.textMuted)),
@@ -348,7 +323,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                               if (_uploadingLogo) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
                               const SizedBox(height: 4),
-                              const Text('Optional — shown on your subdomain portal', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                              const Text('Optional — displayed on login portal and receipts', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
                             ]),
                             if (_venueError != null) ...[
                               const SizedBox(height: 10),

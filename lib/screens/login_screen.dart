@@ -110,14 +110,13 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
           await prefs.remove(RouterDiscoveryService.keyRouterUsername);
           await prefs.remove(RouterDiscoveryService.keyRouterPassword);
+          await VenueStateService.instance.clearVenue();
         }
         await prefs.remove('admin_token');
         await prefs.remove('wavepass_voucher_history_v1');
         await VoucherHistoryService.instance.clearCache();
         await prefs.setString('sb-user-email', email);
-        await VenueStateService.instance.clearVenue();
-        final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
-        await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
+        await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
         await ActivationCodeService.instance.isAccountActivated(email);
         await SessionService.instance.recordLogin(email);
         if (_biometricsEnabled) {
@@ -141,14 +140,13 @@ class _LoginScreenState extends State<LoginScreen> {
             await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
             await prefs.remove(RouterDiscoveryService.keyRouterUsername);
             await prefs.remove(RouterDiscoveryService.keyRouterPassword);
+            await VenueStateService.instance.clearVenue();
           }
           await prefs.setString('admin_token', j['token']);
           await prefs.remove('wavepass_voucher_history_v1');
           await VoucherHistoryService.instance.clearCache();
           await prefs.setString('sb-user-email', email);
-          await VenueStateService.instance.clearVenue();
-          final isSuperAdmin = email.toLowerCase().trim() == 'talk2icedmist@gmail.com';
-          await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: isSuperAdmin);
+          await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
           await ActivationCodeService.instance.isAccountActivated(email);
           await SessionService.instance.recordLogin(email);
           if (_biometricsEnabled) {

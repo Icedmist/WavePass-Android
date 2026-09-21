@@ -577,5 +577,24 @@
 - [x] **Verification**:
   - `flutter analyze` clean (0 issues).
   - All 76 tests passed (including 6 new tests in `test/router_dual_connection_test.dart`).
+- [x] PR [#119](https://github.com/Icedmist/WavePass-Android/pull/119) merged to `main`.
 
-
+### 47. Subdomain Elimination, Venue Retention on Login, Resilient Plan Creation & Global Error Boundary (Issue #120, PR #121)
+- [x] **Permanently Disabled Subdomain/Slug Feature**:
+  - Removed subdomain/slug textfield, controller, and regex validation from Onboarding (`onboarding_screen.dart`), Account Center (`account_center_screen.dart`), Admin Management (`admin_management_screen.dart`), and Router Setup (`router_setup_screen.dart`).
+  - Auto-generates unique, collision-free internal slugs (`v-<timestamp>-<hash>`) in `VenueStateService.createVenue` to satisfy backend database unique constraints without user friction.
+  - Bypassed `checkSlugAvailability` to always return available.
+  - Disabled hosted subdomain bounce architecture in `router_setup_screen.dart`, ensuring template captive portals run directly on the local router gateway.
+- [x] **Fixed Venue Resolution on Login**:
+  - Stopped `login_screen.dart` from wiping active venue on login unless the user account email actually changed.
+  - Allowed primary venue fallback (`allowFallbackToPrimary: true`) for all authenticated operators (not just superadmin) in `SupabaseService.getPrimaryVenue` and `getVenues`.
+- [x] **Self-Healing Plan Creation**:
+  - `VenueStateService.createPlan` automatically attempts venue restoration if `currentVenueId` is null, and auto-provisions a default venue if still empty.
+  - Added offline fallback in `createPlan`, `updatePlan`, and `refreshPlans` to ensure locally created plans persist seamlessly even when offline or during transient network errors.
+- [x] **Global Error Handling & Resilient UI**:
+  - Wired `FlutterError.onError`, `PlatformDispatcher.instance.onError`, and `ErrorWidget.builder = buildGracefulErrorWidget` in `main.dart`.
+  - Implemented `buildGracefulErrorWidget` in `lib/core/widgets/graceful_error_widget.dart` to replace red screens of death with friendly recovery cards.
+- [x] **Verification**:
+  - `flutter analyze` clean (0 issues).
+  - All 81 tests passed (including 5 new tests in `test/venue_creation_and_plan_self_healing_test.dart`).
+- [x] PR [#121](https://github.com/Icedmist/WavePass-Android/pull/121) merged to `main`.

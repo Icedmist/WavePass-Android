@@ -44,6 +44,16 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
   bool _savingPdf = false;
   String _searchFilter = '';
 
+  // A4 layout customization (preview + PDF share these).
+  // Defaults match the cutout grid in the reference photo: compact multi-
+  // column cards with venue / voucher / plan / price, no QR.
+  String _a4Density = 'Compact'; // Compact, Standard, Large
+  int _a4Columns = 5; // 1, 2, 3, 4 or 5 cards per row
+  double _a4QrSize = 50; // 38 (S), 50 (M), 64 (L)
+  bool _a4ShowQr = false;
+  bool _a4ShowPrice = true;
+  bool _a4ShowInstructions = true;
+
   @override
   void initState() {
     super.initState();
@@ -341,11 +351,85 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         final code = item['code']?.toString() ?? '';
         final pass = item['password']?.toString() ?? '';
         final isDual = _userMode == 'Username & Password' && pass != code;
+        final compact = _a4Density == 'Compact';
+        final large = _a4Density == 'Large';
+        final dateStr = DateTime.now().toLocal().toString().split('.')[0];
+
+        // Grid cutout (3-5 columns): matches the reference photo — centered
+        // stack of venue / voucher / plan-duration-data / price, no QR.
+        if (_a4Columns >= 3) {
+          final gridCodeSize = compact ? 9.5 : large ? 12.0 : 11.0;
+          final gridTitleSize = compact ? 7.5 : large ? 9.5 : 8.5;
+          final gridSmallSize = compact ? 5.5 : large ? 7.0 : 6.5;
+          return pw.Container(
+            width: double.infinity,
+            margin: const pw.EdgeInsets.all(2.5),
+            padding: pw.EdgeInsets.symmetric(horizontal: 5, vertical: compact ? 5 : 7),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.white,
+              border: pw.Border.all(color: PdfColors.grey500, width: 0.8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Text(venueName.toUpperCase(),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: gridTitleSize, color: PdfColors.black),
+                    textAlign: pw.TextAlign.center,
+                    maxLines: 1),
+                pw.Text('WavePass Wi-Fi Slip • $planName',
+                    style: pw.TextStyle(fontSize: gridSmallSize, color: PdfColors.grey800),
+                    textAlign: pw.TextAlign.center,
+                    maxLines: 1),
+                if (_a4ShowQr) ...[
+                  pw.SizedBox(height: 3),
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: 'http://192.168.88.1/login?username=$code&password=$pass',
+                    width: _a4QrSize * 0.75,
+                    height: _a4QrSize * 0.75,
+                  ),
+                ],
+                pw.SizedBox(height: 3),
+                pw.Text(isDual ? 'USER: $code' : code,
+                    style: pw.TextStyle(fontSize: gridCodeSize, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold()),
+                    textAlign: pw.TextAlign.center),
+                if (isDual)
+                  pw.Text('PIN: $pass',
+                      style: pw.TextStyle(fontSize: gridCodeSize - 1, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold()),
+                      textAlign: pw.TextAlign.center),
+                pw.SizedBox(height: 1),
+                pw.Text('$planName • $durationStr • $dataStr',
+                    style: pw.TextStyle(fontSize: gridSmallSize + 0.5, color: PdfColors.grey800),
+                    textAlign: pw.TextAlign.center,
+                    maxLines: 1),
+                if (_a4ShowPrice)
+                  pw.Text(priceStr,
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: gridTitleSize, color: PdfColors.black),
+                      textAlign: pw.TextAlign.center),
+                if (_a4ShowInstructions) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text('Connect to Wi-Fi • Enter code at 192.168.88.1',
+                      style: pw.TextStyle(fontSize: gridSmallSize - 0.5, color: PdfColors.grey600),
+                      textAlign: pw.TextAlign.center,
+                      maxLines: 2),
+                  pw.Text(dateStr, style: pw.TextStyle(fontSize: gridSmallSize - 0.5, color: PdfColors.grey600), textAlign: pw.TextAlign.center),
+                ],
+              ],
+            ),
+          );
+        }
+
+        final vPad = compact ? 4.0 : large ? 10.0 : 7.0;
+        final hPad = compact ? 7.0 : large ? 13.0 : 10.0;
+        final qr = _a4ShowQr ? _a4QrSize : 0.0;
+        final codeSize = compact ? 11.0 : large ? 15.0 : 13.0;
+        final titleSize = compact ? 9.0 : large ? 11.0 : 10.0;
 
         return pw.Container(
           width: double.infinity,
-          margin: const pw.EdgeInsets.symmetric(vertical: 3.5),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          margin: pw.EdgeInsets.symmetric(vertical: compact ? 2.5 : 3.5, horizontal: _a4Columns == 2 ? 3 : 0),
+          padding: pw.EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
           decoration: pw.BoxDecoration(
             color: PdfColors.white,
             borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
@@ -358,21 +442,22 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              // 1. QR Code
-              pw.Container(
-                padding: const pw.EdgeInsets.all(3),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              // 1. QR Code (optional)
+              if (_a4ShowQr)
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(3),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: 'http://192.168.88.1/login?username=${item['code']}&password=${item['password'] ?? item['code']}',
+                    width: qr,
+                    height: qr,
+                  ),
                 ),
-                child: pw.BarcodeWidget(
-                  barcode: pw.Barcode.qrCode(),
-                  data: 'http://192.168.88.1/login?username=${item['code']}&password=${item['password'] ?? item['code']}',
-                  width: 50,
-                  height: 50,
-                ),
-              ),
-              pw.SizedBox(width: 12),
+              if (_a4ShowQr) pw.SizedBox(width: 12),
 
               // 2. Plan & Venue Details
               pw.Expanded(
@@ -385,7 +470,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                       children: [
                         pw.Text(
                           venueName.toUpperCase(),
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.black),
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: titleSize, color: PdfColors.black),
                           maxLines: 1,
                         ),
                         pw.SizedBox(width: 6),
@@ -407,11 +492,13 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                       '$planName  •  $durationStr  •  $dataStr',
                       style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800),
                     ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'Connect to Wi-Fi & scan QR or enter code at 192.168.88.1',
-                      style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
-                    ),
+                    if (_a4ShowInstructions) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        'Connect to Wi-Fi & scan QR or enter code at 192.168.88.1',
+                        style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -425,11 +512,12 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   mainAxisAlignment: pw.MainAxisAlignment.center,
                   children: [
-                    pw.Text(
-                      priceStr,
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: PdfColors.red800),
-                    ),
-                    pw.SizedBox(height: 3),
+                    if (_a4ShowPrice)
+                      pw.Text(
+                        priceStr,
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: PdfColors.red800),
+                      ),
+                    if (_a4ShowPrice) pw.SizedBox(height: 3),
                     pw.Container(
                       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: const pw.BoxDecoration(
@@ -447,7 +535,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                           : pw.Text(
                               code,
                               style: pw.TextStyle(
-                                fontSize: 13,
+                                fontSize: codeSize,
                                 fontWeight: pw.FontWeight.bold,
                                 font: pw.Font.courierBold(),
                                 letterSpacing: 1.0,
@@ -473,7 +561,25 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
               pw.Text('$venueName • $planName • ${DateTime.now().toLocal().toString().split(' ')[0]}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
             ],
           ),
-          build: (ctx) => _generated.map((item) => buildCard(item)).toList(),
+          build: (ctx) {
+            final cards = _generated.map((item) => buildCard(item)).toList();
+            if (_a4Columns <= 1) return cards;
+            final cols = _a4Columns.clamp(2, 5);
+            final rows = <pw.Widget>[];
+            for (var i = 0; i < cards.length; i += cols) {
+              final cells = <pw.Widget>[];
+              for (var c = 0; c < cols; c++) {
+                if (c > 0) cells.add(pw.SizedBox(width: cols >= 3 ? 3 : 6));
+                cells.add(pw.Expanded(
+                  child: i + c < cards.length ? cards[i + c] : pw.Container(),
+                ));
+              }
+              rows.add(
+                pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: cells),
+              );
+            }
+            return rows;
+          },
         ),
       );
 
@@ -501,6 +607,306 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     } finally {
       if (mounted) setState(() => _savingPdf = false);
     }
+  }
+
+  int _a4EstimatedPages() {
+    // Grid cards are shorter: ~8 rows/page compact, 6 standard, 4 large.
+    final rows = _a4Density == 'Compact' ? 8 : _a4Density == 'Large' ? 4 : 6;
+    final perPage = rows * _a4Columns.clamp(1, 5);
+    if (_generated.isEmpty || perPage <= 0) return 0;
+    return ((_generated.length + perPage - 1) ~/ perPage);
+  }
+
+  /// Live A4 preview + layout customization sheet. What you see is what the
+  /// saved PDF looks like: card size, columns, QR size and visible fields.
+  Future<void> _showA4PreviewSheet() async {
+    if (_generated.isEmpty) return;
+    final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue'});
+    final venueName = venue['name']?.toString() ?? 'WavePass Venue';
+    final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
+    final planName = plan['name']?.toString() ?? 'Pass';
+    final priceMinor = (plan['priceMinor'] as num?)?.toInt() ?? 0;
+    final priceStr = '₦${priceMinor ~/ 100}';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void sync(void Function() fn) {
+            setSheet(fn);
+            setState(fn);
+          }
+
+          final previewItems = _generated.take(_a4Columns >= 3 ? 10 : 4).toList();
+          final pages = _a4EstimatedPages();
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.92,
+            minChildSize: 0.6,
+            maxChildSize: 0.96,
+            builder: (_, ctrl) => Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: ListView(
+                controller: ctrl,
+                children: [
+                  Center(
+                    child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.cardBorder, borderRadius: BorderRadius.circular(2))),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('A4 Preview & Layout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.primary)),
+                      Text('$pages page${pages == 1 ? '' : 's'} • ${_generated.length} slips',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Customize, preview, then save the PDF to your phone.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+                  const SizedBox(height: 14),
+                  const Text('CARD SIZE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.6)),
+                  const SizedBox(height: 6),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'Compact', label: Text('Compact')),
+                      ButtonSegment(value: 'Standard', label: Text('Standard')),
+                      ButtonSegment(value: 'Large', label: Text('Large')),
+                    ],
+                    selected: {_a4Density},
+                    onSelectionChanged: (s) => sync(() => _a4Density = s.first),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('COLUMNS ON A4', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.6)),
+                  const SizedBox(height: 6),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 2, label: Text('2')),
+                      ButtonSegment(value: 3, label: Text('3')),
+                      ButtonSegment(value: 4, label: Text('4')),
+                      ButtonSegment(value: 5, label: Text('5')),
+                    ],
+                    selected: {_a4Columns.clamp(2, 5)},
+                    onSelectionChanged: (s) => sync(() => _a4Columns = s.first),
+                  ),
+                  TextButton(
+                    onPressed: () => sync(() => _a4Columns = 1),
+                    child: Text(_a4Columns == 1 ? '✓ Single-column list mode' : 'Use single-column list instead',
+                        style: const TextStyle(fontSize: 11)),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('QR CODE SIZE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.6)),
+                  const SizedBox(height: 6),
+                  SegmentedButton<double>(
+                    segments: const [
+                      ButtonSegment(value: 38, label: Text('S')),
+                      ButtonSegment(value: 50, label: Text('M')),
+                      ButtonSegment(value: 64, label: Text('L')),
+                    ],
+                    selected: {_a4QrSize},
+                    onSelectionChanged: (s) => sync(() => _a4QrSize = s.first),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Show QR code', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    value: _a4ShowQr,
+                    onChanged: (v) => sync(() => _a4ShowQr = v),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Show price', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    value: _a4ShowPrice,
+                    onChanged: (v) => sync(() => _a4ShowPrice = v),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Show instruction line', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    value: _a4ShowInstructions,
+                    onChanged: (v) => sync(() => _a4ShowInstructions = v),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.containerBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('LIVE PREVIEW (first slips, as on A4)',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textLight, letterSpacing: 0.6)),
+                        const SizedBox(height: 8),
+                        ..._a4PreviewRows(previewItems, venueName, planName, priceStr),
+                        if (_generated.length > previewItems.length)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text('+ ${_generated.length - previewItems.length} more slips in the PDF…',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textLight)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _savingPdf
+                          ? null
+                          : () {
+                              Navigator.of(ctx).pop();
+                              _saveCutoutCardsPdf();
+                            },
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                      label: Text(_savingPdf ? 'Saving…' : 'Save A4 PDF to Phone ($pages page${pages == 1 ? '' : 's'})'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Flutter approximation of one PDF slip for the live preview.
+  Widget _a4PreviewCard(Map<String, dynamic> item, String venueName, String planName, String priceStr) {
+    final code = item['code']?.toString() ?? '';
+    final pass = item['password']?.toString() ?? code;
+    final isDual = _userMode == 'Username & Password' && pass != code;
+    final compact = _a4Density == 'Compact';
+    final large = _a4Density == 'Large';
+    final qrBox = (_a4QrSize / 2.2).clamp(20.0, 34.0);
+    // Grid mode (>=3 cols): centered stack like the reference photo, no QR.
+    if (_a4Columns >= 3) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 6 : large ? 10 : 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade500, width: 1),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(venueName.toUpperCase(),
+                style: TextStyle(fontSize: compact ? 8 : large ? 10 : 9, fontWeight: FontWeight.w900),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
+            Text('WavePass Wi-Fi Slip • $planName',
+                style: const TextStyle(fontSize: 7, color: AppColors.textLight),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
+            if (_a4ShowQr) ...[
+              const SizedBox(height: 4),
+              Icon(Icons.qr_code_2_rounded, size: qrBox, color: AppColors.primary),
+            ],
+            const SizedBox(height: 4),
+            Text(isDual ? 'USER: $code' : code,
+                style: TextStyle(fontSize: compact ? 10 : large ? 13 : 11.5, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                textAlign: TextAlign.center),
+            if (isDual)
+              Text('PIN: $pass',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                  textAlign: TextAlign.center),
+            if (_a4ShowPrice)
+              Text(priceStr, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
+            if (_a4ShowInstructions)
+              const Text('Enter code at 192.168.88.1',
+                  style: TextStyle(fontSize: 7, color: AppColors.textLight), textAlign: TextAlign.center),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: compact ? 6 : large ? 12 : 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid, width: 1),
+      ),
+      child: Row(
+        children: [
+          if (_a4ShowQr)
+            Container(
+              width: qrBox + 10,
+              height: qrBox + 10,
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6)),
+              child: Icon(Icons.qr_code_2_rounded, size: qrBox, color: AppColors.primary),
+            ),
+          if (_a4ShowQr) const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(venueName.toUpperCase(),
+                    style: TextStyle(fontSize: compact ? 10 : large ? 13 : 11.5, fontWeight: FontWeight.w900, color: AppColors.primary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                Text(planName, style: TextStyle(fontSize: compact ? 10 : 11.5, color: AppColors.textLight)),
+                if (_a4ShowInstructions)
+                  const Text('Scan QR or enter code at 192.168.88.1',
+                      style: TextStyle(fontSize: 9, color: AppColors.textLight)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_a4ShowPrice)
+                Text(priceStr, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.accentRed)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)),
+                child: Text(isDual ? 'USER: $code\nPIN: $pass' : code,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(
+                        fontSize: compact ? 11 : large ? 14 : 12.5,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'monospace',
+                        height: 1.3)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _a4PreviewRows(List<Map<String, dynamic>> items, String venueName, String planName, String priceStr) {
+    final cards = items.map((e) => _a4PreviewCard(e, venueName, planName, priceStr)).toList();
+    final cols = _a4Columns.clamp(1, 5);
+    if (cols <= 1) return [for (final c in cards) ...[c, const SizedBox(height: 8)]];
+    final gap = cols >= 3 ? 4.0 : 8.0;
+    final rows = <Widget>[];
+    for (var i = 0; i < cards.length; i += cols) {
+      final cells = <Widget>[];
+      for (var c = 0; c < cols; c++) {
+        if (c > 0) cells.add(SizedBox(width: gap));
+        cells.add(Expanded(child: i + c < cards.length ? cards[i + c] : const SizedBox()));
+      }
+      rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: cells));
+      rows.add(SizedBox(height: gap));
+    }
+    return rows;
   }
 
   /// Exports printable 58/80mm thermal cutout slips (one mini-printer slip per
@@ -734,10 +1140,20 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
               tooltip: 'Print & Export Options',
               onSelected: (val) {
                 if (val == 'thermal') _saveThermalCutoutSlips();
-                if (val == 'cutout') _saveCutoutCardsPdf();
+                if (val == 'cutout') _showA4PreviewSheet();
                 if (val == 'table') _saveAuditTablePdf();
               },
               itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'cutout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.picture_as_pdf_rounded, size: 18, color: AppColors.primary),
+                      SizedBox(width: 8),
+                      Text('Save A4 PDF (Default)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'thermal',
                   child: Row(
@@ -745,16 +1161,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                       Icon(Icons.receipt_long_rounded, size: 18, color: AppColors.primary),
                       SizedBox(width: 8),
                       Text('Thermal Slips (58/80mm)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'cutout',
-                  child: Row(
-                    children: [
-                      Icon(Icons.view_list_rounded, size: 18, color: AppColors.primary),
-                      SizedBox(width: 8),
-                      Text('A4 Cutout Cards', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -1010,17 +1416,37 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  // Default: A4 preview + customize, then save PDF on the phone.
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _savingPdf ? null : _showA4PreviewSheet,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      icon: const Icon(Icons.preview_rounded, size: 16),
+                      label: const Text('Preview A4 Layout & Save PDF',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Saved to your phone • share or print anywhere',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: AppColors.textLight),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
-                        child: ElevatedButton.icon(
+                        child: OutlinedButton.icon(
                           onPressed: _savingPdf ? null : _saveThermalCutoutSlips,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
+                          style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
                           icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                          label: const Text('Thermal Slips (58/80mm)', style: TextStyle(fontSize: 11)),
+                          label: const Text('Thermal (58/80mm)', style: TextStyle(fontSize: 11)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1035,16 +1461,6 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: TextButton.icon(
-                      onPressed: _savingPdf ? null : _saveCutoutCardsPdf,
-                      icon: const Icon(Icons.view_list_rounded, size: 15),
-                      label: const Text('A4 Cutout Cards (office printer)',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                    ),
                   ),
                 ],
               ),

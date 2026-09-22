@@ -178,7 +178,12 @@ class VenueStateService {
       final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
       final currentEmail = (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '').toLowerCase().trim();
 
-      // 1. Try target or cached ID from Supabase
+      // 1. Try target or cached ID from Supabase.
+      // Self-heal: if this device had the venue cached but the user has no
+      // VenueMember row (accounts created before linking / backend-created
+      // venues), re-link them now so the strict member-only lookup in step 2
+      // keeps working after updates. Cached ID proves prior access — this
+      // restores *their* venue, it never grants a new one.
       if (vid != null && vid.isNotEmpty) {
         try {
           final res = await SupabaseService.instance.client
@@ -188,6 +193,27 @@ class VenueStateService {
               .maybeSingle();
           if (res != null) venue = Map<String, dynamic>.from(res);
         } catch (_) {}
+        if (venue != null) {
+          try {
+            final user = SupabaseService.instance.currentUser;
+            if (user != null) {
+              final existing = await SupabaseService.instance.client
+                  .from('VenueMember')
+                  .select('venueId')
+                  .eq('venueId', vid)
+                  .eq('userId', user.id)
+                  .limit(1)
+                  .maybeSingle();
+              if (existing == null) {
+                await SupabaseService.instance.client.from('VenueMember').upsert({
+                  'venueId': vid,
+                  'userId': user.id,
+                  'role': 'Owner',
+                });
+              }
+            }
+          } catch (_) {}
+        }
       }
 
       // 2. Try primary venue for user from Supabase (strictly member-only;

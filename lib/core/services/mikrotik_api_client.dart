@@ -385,7 +385,7 @@ class MikrotikApiClient {
         '=trial-user-profile=wp-payment-trial',
         '=trial-uptime=2m/24h',
         '=addresses-per-mac=1',
-        '=mac-cookie=no',
+        '=mac-cookie-timeout=30d',
         if (localIp != null && localIp.isNotEmpty)
           '=hotspot-address=$localIp',
       ]);
@@ -409,7 +409,7 @@ class MikrotikApiClient {
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',
               '=addresses-per-mac=1',
-              '=mac-cookie=no',
+              '=mac-cookie-timeout=30d',
             ]);
             results['profile'] = true;
           }
@@ -636,7 +636,7 @@ class MikrotikApiClient {
 
   /// Enforces no sharing of hotspot on MikroTik RouterOS:
   /// 1. shared-users=1 on all hotspot user profiles (1 device per voucher)
-  /// 2. addresses-per-mac=1 and mac-cookie=no on hotspot server profiles
+  /// 2. addresses-per-mac=1 and mac-cookie-timeout=30d on hotspot server profiles
   /// 3. default-forwarding=no on wireless interfaces (Wi-Fi client isolation)
   /// 4. horizon=1 on bridge ports (bridge client isolation)
   /// 5. drops tethered packets (TTL=63 and TTL=127) in forward chain without affecting WAN
@@ -685,7 +685,7 @@ class MikrotikApiClient {
         debugPrint('[MikrotikApiClient] enforceNoSharing profiles error: $e');
       }
 
-      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie=no, login-by, trial
+      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie-timeout=30d, login-by, trial
       try {
         final srvProfiles = await executeSentence(['/ip/hotspot/profile/print']);
         for (final sp in srvProfiles) {
@@ -695,7 +695,7 @@ class MikrotikApiClient {
               '/ip/hotspot/profile/set',
               '=.id=$id',
               '=addresses-per-mac=1',
-              '=mac-cookie=no',
+              '=mac-cookie-timeout=30d',
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',

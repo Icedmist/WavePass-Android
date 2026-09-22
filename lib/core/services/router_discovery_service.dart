@@ -1475,7 +1475,7 @@ class RouterDiscoveryService {
             'trial-user-profile': 'wp-payment-trial',
             'trial-uptime': '2m/24h',
             'addresses-per-mac': '1',
-            'mac-cookie': 'false',
+            'mac-cookie-timeout': '30d',
             'html-directory': 'hotspot',
           }),
         ).timeout(const Duration(seconds: 4));
@@ -1850,7 +1850,7 @@ class RouterDiscoveryService {
         ).timeout(const Duration(seconds: 3));
       } catch (_) {}
 
-      // Hotspot server profiles: addresses-per-mac=1, mac-cookie=no, login-by with trial support
+      // Hotspot server profiles: addresses-per-mac=1, mac-cookie-timeout=30d, login-by with trial support
       try {
         final srvProfRes = await client.get(
           Uri.parse("$target/rest/ip/hotspot/profile"),
@@ -1867,7 +1867,7 @@ class RouterDiscoveryService {
                   headers: headers,
                   body: jsonEncode({
                     'addresses-per-mac': '1',
-                    'mac-cookie': 'false',
+                    'mac-cookie-timeout': '30d',
                     'login-by': 'http-pap,http-chap,mac-cookie,trial',
                     'trial-user-profile': 'wp-payment-trial',
                     'trial-uptime': '2m/24h',
@@ -2298,7 +2298,7 @@ class RouterDiscoveryService {
           'trial-user-profile': 'wp-payment-trial',
           'trial-uptime': '2m/24h',
           'addresses-per-mac': '1',
-          'mac-cookie': 'false',
+          'mac-cookie-timeout': '30d',
         }),
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
@@ -2328,7 +2328,7 @@ class RouterDiscoveryService {
           '=trial-user-profile=wp-payment-trial',
           '=trial-uptime=2m/24h',
           '=addresses-per-mac=1',
-          '=mac-cookie=no',
+          '=mac-cookie-timeout=30d',
         ]);
         await api.close();
       }

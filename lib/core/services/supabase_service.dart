@@ -58,12 +58,18 @@ class SupabaseService {
   }
 
   // Venue queries
+  static const String superAdminEmail = 'talk2icedmist@gmail.com';
+
+  bool _isSuperAdmin(String email) =>
+      email.toLowerCase().trim() == superAdminEmail;
+
   Future<Map<String, dynamic>?> getPrimaryVenue({String? email}) async {
     try {
       final user = currentUser;
       final targetEmail = (email ?? user?.email ?? '').toLowerCase().trim();
 
       // 1. If user is logged in, try finding their venue via VenueMember membership
+      // Strict isolation: a venue is only returned if the user is an explicit member.
       if (user != null) {
         try {
           final memberRes = await client
@@ -76,10 +82,13 @@ class SupabaseService {
             return Map<String, dynamic>.from(memberRes['Venue'] as Map);
           }
         } catch (_) {}
+        // Logged-in non-member: do NOT fall through to another venue's data.
+        // Only the platform super-admin may use the global fallback below.
+        if (!_isSuperAdmin(targetEmail)) return null;
       }
 
-      // 2. Fallback: If user is authenticated or platform super admin, allow fallback to Venue table
-      if (user != null || targetEmail == 'talk2icedmist@gmail.com') {
+      // 2. Fallback: super-admin only — latest venue for inspection/support.
+      if (targetEmail == superAdminEmail) {
         final res = await client
             .from('Venue')
             .select('*')
@@ -112,9 +121,11 @@ class SupabaseService {
               .toList();
           if (venues.isNotEmpty) return venues;
         } catch (_) {}
+        // Non-member operators see zero venues — never the full table.
+        if (!_isSuperAdmin(targetEmail)) return [];
       }
 
-      if (user != null || targetEmail == 'talk2icedmist@gmail.com') {
+      if (targetEmail == superAdminEmail) {
         final res = await client.from('Venue').select('*').order('createdAt', ascending: false);
         return List<Map<String, dynamic>>.from(res);
       }

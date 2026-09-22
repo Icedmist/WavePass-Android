@@ -277,7 +277,21 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     if (_venueId == null) return;
     setState(() => _loadingPlans = true);
     try {
-      final plans = await SupabaseService.instance.getActivePlans(_venueId!);
+      // Source of truth is the active venue's own plans (strictly isolated per
+      // venue). Refresh via VenueStateService so Admin tiers can never show
+      // another venue's pricing after a stale/default-venue bind.
+      List<Map<String, dynamic>> raw = [];
+      try {
+        final activeId = VenueStateService.instance.currentVenueId;
+        if (activeId != null && activeId == _venueId) {
+          raw = await VenueStateService.instance.refreshPlans();
+        } else {
+          raw = await SupabaseService.instance.getActivePlans(_venueId!);
+        }
+      } catch (_) {
+        raw = await SupabaseService.instance.getActivePlans(_venueId!);
+      }
+      final plans = raw;
       if (mounted) {
         setState(() {
           _plans = plans.map((p) {

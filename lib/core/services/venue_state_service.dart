@@ -190,7 +190,8 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 2. Try primary venue for user from Supabase (for all users)
+      // 2. Try primary venue for user from Supabase (strictly member-only;
+      // non-members get null unless super-admin — never another venue's data)
       if (venue == null && allowFallbackToPrimary) {
         try {
           venue = await SupabaseService.instance.getPrimaryVenue(email: currentEmail);
@@ -205,8 +206,12 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 4. Try default venue from backend if explicit or fallback allowed
-      if (venue == null && allowFallbackToPrimary) {
+      // 4. Default-venue fallback is super-admin / logged-out only.
+      // Binding a regular operator to the global default venue is what leaked
+      // other venues' pricing tiers into Admin Hub / Sell / guest portal.
+      final isSuperAdmin =
+          currentEmail == SupabaseService.superAdminEmail;
+      if (venue == null && allowFallbackToPrimary && (isSuperAdmin || currentEmail.isEmpty)) {
         try {
           final res = await WavePassApi.instance.getDefaultVenue();
           if (res['id'] != null) venue = res;

@@ -269,7 +269,7 @@ void main() {
       expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
       expect(profileSentence, contains('trial-uptime=2m/24h'));
       expect(profileSentence, contains('addresses-per-mac=1'));
-      expect(profileSentence, contains('mac-cookie=no'));
+      expect(profileSentence, contains('mac-cookie-timeout=30d'));
     });
   });
 }

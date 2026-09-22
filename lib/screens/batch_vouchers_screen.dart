@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
@@ -502,6 +503,133 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     }
   }
 
+  /// Exports printable 58/80mm thermal cutout slips (one mini-printer slip per
+  /// voucher — replaces A4-only output for pocket POS printers).
+  Future<void> _saveThermalCutoutSlips() async {
+    if (_generated.isEmpty) return;
+    setState(() => _savingPdf = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final width = prefs.getInt('wavepass_printer_paper_width') ?? 58;
+      final format = width == 80 ? PdfPageFormat.roll80 : PdfPageFormat.roll57;
+      final qrSize = width == 80 ? 78.0 : 62.0;
+
+      final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
+      final venueName = (venue['name']?.toString() ?? 'WavePass Venue').toUpperCase();
+
+      final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
+      final planName = plan['name']?.toString() ?? 'Pass';
+      final priceMinor = (plan['priceMinor'] as num?)?.toInt() ?? 0;
+      final priceStr = '₦${priceMinor ~/ 100}';
+      final durationSec = (plan['durationSeconds'] as num?)?.toInt() ?? 3600;
+      final durationStr = durationSec < 3600
+          ? '${durationSec ~/ 60}m'
+          : durationSec < 86400
+              ? '${durationSec ~/ 3600}h'
+              : '${durationSec ~/ 86400}d';
+      final dataLimit = plan['dataLimitBytes'];
+      final dataStr = dataLimit == null
+          ? 'Unlimited'
+          : '${((dataLimit as num) / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB';
+      final dateStr = DateTime.now().toLocal().toString().split('.')[0];
+
+      final pdf = pw.Document();
+      for (final item in _generated) {
+        final code = item['code']?.toString() ?? '';
+        final pass = item['password']?.toString() ?? code;
+        final isDual = _userMode == 'Username & Password' && pass != code;
+        pdf.addPage(
+          pw.Page(
+            pageFormat: format,
+            margin: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            build: (ctx) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Text(venueName,
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+                    textAlign: pw.TextAlign.center,
+                    maxLines: 2),
+                pw.SizedBox(height: 1),
+                pw.Text('WavePass Wi-Fi Slip • $planName',
+                    style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.center),
+                pw.Divider(thickness: 0.5),
+                pw.SizedBox(height: 3),
+                pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: 'http://192.168.88.1/login?username=$code&password=$pass',
+                  width: qrSize,
+                  height: qrSize,
+                ),
+                pw.SizedBox(height: 4),
+                if (isDual) ...[
+                  pw.Text('USER: $code',
+                      style: pw.TextStyle(
+                          fontSize: 12, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
+                  pw.SizedBox(height: 2),
+                  pw.Text('PIN: $pass',
+                      style: pw.TextStyle(
+                          fontSize: 12, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
+                ] else
+                  pw.Text(code,
+                      style: pw.TextStyle(
+                          fontSize: 15, fontWeight: pw.FontWeight.bold, font: pw.Font.courierBold())),
+                pw.SizedBox(height: 3),
+                pw.Text('$planName • $durationStr • $dataStr',
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                    textAlign: pw.TextAlign.center),
+                pw.Text(priceStr,
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                pw.Divider(thickness: 0.5),
+                pw.Text('Connect to Wi-Fi • Enter code at 192.168.88.1',
+                    style: const pw.TextStyle(fontSize: 6.5), textAlign: pw.TextAlign.center),
+                pw.Text(dateStr, style: const pw.TextStyle(fontSize: 6.5)),
+                pw.SizedBox(height: 4),
+                pw.Text('- - - - - - - - - - - - - - ✂ - - - - - - - - - - - - - -',
+                    style: const pw.TextStyle(fontSize: 6)),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final bytes = await pdf.save();
+      final savedUrl = prefs.getString('wavepass_selected_printer_url');
+      if (savedUrl != null) {
+        try {
+          final printers = await Printing.listPrinters();
+          final matched = printers.where((p) => p.url == savedUrl).firstOrNull;
+          if (matched != null) {
+            await Printing.directPrintPdf(printer: matched, onLayout: (_) async => bytes);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        '${_generated.length} thermal slips (${width}mm) sent to ${matched.name}'),
+                    backgroundColor: AppColors.accentGreen),
+              );
+            }
+            return;
+          }
+        } catch (_) {}
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/wavepass_thermal_slips_${width}mm_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await file.writeAsBytes(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Thermal slips (${width}mm) saved: ${file.path}')));
+      }
+      await Printing.sharePdf(bytes: bytes, filename: 'wavepass_thermal_slips_${width}mm.pdf');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Thermal PDF failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _savingPdf = false);
+    }
+  }
+
   /// Exports a clean summary audit table.
   Future<void> _saveAuditTablePdf() async {
     if (_generated.isEmpty) return;
@@ -605,17 +733,28 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
               icon: const Icon(Icons.print_rounded, color: AppColors.primary),
               tooltip: 'Print & Export Options',
               onSelected: (val) {
+                if (val == 'thermal') _saveThermalCutoutSlips();
                 if (val == 'cutout') _saveCutoutCardsPdf();
                 if (val == 'table') _saveAuditTablePdf();
               },
               itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'thermal',
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_rounded, size: 18, color: AppColors.primary),
+                      SizedBox(width: 8),
+                      Text('Thermal Slips (58/80mm)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'cutout',
                   child: Row(
                     children: [
                       Icon(Icons.view_list_rounded, size: 18, color: AppColors.primary),
                       SizedBox(width: 8),
-                      Text('Print Voucher Slips (List)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      Text('A4 Cutout Cards', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -875,13 +1014,13 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: _savingPdf ? null : _saveCutoutCardsPdf,
+                          onPressed: _savingPdf ? null : _saveThermalCutoutSlips,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                          icon: const Icon(Icons.view_list_rounded, size: 16),
-                          label: const Text('Print Voucher Slips (List)', style: TextStyle(fontSize: 11)),
+                          icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                          label: const Text('Thermal Slips (58/80mm)', style: TextStyle(fontSize: 11)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -896,6 +1035,16 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton.icon(
+                      onPressed: _savingPdf ? null : _saveCutoutCardsPdf,
+                      icon: const Icon(Icons.view_list_rounded, size: 15),
+                      label: const Text('A4 Cutout Cards (office printer)',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                    ),
                   ),
                 ],
               ),

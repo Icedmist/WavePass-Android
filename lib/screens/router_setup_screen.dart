@@ -82,6 +82,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   bool _uploadingPortalBg = false;
   bool _uploadingPortalLogo = false;
   Map<String, String>? _portalSuite;
+  String? _portalSuiteVenueId;
 
   static const Map<String, String> _presetBackgrounds = {
     'Lounge': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop',
@@ -160,6 +161,33 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     await prefs.setString(RouterDiscoveryService.keyRouterTunnelEndpoint, _tunnelCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterUsername, _userCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterPassword, _passCtrl.text.trim());
+  }
+
+  /// Strict venue resolution for portal/script generation.
+  /// Prefers the operator's active venue, then their membership venue.
+  /// Global default venue is super-admin (or logged-out preview) only —
+  /// using it for regular operators is what leaked other venues' pricing
+  /// into Admin Hub and the guest login.html portal page.
+  Future<Map<String, dynamic>?> _resolvePortalVenue() async {
+    final current = VenueStateService.instance.currentVenue;
+    if (current != null && (current['id']?.toString().isNotEmpty ?? false)) {
+      return current;
+    }
+    try {
+      final primary = await SupabaseService.instance.getPrimaryVenue();
+      if (primary != null) return primary;
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final email =
+          (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '')
+              .toLowerCase()
+              .trim();
+      if (email.isEmpty || email == SupabaseService.superAdminEmail) {
+        return await WavePassApi.instance.getDefaultVenue();
+      }
+    } catch (_) {}
+    return VenueStateService.instance.currentVenue;
   }
 
   @override
@@ -275,7 +303,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     });
 
     try {
-      final venue = await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final venue = await _resolvePortalVenue();
+      if (venue == null || venue['id'] == null) {
+        if (mounted) {
+          setState(() => _isConfiguring = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No venue found for this account. Create or join a venue first.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       final venueId = venue['id']?.toString() ?? 'default';
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
       final slug = venue['slug']?.toString() ?? 'venue';
@@ -536,7 +576,7 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   Future<void> _handleExportScript() async {
     setState(() => _exportingScript = true);
     try {
-      final venue = VenueStateService.instance.currentVenue ?? await SupabaseService.instance.getPrimaryVenue() ?? await WavePassApi.instance.getDefaultVenue();
+      final venue = await _resolvePortalVenue() ?? {'name': 'WavePass'};
       final venueName = venue['name']?.toString() ?? 'WavePass';
 
       final script = """
@@ -624,7 +664,7 @@ add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d k
 # 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
 # --------------------------------------------------------
 /ip hotspot user profile set [find] shared-users=1
-/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie=no login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
+/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie-timeout=30d login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
 /interface wireless set [find] default-forwarding=no
 
 # Disable IPv6 bypass (HotSpot is IPv4-only; Linux automatically shares IPv6 if active)
@@ -1727,9 +1767,24 @@ $_rfc1321Md5Js
         } else if (mode === 'retrieve') {
           switchTab('retrieve');
         } else {
+          // Permanent auto-rejoin: if this device still holds an unexpired
+          // voucher, reconnect it without asking the user to retype anything.
+          // Source of truth is the backend (expiry-aware); localStorage is
+          // only a fallback hint. Single-attempt guard prevents login loops
+          // when RouterOS bounces an expired code back to this page.
           var savedV = null;
           try {
             savedV = localStorage.getItem('wp-active-voucher') || sessionStorage.getItem('wp-active-voucher');
+          } catch(e){}
+          var rawMac = "\$(mac)";
+          var devMac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : null;
+          try {
+            if (devMac) {
+              localStorage.setItem('wp-device-mac', devMac);
+              sessionStorage.setItem('wp-device-mac', devMac);
+            } else {
+              devMac = localStorage.getItem('wp-device-mac') || sessionStorage.getItem('wp-device-mac') || null;
+            }
           } catch(e){}
           if (savedV) {
             var vInp = document.getElementById('voucher_input');
@@ -1740,6 +1795,40 @@ $_rfc1321Md5Js
               var sCode = document.getElementById('savedVoucherCode');
               if (sCode) sCode.innerText = savedV;
             }
+          }
+          var attempted = false;
+          try { attempted = sessionStorage.getItem('wp-auto-attempt') === '1'; } catch(e){}
+          if (!attempted && (devMac || savedV)) {
+            try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
+            var autoVenueId = '$venueId' || '$slug';
+            var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
+            if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
+            else if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
+            fetch(autoUrl)
+              .then(function(res) { return res.json(); })
+              .then(function(data) {
+                if (data && data.found && data.voucherCode) {
+                  try {
+                    localStorage.setItem('wp-active-voucher', data.voucherCode);
+                    sessionStorage.setItem('wp-active-voucher', data.voucherCode);
+                  } catch(e){}
+                  executeLogin(data.voucherCode, data.voucherCode);
+                } else if (savedV && data && !data.found) {
+                  // Saved hint is expired/invalid: verify it explicitly before
+                  // giving up, so a backend MAC-miss doesn't strand a valid
+                  // voucher typed on another browser.
+                  var verifyUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId) + '&q=' + encodeURIComponent(savedV);
+                  fetch(verifyUrl)
+                    .then(function(r) { return r.json(); })
+                    .then(function(v) {
+                      if (v && v.found && v.voucherCode) {
+                        executeLogin(v.voucherCode, v.voucherCode);
+                      }
+                    })
+                    .catch(function(){});
+                }
+              })
+              .catch(function(){});
           }
         }
       } catch (e) {}
@@ -1940,6 +2029,8 @@ $_rfc1321Md5Js
         localStorage.setItem('wp-active-voucher', u);
         localStorage.setItem('wp-active-user', u);
       }
+      // Login succeeded: allow a fresh auto-rejoin attempt on the next disconnect.
+      sessionStorage.removeItem('wp-auto-attempt');
     } catch (e) {}
   </script>
 </body>
@@ -2088,15 +2179,24 @@ $_rfc1321Md5Js
   }
 
   Future<Map<String, String>> _ensurePortalSuite() async {
-    if (_portalSuite != null) return _portalSuite!;
-    final venue = VenueStateService.instance.currentVenue ??
-        await SupabaseService.instance.getPrimaryVenue() ??
-        await WavePassApi.instance.getDefaultVenue();
+    final venue = await _resolvePortalVenue() ?? {'slug': 'venue', 'name': 'WavePass Wi-Fi'};
+    final venueKey = venue['id']?.toString() ?? venue['slug']?.toString() ?? 'venue';
+    // Invalidate cached suite when the active venue changes so plans never go stale.
+    if (_portalSuite != null && _portalSuiteVenueId == venueKey) return _portalSuite!;
     final slug = venue['slug']?.toString() ?? 'venue';
     final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
+    // Always refresh plans for THIS venue so the guest login.html portal page
+    // shows the operator's own pricing — never another venue's or a stale cache.
     var plans = VenueStateService.instance.currentPlans;
-    if (plans.isEmpty) {
-      plans = await VenueStateService.instance.refreshPlans();
+    final activeId = VenueStateService.instance.currentVenueId;
+    final venueIdStr = venue['id']?.toString();
+    if (plans.isEmpty || (activeId != null && venueIdStr != null && activeId != venueIdStr)) {
+      try {
+        if (venueIdStr != null && activeId != venueIdStr) {
+          await VenueStateService.instance.refreshVenue(targetVenueId: venueIdStr);
+        }
+        plans = await VenueStateService.instance.refreshPlans();
+      } catch (_) {}
     }
     final isPaystackConfigured = venue['paystack_configured'] != false;
     final venueId = venue['id']?.toString();
@@ -2123,7 +2223,12 @@ $_rfc1321Md5Js
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
-    if (mounted) setState(() => _portalSuite = suite);
+    if (mounted) {
+      setState(() {
+        _portalSuite = suite;
+        _portalSuiteVenueId = venueKey;
+      });
+    }
     return suite;
   }
 
@@ -3018,7 +3123,7 @@ $_rfc1321Md5Js
 
         setState(() {
           _customPortalBgUrl = effectiveUrl;
-          _portalSuite = null;
+          _portalSuite = null; _portalSuiteVenueId = null;
         });
 
         final prefs = await SharedPreferences.getInstance();
@@ -3075,7 +3180,7 @@ $_rfc1321Md5Js
 
         setState(() {
           _customPortalLogoUrl = effectiveUrl;
-          _portalSuite = null;
+          _portalSuite = null; _portalSuiteVenueId = null;
         });
 
         final prefs = await SharedPreferences.getInstance();
@@ -3108,7 +3213,7 @@ $_rfc1321Md5Js
   Future<void> _setPresetBg(String url) async {
     setState(() {
       _customPortalBgUrl = url;
-      _portalSuite = null;
+      _portalSuite = null; _portalSuiteVenueId = null;
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wavepass_portal_bg_url', url);
@@ -3118,7 +3223,7 @@ $_rfc1321Md5Js
   Future<void> _resetBg() async {
     setState(() {
       _customPortalBgUrl = null;
-      _portalSuite = null;
+      _portalSuite = null; _portalSuiteVenueId = null;
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('wavepass_portal_bg_url');
@@ -3128,7 +3233,7 @@ $_rfc1321Md5Js
   Future<void> _setPresetLogo(String logoData) async {
     setState(() {
       _customPortalLogoUrl = logoData;
-      _portalSuite = null;
+      _portalSuite = null; _portalSuiteVenueId = null;
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wavepass_portal_logo_url', logoData);
@@ -3139,7 +3244,7 @@ $_rfc1321Md5Js
     final defaultVenueLogo = VenueStateService.instance.currentLogoUrl;
     setState(() {
       _customPortalLogoUrl = defaultVenueLogo;
-      _portalSuite = null;
+      _portalSuite = null; _portalSuiteVenueId = null;
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('wavepass_portal_logo_url');
@@ -3301,7 +3406,7 @@ $_rfc1321Md5Js
                   if (selected) {
                     setState(() {
                       _selectedPortalTemplate = t['id']!;
-                      _portalSuite = null;
+                      _portalSuite = null; _portalSuiteVenueId = null;
                     });
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString('wavepass_portal_template', t['id']!);

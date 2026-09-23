@@ -195,6 +195,9 @@ class MikrotikApiClient {
     final uptimeStr = sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0
         ? RouterDiscoveryService.formatRouterOsDuration(sessionTimeoutSeconds)
         : null;
+    final effectiveSharedUsers = (sharedUsers != null && sharedUsers > 0)
+        ? (sharedUsers == 1 ? 2 : sharedUsers)
+        : null;
 
     final words = <String>[
       '/ip/hotspot/user/add',
@@ -205,8 +208,8 @@ class MikrotikApiClient {
         '=limit-uptime=$uptimeStr',
       if (limitBytesTotal != null && limitBytesTotal > 0)
         '=limit-bytes-total=$limitBytesTotal',
-      if (sharedUsers != null && sharedUsers > 0)
-        '=shared-users=$sharedUsers',
+      if (effectiveSharedUsers != null)
+        '=shared-users=$effectiveSharedUsers',
       '=comment=$comment',
     ];
 
@@ -235,8 +238,8 @@ class MikrotikApiClient {
                 '=uptime=0s', // Reset spent uptime for re-provisioned pass
                 if (limitBytesTotal != null && limitBytesTotal > 0)
                   '=limit-bytes-total=$limitBytesTotal',
-                if (sharedUsers != null && sharedUsers > 0)
-                  '=shared-users=$sharedUsers',
+                if (effectiveSharedUsers != null)
+                  '=shared-users=$effectiveSharedUsers',
                 '=comment=$comment',
               ]);
               return true;
@@ -279,7 +282,7 @@ class MikrotikApiClient {
     }
   }
 
-  /// Removes a hotspot user account (voucher) from RouterOS.
+  /// Removes a hotspot user account (voucher) from RouterOS, including cookies and schedulers.
   Future<bool> removeHotspotUser(String username) async {
     try {
       final existing = await executeSentence([
@@ -295,13 +298,42 @@ class MikrotikApiClient {
           ]);
         }
       }
+
+      // Also clean up any cached MAC cookies for this user
+      try {
+        final cookies = await executeSentence([
+          '/ip/hotspot/cookie/print',
+          '?user=$username',
+        ]);
+        for (final c in cookies) {
+          final cid = c['.id'];
+          if (cid != null) {
+            await executeSentence(['/ip/hotspot/cookie/remove', '=.id=$cid']);
+          }
+        }
+      } catch (_) {}
+
+      // Also remove any dedicated expiration schedulers for this user
+      try {
+        final scheds = await executeSentence([
+          '/system/scheduler/print',
+          '?name=exp_$username',
+        ]);
+        for (final s in scheds) {
+          final sid = s['.id'];
+          if (sid != null) {
+            await executeSentence(['/system/scheduler/remove', '=.id=$sid']);
+          }
+        }
+      } catch (_) {}
+
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Disconnects an active hotspot session on RouterOS.
+  /// Disconnects an active hotspot session on RouterOS and cleans associated MAC cookies.
   Future<bool> disconnectActiveUser(String username) async {
     try {
       final active = await executeSentence([
@@ -317,6 +349,21 @@ class MikrotikApiClient {
           ]);
         }
       }
+
+      // Also clean up any active MAC cookie
+      try {
+        final cookies = await executeSentence([
+          '/ip/hotspot/cookie/print',
+          '?user=$username',
+        ]);
+        for (final c in cookies) {
+          final cid = c['.id'];
+          if (cid != null) {
+            await executeSentence(['/ip/hotspot/cookie/remove', '=.id=$cid']);
+          }
+        }
+      } catch (_) {}
+
       return true;
     } catch (_) {
       return false;
@@ -385,7 +432,7 @@ class MikrotikApiClient {
         '=trial-user-profile=wp-payment-trial',
         '=trial-uptime=2m/24h',
         '=addresses-per-mac=1',
-        '=mac-cookie-timeout=30d',
+        '=mac-cookie-timeout=3d',
         if (localIp != null && localIp.isNotEmpty)
           '=hotspot-address=$localIp',
       ]);
@@ -409,7 +456,7 @@ class MikrotikApiClient {
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',
               '=addresses-per-mac=1',
-              '=mac-cookie-timeout=30d',
+              '=mac-cookie-timeout=3d',
             ]);
             results['profile'] = true;
           }
@@ -488,6 +535,8 @@ class MikrotikApiClient {
           '=keepalive-timeout=${tier['keepalive-timeout']}',
           '=idle-timeout=${tier['idle-timeout']}',
           '=status-autorefresh=${tier['status-autorefresh']}',
+          if (tier['on-login'] != null)
+            '=on-login=${tier['on-login']}',
           '=comment=${tier['comment']}',
         ]);
         tierSuccess++;
@@ -510,6 +559,8 @@ class MikrotikApiClient {
                 '=keepalive-timeout=${tier['keepalive-timeout']}',
                 '=idle-timeout=${tier['idle-timeout']}',
                 '=status-autorefresh=${tier['status-autorefresh']}',
+                if (tier['on-login'] != null)
+                  '=on-login=${tier['on-login']}',
               ]);
               tierSuccess++;
             }
@@ -517,7 +568,7 @@ class MikrotikApiClient {
         } catch (_) {}
       }
     }
-    // Enforce shared-users=1, keepalives, and idle timeout on 'default' user profile as well
+    // Enforce shared-users=2, on-login, keepalives, and idle timeout on 'default' user profile as well
     try {
       final defProfiles = await executeSentence([
         '/ip/hotspot/user/profile/print',
@@ -529,10 +580,11 @@ class MikrotikApiClient {
           await executeSentence([
             '/ip/hotspot/user/profile/set',
             '=.id=$defId',
-            '=shared-users=1',
+            '=shared-users=2',
             '=keepalive-timeout=2m',
             '=idle-timeout=5m',
             '=status-autorefresh=1m',
+            '=on-login=${RouterDiscoveryService.onLoginScript}',
           ]);
         }
       }
@@ -540,7 +592,7 @@ class MikrotikApiClient {
     results['userProfiles'] = tierSuccess > 0;
 
     // 6. User limit enforcer & auto-cleanup script & scheduler (1m interval)
-    const cleanupSource = ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; } }; /ip hotspot user remove [find comment~"expired"]';
+    const cleanupSource = RouterDiscoveryService.cleanupScriptSource;
 
     try {
       await executeSentence([
@@ -659,7 +711,8 @@ class MikrotikApiClient {
             await executeSentence([
               '/ip/hotspot/user/profile/set',
               '=.id=$id',
-              '=shared-users=1',
+              '=shared-users=2',
+              '=on-login=${RouterDiscoveryService.onLoginScript}',
             ]);
           }
         }
@@ -670,12 +723,13 @@ class MikrotikApiClient {
               '/ip/hotspot/user/profile/add',
               '=name=wp-payment-trial',
               '=rate-limit=2M/2M',
-              '=shared-users=1',
+              '=shared-users=2',
               '=session-timeout=2m',
               '=keepalive-timeout=2m',
               '=idle-timeout=1m',
               '=status-autorefresh=1m',
               '=transparent-proxy=yes',
+              '=on-login=${RouterDiscoveryService.onLoginScript}',
               '=comment=WavePass 2-Minute Payment Trial',
             ]);
           } catch (_) {}
@@ -685,7 +739,7 @@ class MikrotikApiClient {
         debugPrint('[MikrotikApiClient] enforceNoSharing profiles error: $e');
       }
 
-      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie-timeout=30d, login-by, trial
+      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie-timeout=3d, login-by, trial
       try {
         final srvProfiles = await executeSentence(['/ip/hotspot/profile/print']);
         for (final sp in srvProfiles) {
@@ -695,7 +749,7 @@ class MikrotikApiClient {
               '/ip/hotspot/profile/set',
               '=.id=$id',
               '=addresses-per-mac=1',
-              '=mac-cookie-timeout=30d',
+              '=mac-cookie-timeout=3d',
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',

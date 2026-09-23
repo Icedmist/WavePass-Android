@@ -605,13 +605,14 @@ set api disabled=no port=8728
 # 2. Hotspot Profile & Interface
 # --------------------------------------------------------
 /ip hotspot user profile
-add name="wp-payment-trial" rate-limit="2M/2M" shared-users=1 transparent-proxy=yes session-timeout=2m comment="WavePass 2-min Payment Trial"
+add name="wp-payment-trial" rate-limit="2M/2M" shared-users=2 transparent-proxy=yes session-timeout=2m comment="WavePass 2-min Payment Trial"
 
 /ip hotspot profile
 add dns-name="wavepass.local" \\
     hotspot-address=192.168.88.1 \\
     html-directory=hotspot \\
     login-by=http-pap,http-chap,mac-cookie,trial \\
+    mac-cookie-timeout=3d \\
     trial-user-profile="wp-payment-trial" \\
     trial-uptime=2m/24h \\
     name="wavepass-profile"
@@ -654,22 +655,22 @@ add comment="Supabase Auth (HTTPS)" dst-host="*.supabase.co" action=accept
 # 4. Standard Rate-Limit User Profiles & Hard Timeouts
 # --------------------------------------------------------
 /ip hotspot user profile
-set [find default=yes] shared-users=1 keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m
-add name="profile_30m" rate-limit="10M/5M" shared-users=1 session-timeout=30m keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30m"
-add name="profile_1h" rate-limit="10M/5M" shared-users=1 session-timeout=1h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 1h"
-add name="profile_2h" rate-limit="10M/5M" shared-users=1 session-timeout=2h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 2h"
-add name="profile_3h" rate-limit="15M/5M" shared-users=1 session-timeout=3h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 3h"
-add name="profile_6h" rate-limit="15M/5M" shared-users=1 session-timeout=6h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 6h"
-add name="profile_12h" rate-limit="15M/5M" shared-users=1 session-timeout=12h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 12h"
-add name="profile_1d" rate-limit="20M/10M" shared-users=1 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
-add name="profile_7d" rate-limit="20M/10M" shared-users=1 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
-add name="profile_30d" rate-limit="25M/10M" shared-users=1 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
+set [find default=yes] shared-users=2 keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m
+add name="profile_30m" rate-limit="10M/5M" shared-users=2 session-timeout=30m keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30m"
+add name="profile_1h" rate-limit="10M/5M" shared-users=2 session-timeout=1h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 1h"
+add name="profile_2h" rate-limit="10M/5M" shared-users=2 session-timeout=2h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 2h"
+add name="profile_3h" rate-limit="15M/5M" shared-users=2 session-timeout=3h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 3h"
+add name="profile_6h" rate-limit="15M/5M" shared-users=2 session-timeout=6h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 6h"
+add name="profile_12h" rate-limit="15M/5M" shared-users=2 session-timeout=12h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 12h"
+add name="profile_1d" rate-limit="20M/10M" shared-users=2 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
+add name="profile_7d" rate-limit="20M/10M" shared-users=2 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
+add name="profile_30d" rate-limit="25M/10M" shared-users=2 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
 
 # --------------------------------------------------------
 # 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
 # --------------------------------------------------------
-/ip hotspot user profile set [find] shared-users=1
-/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie-timeout=30d login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
+/ip hotspot user profile set [find] shared-users=2 on-login=":local u \\"\\\$user\\"; :local uc 0; :local ut \\"00:00:00\\"; :local ka; :foreach i in=[/ip hotspot active find user=\\\$u] do={ :local cur [/ip hotspot active get \\\$i uptime]; :if (\\\$cur > \\\$ut) do={ :set ut \\\$cur; :set ka \\\$i; }; :set uc (\\\$uc + 1); }; :if (\\\$uc > 1) do={ /ip hotspot active remove numbers=\\\$ka; }; :local huser [/ip hotspot user find name=\\\$u]; :if ([:len \\\$huser] > 0) do={ :local lu [/ip hotspot user get \\\$huser limit-uptime]; :if ([:len \\\$lu] > 0 && \\\$lu != \\"0s\\") do={ :local sname (\\"exp_\\" . \\\$u); :if ([:len [/system scheduler find name=\\\$sname]] = 0) do={ /system scheduler add name=\\\$sname interval=\\\$lu on-event=(\\"/ip hotspot active remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot user remove [find name=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot cookie remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /system scheduler remove [find name=\\\\\\"\\" . \\\$sname . \\"\\\\\\"];\\") comment=\\"Auto-expire voucher\\"; }; }; };"
+/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie-timeout=3d login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
 /interface wireless set [find] default-forwarding=no
 
 # Disable IPv6 bypass (HotSpot is IPv4-only; Linux automatically shares IPv6 if active)
@@ -695,7 +696,7 @@ remove [find comment~"WavePass Anti-Tethering"]
 # --------------------------------------------------------
 /system script
 remove [find name="wavepass-cleanup"]
-add name="wavepass-cleanup" source=":foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \\\$a session-time-left]; :if ([:len \\\$stl] > 0 && \\\$stl = 0s) do={ /ip hotspot active remove \\\$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \\\$u limit-uptime]; :local upt [/ip hotspot user get \\\$u uptime]; :if ([:len \\\$lup] > 0 && \\\$lup != 0s && \$upt >= \\\$lup) do={ :local un [/ip hotspot user get \\\$u name]; /ip hotspot active remove [find user=\\\$un]; /ip hotspot user remove \\\$u; } }; /ip hotspot user remove [find comment~\\"expired\\"]" comment="WavePass user limit enforcer"
+add name="wavepass-cleanup" source=":foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \\\$a session-time-left]; :if ([:len \\\$stl] > 0 && \\\$stl = 0s) do={ /ip hotspot active remove \\\$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \\\$u limit-uptime]; :local upt [/ip hotspot user get \\\$u uptime]; :if ([:len \\\$lup] > 0 && \\\$lup != 0s && \$upt >= \\\$lup) do={ :local un [/ip hotspot user get \\\$u name]; /ip hotspot active remove [find user=\\\$un]; /ip hotspot user remove \\\$u; /ip hotspot cookie remove [find user=\\\$un]; /system scheduler remove [find name=(\\"exp_\\" . \\\$un)]; } }; :foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \\\$c user]; :if ([:len [/ip hotspot user find name=\\\$cu]] = 0) do={ /ip hotspot cookie remove \\\$c; } }; /ip hotspot user remove [find comment~\\"expired\\"]" comment="WavePass user limit enforcer"
 
 /system scheduler
 remove [find name="wavepass-cleanup"]

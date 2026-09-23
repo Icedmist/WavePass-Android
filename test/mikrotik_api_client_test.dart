@@ -240,7 +240,7 @@ void main() {
           .firstWhere((p) => p['name'] == 'wp-payment-trial');
       expect(trial['rate-limit'], equals('2M/2M'));
       expect(trial['session-timeout'], equals('2m'));
-      expect(trial['shared-users'], equals('1'));
+      expect(trial['shared-users'], equals('2'));
       expect(trial['transparent-proxy'], equals('yes'));
     });
 
@@ -269,7 +269,7 @@ void main() {
       expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
       expect(profileSentence, contains('trial-uptime=2m/24h'));
       expect(profileSentence, contains('addresses-per-mac=1'));
-      expect(profileSentence, contains('mac-cookie-timeout=30d'));
+      expect(profileSentence, contains('mac-cookie-timeout=3d'));
     });
   });
 }

@@ -37,7 +37,8 @@ void main() {
       expect(profiles.length, 10);
 
       for (final p in profiles) {
-        expect(p['shared-users'], '1');
+        expect(p['shared-users'], '2');
+        expect(p['on-login'], RouterDiscoveryService.onLoginScript);
         expect(p['keepalive-timeout'], '2m');
         expect(p['idle-timeout'], isNotNull);
         expect(p['status-autorefresh'], '1m');

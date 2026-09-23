@@ -691,6 +691,33 @@
 - [x] **Verification**:
   - `flutter analyze`: **No issues found** (0 warnings, 0 errors).
   - `flutter test`: **All 90 tests passed** (0 failures).
+- [x] PR [#129](https://github.com/Icedmist/WavePass-Android/pull/129) merged to `main`.
+
+### 52. Plan Retention Across Logout/Login & Captive Portal Auto-Connect (Issue #130, PR #131)
+- [x] **Diagnosed Plan Disappearance Across Logout/Login**:
+  - **Root Cause**: `VenueStateService` lacked disk persistence for `plansNotifier.value`. On logout, `clearVenue()` cleared in-memory state and removed cached venue keys from `SharedPreferences`. When an operator logged back in, if the network was slow or `getPrimaryVenue` had not completed, `refreshPlans()` aborted because `currentVenueId` was empty, leaving the plan list blank across Sell Pass and Admin.
+  - Furthermore, in `supabase_service.dart`, `getPrimaryVenue` only queried `VenueMember` using `currentUser.id`. If a user logged in via admin password verification or if Auth state lagged, the operator venue query failed to resolve.
+- [x] **Persistent Disk Caching & Instant Hydration in `VenueStateService`**:
+  - Added SharedPreferences disk caching keys: `wavepass_active_venue_plans`, `wavepass_cached_plans_$venueId`, and `wavepass_user_venue_$email`.
+  - In `init()`, cached plans and venue identity are restored synchronously from disk before network latency, eliminating empty plan states and UI flicker across app cold starts.
+  - In `clearVenue({bool preserveUserCache = true})`, in-memory state is cleared immediately for security upon logout, while the local disk mapping is preserved. When the operator logs back in, their venue and plans are restored instantly. On explicit account switches, `preserveUserCache: false` completely wipes the cache.
+  - In `refreshVenue()`, added multi-tier recovery: checks `WavePassApi.getVenue(vid)` (which returns full venue details with embedded plans and routers), direct Supabase queries, and an offline cached venue identity fallback so offline/spotty networks never wipe the active venue.
+  - In `refreshPlans()`, loads cached plans as a fallback if the network is interrupted or delayed, and writes newly fetched plans to disk.
+  - In `createPlan`, `updatePlan`, and `deletePlan`, automatically updates the disk cache (`_persistPlansCache`) to survive offline restarts.
+- [x] **Email-Based Venue Member Resolution in `SupabaseService`**:
+  - In `getPrimaryVenue()` and `getVenues()`, added Step 1b: queries `public.User` by `targetEmail` to resolve `VenueMember` records, preventing venue loss when `currentUser` takes time to propagate or when logging in via admin password verification.
+- [x] **Captive Portal Auto-Connect Fixes (`router_setup_screen.dart`)**:
+  - **Root Cause**: In `login.html`, `autoUrl` construction used `if (devMac) autoUrl += '&mac=...; else if (savedV) autoUrl += '&q=...;`. On MikroTik Hotspots, `devMac` (`$(mac)`) is always present, which permanently suppressed the saved voucher parameter (`&q=`), returning `{ found: false }` for counter-sold or batch vouchers.
+  - **Simultaneous MAC & Voucher Query**: Updated `autoUrl` to include BOTH `&mac=` AND `&q=` (`if (devMac)...; if (savedV)...;`).
+  - **RouterOS Error Loop Guard**: Detected `.error-msg` from RouterOS. If RouterOS returns an authentication error (e.g. invalid code or expired uptime), `wp-auto-attempt` and `wp-active-voucher` are cleared immediately, preventing infinite submit loops and enabling fresh input.
+  - **Offline / Pre-Auth Captive Portal Fallback**: When client requests to cloud backend are blocked, DNS-filtered, or timed out prior to Hotspot authentication, the captive portal immediately falls back to `executeLogin(savedV, savedV)` (or `savedU, savedP`) so RouterOS Hotspot can authenticate the client locally.
+  - Added `AbortController` timeout (1500ms) to cloud voucher check.
+- [x] **Regression & Unit Tests**:
+  - Created `test/plan_retention_and_portal_autoconnect_test.dart` validating synchronous plan hydration on `init()`, plan retention across logout/login, cache purging on account switch, plan mutation persistence, auto-connect URL construction with both `&mac=` and `&q=`, RouterOS error detection and loop guard, offline fallback, and 1-tap reconnect box rendering.
+- [x] **Verification**:
+  - `flutter analyze --no-pub`: **No issues found** (0 warnings, 0 errors).
+  - `flutter test --no-pub`: **All 98 tests passed** (0 failures).
+- [x] PR [#131](https://github.com/Icedmist/WavePass-Android/pull/131) merged to `main`.
 
 
 

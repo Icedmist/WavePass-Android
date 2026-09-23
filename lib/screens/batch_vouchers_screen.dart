@@ -60,7 +60,9 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
     VenueStateService.instance.plansNotifier.addListener(_onPlansChanged);
     _searchCtrl.addListener(() {
-      setState(() => _searchFilter = _searchCtrl.text.trim().toUpperCase());
+      if (mounted) {
+        setState(() => _searchFilter = _searchCtrl.text.trim().toUpperCase());
+      }
     });
     _onVenueChanged();
     _onPlansChanged();
@@ -184,13 +186,15 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     final prefix = _prefixCtrl.text.trim().toUpperCase().replaceAll('-', '');
 
     try {
-      List<String> rawCodes = [];
-
-      // If user customized settings or numbers only, prioritize client-side clean formatting
-      while (rawCodes.length < qty) {
+      final Set<String> uniqueCodes = {};
+      int attempts = 0;
+      final maxAttempts = qty * 50;
+      while (uniqueCodes.length < qty && attempts < maxAttempts) {
+        attempts++;
         final seg = _generateRandomSegment(_codeLength, _charPattern);
-        rawCodes.add('$prefix$seg'.replaceAll('-', ''));
+        uniqueCodes.add('$prefix$seg'.replaceAll('-', ''));
       }
+      final List<String> rawCodes = uniqueCodes.toList();
 
       final List<Map<String, dynamic>> compiled = [];
       final passPrefix = _passPrefixCtrl.text.trim().replaceAll('-', '');
@@ -328,10 +332,10 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
     setState(() => _savingPdf = true);
     try {
       final pdf = pw.Document();
-      final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
+      final venue = _venues.firstWhere((v) => v['id']?.toString() == _selectedVenueId?.toString(), orElse: () => {'name': 'WavePass Venue', 'slug': 'venue'});
       final venueName = venue['name']?.toString() ?? 'WavePass Venue';
 
-      final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
+      final plan = _plans.firstWhere((p) => p['id']?.toString() == _selectedPlanId?.toString(), orElse: () => {'name': 'Pass'});
       final planName = plan['name']?.toString() ?? 'Pass';
       final priceMinor = (plan['priceMinor'] as num?)?.toInt() ?? 0;
       final priceStr = '₦${priceMinor ~/ 100}';
@@ -621,9 +625,9 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
   /// saved PDF looks like: card size, columns, QR size and visible fields.
   Future<void> _showA4PreviewSheet() async {
     if (_generated.isEmpty) return;
-    final venue = _venues.firstWhere((v) => v['id'] == _selectedVenueId, orElse: () => {'name': 'WavePass Venue'});
+    final venue = _venues.firstWhere((v) => v['id']?.toString() == _selectedVenueId?.toString(), orElse: () => {'name': 'WavePass Venue'});
     final venueName = venue['name']?.toString() ?? 'WavePass Venue';
-    final plan = _plans.firstWhere((p) => p['id'] == _selectedPlanId, orElse: () => {'name': 'Pass'});
+    final plan = _plans.firstWhere((p) => p['id']?.toString() == _selectedPlanId?.toString(), orElse: () => {'name': 'Pass'});
     final planName = plan['name']?.toString() ?? 'Pass';
     final priceMinor = (plan['priceMinor'] as num?)?.toInt() ?? 0;
     final priceStr = '₦${priceMinor ~/ 100}';
@@ -1211,13 +1215,24 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
                 // Venue Selection
                 DropdownButtonFormField<String>(
-                      isExpanded: true,
+                  isExpanded: true,
                   key: ValueKey('venue_$_selectedVenueId'),
-                  initialValue: (_selectedVenueId != null && _venues.any((v) => v['id'] == _selectedVenueId))
+                  initialValue: (_selectedVenueId != null && _venues.any((v) => v['id']?.toString() == _selectedVenueId))
                       ? _selectedVenueId
                       : null,
                   decoration: const InputDecoration(labelText: 'Venue', border: OutlineInputBorder()),
-                  items: _venues.map((v) => DropdownMenuItem(value: v['id'] as String, child: Text(v['name'] ?? v['id']))).toList(),
+                  items: () {
+                    final seen = <String>{};
+                    final items = <DropdownMenuItem<String>>[];
+                    for (final v in _venues) {
+                      final id = v['id']?.toString() ?? '';
+                      if (id.isEmpty || seen.contains(id)) continue;
+                      seen.add(id);
+                      final name = v['name']?.toString() ?? id;
+                      items.add(DropdownMenuItem(value: id, child: Text(name)));
+                    }
+                    return items;
+                  }(),
                   onChanged: (val) {
                     setState(() => _selectedVenueId = val);
                     if (val != null) _loadPlans(val);
@@ -1227,13 +1242,25 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
 
                 // Plan Selection
                 DropdownButtonFormField<String>(
-                      isExpanded: true,
+                  isExpanded: true,
                   key: ValueKey('plan_$_selectedPlanId'),
-                  initialValue: (_selectedPlanId != null && _plans.any((p) => p['id'] == _selectedPlanId))
+                  initialValue: (_selectedPlanId != null && _plans.any((p) => p['id']?.toString() == _selectedPlanId))
                       ? _selectedPlanId
                       : null,
                   decoration: const InputDecoration(labelText: 'Pricing Plan', border: OutlineInputBorder()),
-                  items: _plans.map((p) => DropdownMenuItem(value: p['id'] as String, child: Text('${p['name']} — ₦${(p['priceMinor'] as int) ~/ 100}'))).toList(),
+                  items: () {
+                    final seen = <String>{};
+                    final items = <DropdownMenuItem<String>>[];
+                    for (final p in _plans) {
+                      final id = p['id']?.toString() ?? '';
+                      if (id.isEmpty || seen.contains(id)) continue;
+                      seen.add(id);
+                      final name = p['name']?.toString() ?? 'Pass';
+                      final price = ((p['priceMinor'] as num?)?.toInt() ?? 0) ~/ 100;
+                      items.add(DropdownMenuItem(value: id, child: Text('$name — ₦$price')));
+                    }
+                    return items;
+                  }(),
                   onChanged: (val) => setState(() => _selectedPlanId = val),
                 ),
                 const SizedBox(height: 12),

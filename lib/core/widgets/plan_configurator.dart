@@ -21,17 +21,51 @@ class _PState extends State<PlanConfiguratorSheet> {
   late double _devices;
   bool _saving = false;
 
+  static const double _maxHours = 720; // 30 days
+
+  /// Preset durations (label + hours). Dropdown replaces the old drag slider.
+  static const List<(String, double)> _durationPresets = [
+    ('30 minutes', 0.5),
+    ('1 hour', 1),
+    ('2 hours', 2),
+    ('3 hours', 3),
+    ('6 hours', 6),
+    ('12 hours', 12),
+    ('1 day', 24),
+    ('2 days', 48),
+    ('3 days', 72),
+    ('7 days (1 week)', 168),
+    ('14 days (2 weeks)', 336),
+    ('30 days (1 month)', 720),
+  ];
+
+  double get _presetHours {
+    double best = _durationPresets.first.$2;
+    for (final p in _durationPresets) {
+      if ((p.$2 - _hours).abs() < (best - _hours).abs()) best = p.$2;
+    }
+    return best;
+  }
+
+  void _setHours(double h) {
+    setState(() {
+      _hours = h.clamp(0.5, _maxHours);
+      _hoursCtrl.text = _hours.toStringAsFixed(_hours < 10 ? 1 : 0);
+      _daysCtrl.text = (_hours / 24).toStringAsFixed(2);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
-    final durSec = (e?['durationSeconds'] as int?) ?? 7200;
+    final durSec = ((e?['durationSeconds'] as num?)?.toInt()) ?? 7200;
     _hours = durSec / 3600;
     final limitBytes = e?['dataLimitBytes'];
     _gb = limitBytes == null ? 0 : (limitBytes as num).toDouble() / (1024 * 1024 * 1024);
-    _devices = ((e?['simultaneousDevices'] as int?) ?? 1).toDouble();
-    _name = TextEditingController(text: e?['name'] ?? 'Custom Pass');
-    _price = TextEditingController(text: e != null ? ((e['priceMinor'] as int) ~/ 100).toString() : '500');
+    _devices = (((e?['simultaneousDevices'] as num?)?.toInt()) ?? 1).toDouble();
+    _name = TextEditingController(text: e?['name']?.toString() ?? 'Custom Pass');
+    _price = TextEditingController(text: e != null ? ((((e['priceMinor'] as num?)?.toInt() ?? 0) ~/ 100)).toString() : '500');
     _speed = TextEditingController(text: e?['rateLimit'] ?? '10M');
     _daysCtrl = TextEditingController(text: (_hours / 24).toStringAsFixed(2));
     _hoursCtrl = TextEditingController(text: _hours.toStringAsFixed(1));
@@ -43,12 +77,13 @@ class _PState extends State<PlanConfiguratorSheet> {
 
   void _syncFromDays(String v) {
     final d = double.tryParse(v) ?? 0;
-    setState(() { _hours = (d * 24).clamp(0.5, 72); _hoursCtrl.text = _hours.toStringAsFixed(1); _daysCtrl.text = v; });
+    _setHours(d * 24);
+    _daysCtrl.text = v;
   }
 
   void _syncFromHours(String v) {
     final h = double.tryParse(v) ?? 0;
-    setState(() { _hours = h.clamp(0.5, 72); _daysCtrl.text = (_hours / 24).toStringAsFixed(2); });
+    _setHours(h);
   }
 
   void _syncFromGigs(String v) {
@@ -106,7 +141,20 @@ class _PState extends State<PlanConfiguratorSheet> {
         Expanded(child: _field('Hours', _hoursCtrl, type: TextInputType.number, onChanged: _syncFromHours)),
       ]),
       Text('Duration: ${_hours.toStringAsFixed(1)}h (${(_hours/24).toStringAsFixed(2)} days)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-      Slider(value: _hours, min: 0.5, max: 72, divisions: 143, label: '${_hours.toStringAsFixed(1)}h', onChanged: (v) => setState(() { _hours = v; _hoursCtrl.text = v.toStringAsFixed(1); _daysCtrl.text = (v/24).toStringAsFixed(2); })),
+      const SizedBox(height: 6),
+      DropdownButtonFormField<double>(
+        isExpanded: true,
+        key: ValueKey<double>(_presetHours),
+        initialValue: _presetHours,
+        decoration: const InputDecoration(labelText: 'Duration', border: OutlineInputBorder()),
+        items: [
+          for (final p in _durationPresets)
+            DropdownMenuItem(value: p.$2, child: Text(p.$1)),
+        ],
+        onChanged: (v) {
+          if (v != null) _setHours(v);
+        },
+      ),
       Row(children: [
         Expanded(child: _field('Data gigs (empty = Unlimited)', _gigsCtrl, type: TextInputType.number, onChanged: _syncFromGigs)),
         const SizedBox(width: 12),

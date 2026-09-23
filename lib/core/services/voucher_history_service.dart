@@ -528,20 +528,28 @@ class VoucherHistoryService {
         }
       }
 
-      // 2b. Cloud fallback: router unreachable (wrong target, offline box) —
-      // confirm usage via cloud records so retrieval keeps working.
+      // 2b. Cloud fallback: router unreachable (wrong target, offline box,
+      // or operator on mobile data) — confirm usage via cloud records so
+      // retrieval keeps working and used vouchers still expire on schedule.
+      // MAC is usually empty at sale time, so verify by voucher code too.
       if (!routerConnected) {
         try {
           final venueId = currentVenue?['id']?.toString();
           for (final record in history) {
-            if (record.status != 'unused' || (record.mac ?? '').isEmpty) continue;
-            final cloud = await WavePassApi.instance.retrieveVoucher(
-              mac: record.mac,
-              venueId: venueId,
-            ).timeout(const Duration(seconds: 6));
+            if (record.status != 'unused') continue;
+            Map<String, dynamic>? cloud;
+            try {
+              cloud = await WavePassApi.instance.retrieveVoucher(
+                mac: (record.mac ?? '').isNotEmpty ? record.mac : null,
+                query: record.code,
+                venueId: venueId,
+              ).timeout(const Duration(seconds: 6));
+            } catch (_) {
+              continue;
+            }
             final found = cloud['found'] == true;
             final status = (cloud['status']?.toString() ?? '').toUpperCase();
-            if (found && (status == 'ACTIVE' || status == 'REDEEMED')) {
+            if (found && (status == 'ACTIVE' || status == 'REDEEMED' || status == 'IN_USE')) {
               record.status = 'in_use';
               record.usedAt = record.usedAt ?? now;
               stateChanged = true;
@@ -553,10 +561,32 @@ class VoucherHistoryService {
                   message: 'Pass ${record.code} (${record.planTitle}) is active per cloud records. Router unreachable — check target IP.',
                 );
               }
-              break;
             }
           }
         } catch (_) {}
+      }
+
+      // 2c. Re-push vouchers that never landed on the router (sold as
+      // "cloud-confirmed" while the box was unreachable). Without this they
+      // exist in history/cloud but login fails at the captive portal.
+      if (routerConnected) {
+        for (final record in history) {
+          if (record.provisioned || record.status == 'expired') continue;
+          try {
+            final ok = await client.createHotspotUser(
+              code: record.code,
+              pass: record.effectivePassword,
+              profile: RouterDiscoveryService.profileForDuration(record.durationSeconds),
+              sessionTimeoutSeconds: record.durationSeconds,
+              sharedUsers: 1,
+              comment: 'wavepass-provisioned',
+            );
+            if (ok) {
+              record.provisioned = true;
+              stateChanged = true;
+            }
+          } catch (_) {}
+        }
       }
 
       // 3. Detect expired vouchers from elapsed duration and delete from hardware
@@ -588,7 +618,9 @@ class VoucherHistoryService {
         }
       }
 
-      // 4. Proactively check router user accounts that reached limit-uptime
+      // 4. Proactively check router user accounts that reached limit-uptime,
+      // and backdate first-use for accounts with consumed uptime that the
+      // active-user sweep missed (so they expire on schedule afterwards).
       if (routerConnected && hotspotUsers.isNotEmpty) {
         for (final u in hotspotUsers) {
           final uName = u['name']?.toString();
@@ -610,6 +642,16 @@ class VoucherHistoryService {
               for (final record in history) {
                 if (record.code.toUpperCase() == uName.toUpperCase() && record.status != 'expired') {
                   record.status = 'expired';
+                  stateChanged = true;
+                }
+              }
+            } else if (currentSec > 0) {
+              // Consumed but not exhausted: ensure history knows first use.
+              for (final record in history) {
+                if (record.code.toUpperCase() == uName.toUpperCase() &&
+                    record.status == 'unused') {
+                  record.status = 'in_use';
+                  record.usedAt = now.subtract(Duration(seconds: currentSec));
                   stateChanged = true;
                 }
               }

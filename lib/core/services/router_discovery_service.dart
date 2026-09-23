@@ -891,107 +891,195 @@ class RouterDiscoveryService {
     return buf.toString();
   }
 
-  /// Standard duration-based rate-limit profiles configured on RouterOS with hard timeouts.
+  /// Normalizes human or database rate limit strings into RouterOS syntax (e.g. 50M/50M, 10M/5M, 512k/512k).
+  static String? formatRouterOsRateLimit(String? raw) {
+    if (raw == null) return null;
+    var trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final lower = trimmed.toLowerCase();
+    if (lower == 'none' || lower == 'unlimited' || lower == 'null' || lower == '0' || lower == '0m/0m') return null;
+
+    String normalizeToken(String token) {
+      var t = token.trim().toLowerCase();
+      if (t.endsWith('bps')) t = t.substring(0, t.length - 3).trim();
+      if (t.endsWith('b')) t = t.substring(0, t.length - 1).trim();
+      if (t.endsWith('m')) {
+        final numPart = t.substring(0, t.length - 1).trim();
+        return '${numPart.toUpperCase()}M';
+      }
+      if (t.endsWith('k')) {
+        final numPart = t.substring(0, t.length - 1).trim();
+        return '${numPart.toLowerCase()}k';
+      }
+      if (t.endsWith('g')) {
+        final numPart = t.substring(0, t.length - 1).trim();
+        return '${numPart.toUpperCase()}G';
+      }
+      final n = double.tryParse(t);
+      if (n != null) {
+        return n % 1 == 0 ? '${n.toInt()}M' : '${n}M';
+      }
+      return token.trim();
+    }
+
+    if (trimmed.contains('/')) {
+      final parts = trimmed.split('/');
+      final rx = normalizeToken(parts[0]);
+      final tx = normalizeToken(parts[1]);
+      return '$rx/$tx';
+    }
+
+    final single = normalizeToken(trimmed);
+    return single.isNotEmpty ? '$single/$single' : null;
+  }
+
+  /// On-login script that:
+  /// 1. Kicks the oldest active session when reconnecting with the same voucher (eliminating 'already logged in' lockout).
+  /// 2. Dynamically activates a per-voucher wall-clock expiration scheduler on RouterOS hardware upon first login.
+  static const String onLoginScript =
+      ':local u "\$user"; :local uc 0; :local ut "00:00:00"; :local ka; '
+      ':foreach i in=[/ip hotspot active find user=\$u] do={ '
+      ':local cur [/ip hotspot active get \$i uptime]; '
+      ':if (\$cur > \$ut) do={ :set ut \$cur; :set ka \$i; }; '
+      ':set uc (\$uc + 1); '
+      '}; '
+      ':if (\$uc > 1) do={ '
+      '/ip hotspot active remove numbers=\$ka; '
+      '}; '
+      ':local ur [/ip hotspot user find name=\$u]; '
+      ':if ([:len \$ur] > 0) do={ '
+      ':local lu [/ip hotspot user get \$ur limit-uptime]; '
+      ':if ([:len \$lu] = 0 || \$lu = 0s) do={ '
+      ':local pr [/ip hotspot user get \$ur profile]; '
+      ':if ([:len \$pr] > 0) do={ :set lu [/ip hotspot user profile get [find name=\$pr] session-timeout]; }; '
+      '}; '
+      ':if ([:len \$lu] > 0 && \$lu != 0s) do={ '
+      ':local sn ("exp_" . \$u); '
+      ':if ([:len [/system scheduler find name=\$sn]] = 0) do={ '
+      '/system scheduler add name=\$sn interval=\$lu on-event=("/ip hotspot active remove [find user=\\"" . \$u . "\\"]; /ip hotspot user remove [find name=\\"" . \$u . "\\"]; /ip hotspot cookie remove [find user=\\"" . \$u . "\\"]; /system scheduler remove [find name=\\"" . \$sn . "\\"]"); '
+      '}; '
+      '}; '
+      '};';
+
+  /// Periodic 1-minute safety cleanup script that evicts expired uptime sessions,
+  /// removes orphan cookies in /ip/hotspot/cookie, and cleans expired vouchers.
+  static const String cleanupScriptSource =
+      ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; '
+      ':foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; /ip hotspot cookie remove [find user=\$un]; /system scheduler remove [find name=("exp_" . \$un)]; } }; '
+      ':foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \$c user]; :if ([:len [/ip hotspot user find name=\$cu]] = 0) do={ /ip hotspot cookie remove \$c; } }; '
+      '/ip hotspot user remove [find comment~"expired"]';
+
+  /// Standard duration-based rate-limit profiles configured on RouterOS with hard timeouts and session auto-kick.
   static List<Map<String, String>> get standardDurationProfiles => [
     {
       'name': 'profile_30m',
       'rate-limit': '10M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '30m',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 30m',
     },
     {
       'name': 'profile_1h',
       'rate-limit': '10M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '1h',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 1h',
     },
     {
       'name': 'profile_2h',
       'rate-limit': '10M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '2h',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 2h',
     },
     {
       'name': 'profile_3h',
       'rate-limit': '15M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '3h',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 3h',
     },
     {
       'name': 'profile_6h',
       'rate-limit': '15M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '6h',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 6h',
     },
     {
       'name': 'profile_12h',
       'rate-limit': '15M/5M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '12h',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 12h',
     },
     {
       'name': 'profile_1d',
       'rate-limit': '20M/10M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '1d',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 24h',
     },
     {
       'name': 'profile_7d',
       'rate-limit': '20M/10M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '7d',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 7d',
     },
     {
       'name': 'profile_30d',
       'rate-limit': '25M/10M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '30d',
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'on-login': onLoginScript,
       'comment': 'WavePass 30d',
     },
     {
       'name': 'wp-payment-trial',
       'rate-limit': '2M/2M',
-      'shared-users': '1',
+      'shared-users': '2',
       'session-timeout': '2m',
       'keepalive-timeout': '2m',
       'idle-timeout': '1m',
       'status-autorefresh': '1m',
       'transparent-proxy': 'yes',
+      'on-login': onLoginScript,
       'comment': 'WavePass 2-Minute Payment Trial',
     },
   ];
@@ -1083,7 +1171,7 @@ class RouterDiscoveryService {
         if (limitBytesTotal != null && limitBytesTotal > 0)
           'limit-bytes-total': limitBytesTotal.toString(),
         if (sharedUsers != null && sharedUsers > 0)
-          'shared-users': sharedUsers.toString(),
+          'shared-users': (sharedUsers == 1 ? 2 : sharedUsers).toString(),
         'comment': comment,
       };
 
@@ -1475,7 +1563,7 @@ class RouterDiscoveryService {
             'trial-user-profile': 'wp-payment-trial',
             'trial-uptime': '2m/24h',
             'addresses-per-mac': '1',
-            'mac-cookie-timeout': '30d',
+            'mac-cookie-timeout': '3d',
             'html-directory': 'hotspot',
           }),
         ).timeout(const Duration(seconds: 4));
@@ -1553,17 +1641,18 @@ class RouterDiscoveryService {
             if (tRes.statusCode >= 200 && tRes.statusCode < 300) tierSuccess++;
           } catch (_) {}
         }
-        // Enforce shared-users=1, keepalives, and idle timeout on 'default' profile
+        // Enforce shared-users=2, keepalives, on-login, and idle timeout on 'default' profile
         try {
           await client.put(
             userProfUri,
             headers: headers,
             body: jsonEncode({
               'name': 'default',
-              'shared-users': '1',
+              'shared-users': '2',
               'keepalive-timeout': '2m',
               'idle-timeout': '5m',
               'status-autorefresh': '1m',
+              'on-login': onLoginScript,
             }),
           ).timeout(const Duration(seconds: 3));
         } catch (_) {}
@@ -1575,7 +1664,7 @@ class RouterDiscoveryService {
       // 6. Inject Low-RAM Memory Auto-Cleanup Script & 1-Minute Limit Enforcer Scheduler
       try {
         final scriptUri = Uri.parse("http://$hostOnly:$port/rest/system/script");
-        const scriptSource = ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; } }; /ip hotspot user remove [find comment~"expired"]';
+        final scriptSource = cleanupScriptSource;
         await client.put(
           scriptUri,
           headers: headers,
@@ -1807,7 +1896,7 @@ class RouterDiscoveryService {
         'Content-Type': 'application/json',
       };
 
-      // Enforce shared-users=1 on all user profiles
+      // Enforce shared-users=2 with on-login session kick and auto-expiry on all user profiles
       try {
         final profRes = await client.get(
           Uri.parse("$target/rest/ip/hotspot/user/profile"),
@@ -1822,7 +1911,10 @@ class RouterDiscoveryService {
                 await client.patch(
                   Uri.parse("$target/rest/ip/hotspot/user/profile/$id"),
                   headers: headers,
-                  body: jsonEncode({'shared-users': '1'}),
+                  body: jsonEncode({
+                    'shared-users': '2',
+                    'on-login': onLoginScript,
+                  }),
                 ).timeout(const Duration(seconds: 2));
               }
             }
@@ -1839,18 +1931,19 @@ class RouterDiscoveryService {
           body: jsonEncode({
             'name': 'wp-payment-trial',
             'rate-limit': '2M/2M',
-            'shared-users': '1',
+            'shared-users': '2',
             'session-timeout': '2m',
             'keepalive-timeout': '2m',
             'idle-timeout': '1m',
             'status-autorefresh': '1m',
             'transparent-proxy': 'true',
+            'on-login': onLoginScript,
             'comment': 'WavePass 2-Minute Payment Trial',
           }),
         ).timeout(const Duration(seconds: 3));
       } catch (_) {}
 
-      // Hotspot server profiles: addresses-per-mac=1, mac-cookie-timeout=30d, login-by with trial support
+      // Hotspot server profiles: addresses-per-mac=1, mac-cookie-timeout=3d, login-by with trial support
       try {
         final srvProfRes = await client.get(
           Uri.parse("$target/rest/ip/hotspot/profile"),
@@ -1867,7 +1960,7 @@ class RouterDiscoveryService {
                   headers: headers,
                   body: jsonEncode({
                     'addresses-per-mac': '1',
-                    'mac-cookie-timeout': '30d',
+                    'mac-cookie-timeout': '3d',
                     'login-by': 'http-pap,http-chap,mac-cookie,trial',
                     'trial-user-profile': 'wp-payment-trial',
                     'trial-uptime': '2m/24h',
@@ -2277,12 +2370,13 @@ class RouterDiscoveryService {
         body: jsonEncode({
           'name': 'wp-payment-trial',
           'rate-limit': '2M/2M',
-          'shared-users': '1',
+          'shared-users': '2',
           'session-timeout': '2m',
           'keepalive-timeout': '2m',
           'idle-timeout': '1m',
           'status-autorefresh': '1m',
           'transparent-proxy': 'true',
+          'on-login': onLoginScript,
           'comment': 'WavePass 2-Minute Payment Trial',
         }),
       ).timeout(const Duration(seconds: 2));
@@ -2298,7 +2392,7 @@ class RouterDiscoveryService {
           'trial-user-profile': 'wp-payment-trial',
           'trial-uptime': '2m/24h',
           'addresses-per-mac': '1',
-          'mac-cookie-timeout': '30d',
+          'mac-cookie-timeout': '3d',
         }),
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
@@ -2312,12 +2406,13 @@ class RouterDiscoveryService {
             '/ip/hotspot/user/profile/add',
             '=name=wp-payment-trial',
             '=rate-limit=2M/2M',
-            '=shared-users=1',
+            '=shared-users=2',
             '=session-timeout=2m',
             '=keepalive-timeout=2m',
             '=idle-timeout=1m',
             '=status-autorefresh=1m',
             '=transparent-proxy=yes',
+            '=on-login=$onLoginScript',
             '=comment=WavePass 2-Minute Payment Trial',
           ]);
         } catch (_) {}
@@ -2328,7 +2423,7 @@ class RouterDiscoveryService {
           '=trial-user-profile=wp-payment-trial',
           '=trial-uptime=2m/24h',
           '=addresses-per-mac=1',
-          '=mac-cookie-timeout=30d',
+          '=mac-cookie-timeout=3d',
         ]);
         await api.close();
       }

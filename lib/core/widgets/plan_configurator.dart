@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/router_discovery_service.dart';
 import '../services/venue_state_service.dart';
 
 class PlanConfiguratorSheet extends StatefulWidget {
@@ -98,12 +99,13 @@ class _PState extends State<PlanConfiguratorSheet> {
       final priceMinor = (int.tryParse(_price.text) ?? 0) * 100;
       final durationSeconds = (_hours * 3600).round();
       final dataLimitBytes = _gb == 0 ? null : (_gb * 1024 * 1024 * 1024).round();
+      final formattedRate = RouterDiscoveryService.formatRouterOsRateLimit(_speed.text);
       final payload = {
         'name': _name.text.trim().isEmpty ? 'Custom Pass' : _name.text.trim(),
         'priceMinor': priceMinor,
         'durationSeconds': durationSeconds,
         'dataLimitBytes': dataLimitBytes,
-        'rateLimit': _speed.text.trim().isEmpty ? null : _speed.text.trim(),
+        'rateLimit': formattedRate ?? (_speed.text.trim().isEmpty ? null : _speed.text.trim()),
         'simultaneousDevices': _devices.round(),
         'mode': 'ELAPSED',
         'active': true,

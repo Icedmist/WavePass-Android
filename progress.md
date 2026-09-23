@@ -662,5 +662,35 @@
   - `flutter test`: **All 85 tests passed** (0 failures).
 - [x] PR [#127](https://github.com/Icedmist/WavePass-Android/pull/127) merged to `main`.
 
+### 51. Voucher Wall-Clock Expiration, Stale Session Eviction & Rate-Limit Syntax Normalization (Issue #128, PR #129)
+- [x] **Diagnosed Operator Issue for `Sahabimusa963@gmail.com`**:
+  - **Issue 1 (Vouchers Not Expiring)**: RouterOS `limit-uptime` only counts active connected uptime, not elapsed wall-clock time. A 1-day pass lasted weeks if used for only 1 hour daily.
+  - **Issue 2 (Vouchers Not Working Before Expiration / Session Lockouts)**:
+    - User profiles were provisioned with `shared-users=1` without session eviction on login. When phones disconnected, slept, or rotated MAC addresses, stale active sessions remained in `/ip/hotspot/active` for 2–5 minutes (`keepalive-timeout` / `idle-timeout`), rejecting reconnections with `"user already logged in"`.
+    - Profiles had stale 30-day MAC cookies (`mac-cookie-timeout=30d`), causing authentication loops.
+    - Operator's plan in Supabase had `rateLimit: "50mbps"`, which is invalid RouterOS syntax, corrupting user creation and queue limits.
+- [x] **Rate Limit Normalization (`formatRouterOsRateLimit`)**:
+  - Implemented `formatRouterOsRateLimit` in `RouterDiscoveryService` to automatically sanitize inputs (e.g., `50mbps` -> `50M/50M`, `10` -> `10M/10M`, `512k` -> `512k/512k`, ignoring `none`/`unlimited`).
+  - Integrated into `PlanConfiguratorSheet` on plan save.
+  - Live-patched `Sahabimusa963@gmail.com` active plan (`6c1b9d80-4cfc-44ee-a5b2-9372b22be0a5`) to `50M/50M`.
+- [x] **RouterOS Reconnect Lockout Elimination (`onLoginScript`)**:
+  - Configured user profiles with `shared-users: '2'` and an automated `on-login` eviction script that detects active session counts > 1, immediately kicking the oldest active session (`/ip hotspot active remove numbers=$ka`).
+  - Preserves strict 1-device policy while allowing legitimate reconnects when a device wakes from sleep or changes network state.
+- [x] **On-Router Hardware Wall-Clock Expiration Schedulers**:
+  - `onLoginScript` dynamically generates a `/system/scheduler` task (`exp_$user`) upon first login with `interval=$limitUptime`.
+  - When the duration expires, the router independently removes the active session, deletes the hotspot user, deletes `/ip/hotspot/cookie`, and cleans up the scheduler itself, even if the operator is offline or away from the router.
+- [x] **Orphan MAC Cookie & Safety Cleanup**:
+  - Reduced `mac-cookie-timeout` from `30d` to `3d`.
+  - Enhanced `wavepass-cleanup` safety script (and `MikrotikApiClient` methods) to purge orphan cookies in `/ip/hotspot/cookie` whose users no longer exist.
+  - Enhanced `VoucherHistoryService` to use dual-route client resolution (`local IP -> cloud tunnel`), calculate `remainingSeconds`, accurately backdate `usedAt` via cloud telemetry, and clean up hardware accounts.
+- [x] **Exported Quick-Setup Terminal Script**:
+  - Updated `router_setup_screen.dart` exported MikroTik terminal script to include `shared-users=2`, `mac-cookie-timeout=3d`, `on-login` session eviction, and comprehensive cookie/scheduler cleanup.
+- [x] **Regression & Unit Tests**:
+  - Created `test/voucher_expiration_and_session_reconnect_test.dart` validating rate-limit formatting, on-login eviction logic, dynamic scheduler configuration, orphan cookie cleanup, and `VoucherRecord` expiration calculations.
+  - Updated existing tests in `test/voucher_limits_and_expiry_test.dart` and `test/mikrotik_api_client_test.dart`.
+- [x] **Verification**:
+  - `flutter analyze`: **No issues found** (0 warnings, 0 errors).
+  - `flutter test`: **All 90 tests passed** (0 failures).
+
 
 

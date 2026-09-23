@@ -74,6 +74,23 @@ class VoucherRecord {
     return '${elapsed ~/ 3600}h ${(elapsed % 3600) ~/ 60}m';
   }
 
+  bool get isExpired {
+    if (status == 'expired') return true;
+    if (usedAt != null) {
+      final elapsed = DateTime.now().difference(usedAt!).inSeconds;
+      return elapsed >= durationSeconds;
+    }
+    return false;
+  }
+
+  int get remainingSeconds {
+    if (status == 'expired') return 0;
+    if (usedAt == null) return durationSeconds;
+    final elapsed = DateTime.now().difference(usedAt!).inSeconds;
+    final rem = durationSeconds - elapsed;
+    return rem > 0 ? rem : 0;
+  }
+
   Map<String, dynamic> toJson() => {
         'code': code,
         'password': password,
@@ -226,6 +243,62 @@ class VoucherHistoryService {
     }
   }
 
+  /// Connects to the venue router using local LAN first, falling back to tunnel endpoint.
+  Future<MikrotikApiClient?> _getConnectedClient() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
+      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
+      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
+      final tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
+
+      // 1. Try local IP first
+      try {
+        var host = localIp.trim();
+        int port = 8728;
+        if (host.startsWith('api://')) host = host.substring(6);
+        if (host.startsWith('http://')) host = host.substring(7);
+        if (host.startsWith('https://')) host = host.substring(8);
+        if (host.contains(':')) {
+          final p = host.split(':');
+          host = p[0];
+          port = int.tryParse(p[1]) ?? 8728;
+        }
+        if (host.contains('/')) host = host.split('/').first;
+
+        final client = MikrotikApiClient(host: host, port: port);
+        if (await client.connectAndLogin(user, pass)) {
+          return client;
+        }
+        await client.close();
+      } catch (_) {}
+
+      // 2. Fallback to tunnel endpoint if configured
+      if (tunnel != null && tunnel.trim().isNotEmpty) {
+        try {
+          var host = tunnel.trim();
+          int port = 8728;
+          if (host.startsWith('api://')) host = host.substring(6);
+          if (host.startsWith('http://')) host = host.substring(7);
+          if (host.startsWith('https://')) host = host.substring(8);
+          if (host.contains(':')) {
+            final p = host.split(':');
+            host = p[0];
+            port = int.tryParse(p[1]) ?? 8728;
+          }
+          if (host.contains('/')) host = host.split('/').first;
+
+          final client = MikrotikApiClient(host: host, port: port);
+          if (await client.connectAndLogin(user, pass)) {
+            return client;
+          }
+          await client.close();
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Retrieves all recorded vouchers from local cache
   Future<List<VoucherRecord>> getHistory() async {
     try {
@@ -257,15 +330,10 @@ class VoucherHistoryService {
     // 1. Query Router Hardware via MikrotikApiClient only if venue is configured or superadmin
     if (currentVenue != null || isSuperAdmin) {
       try {
-        final prefs = await SharedPreferences.getInstance();
-      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
-      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
-      final client = MikrotikApiClient(host: localIp);
-
-      if (await client.connectAndLogin(user, pass)) {
-        final activeUsers = await client.getHotspotActiveUsers();
-        final hotspotUsers = await client.getHotspotUsers();
+        final client = await _getConnectedClient();
+        if (client != null) {
+          final activeUsers = await client.getHotspotActiveUsers();
+          final hotspotUsers = await client.getHotspotUsers();
 
         final Map<String, Map<String, String>> activeMap = {};
         for (final a in activeUsers) {
@@ -472,24 +540,18 @@ class VoucherHistoryService {
       final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
       if (currentVenue == null && !isSuperAdmin) return;
 
-      // 1. Fetch active users & configured accounts on MikroTik
-      final prefs = await SharedPreferences.getInstance();
-      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
-      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
-
-      final client = MikrotikApiClient(host: localIp);
+      // 1. Fetch active users & configured accounts on MikroTik (dual-route: local IP -> cloud tunnel)
+      final client = await _getConnectedClient();
       List<Map<String, String>> activeUsers = [];
       List<Map<String, String>> hotspotUsers = [];
-      bool routerConnected = false;
+      final bool routerConnected = client != null;
 
-      try {
-        if (await client.connectAndLogin(user, pass)) {
-          routerConnected = true;
+      if (client != null) {
+        try {
           activeUsers = await client.getHotspotActiveUsers();
           hotspotUsers = await client.getHotspotUsers();
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
 
       bool stateChanged = false;
       final now = DateTime.now();
@@ -551,7 +613,13 @@ class VoucherHistoryService {
             final status = (cloud['status']?.toString() ?? '').toUpperCase();
             if (found && (status == 'ACTIVE' || status == 'REDEEMED' || status == 'IN_USE')) {
               record.status = 'in_use';
-              record.usedAt = record.usedAt ?? now;
+              final remainingSeconds = (cloud['remainingSeconds'] as num?)?.toInt() ??
+                  (cloud['voucher']?['remainingSeconds'] as num?)?.toInt();
+              if (remainingSeconds != null && remainingSeconds > 0 && remainingSeconds <= record.durationSeconds) {
+                record.usedAt = now.subtract(Duration(seconds: record.durationSeconds - remainingSeconds));
+              } else {
+                record.usedAt = record.usedAt ?? now;
+              }
               stateChanged = true;
               if (context != null && context.mounted) {
                 AppNotifier.instance.show(
@@ -671,9 +739,11 @@ class VoucherHistoryService {
         }
       }
 
-      try {
-        await client.close();
-      } catch (_) {}
+      if (client != null) {
+        try {
+          await client.close();
+        } catch (_) {}
+      }
 
       if (stateChanged) {
         await _saveHistory(history);
@@ -697,12 +767,8 @@ class VoucherHistoryService {
     await _saveHistory(history);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
-      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
-      final client = MikrotikApiClient(host: localIp);
-      if (await client.connectAndLogin(user, pass)) {
+      final client = await _getConnectedClient();
+      if (client != null) {
         await client.disconnectActiveUser(code);
         await client.removeHotspotUser(code);
         await client.close();
@@ -721,12 +787,8 @@ class VoucherHistoryService {
 
     // Clean up hardware
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
-      final user = prefs.getString(RouterDiscoveryService.keyRouterUsername) ?? 'admin';
-      final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
-      final client = MikrotikApiClient(host: localIp);
-      if (await client.connectAndLogin(user, pass)) {
+      final client = await _getConnectedClient();
+      if (client != null) {
         for (final v in expired) {
           try {
             await client.disconnectActiveUser(v.code);

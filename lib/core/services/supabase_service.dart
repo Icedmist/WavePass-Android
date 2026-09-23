@@ -84,6 +84,39 @@ class SupabaseService {
         } catch (_) {}
       }
 
+      // 1b. Check User table by targetEmail (heals logins where currentUser was delayed or id differed)
+      if (targetEmail.isNotEmpty) {
+        try {
+          final userRow = await client
+              .from('User')
+              .select('id')
+              .ilike('email', targetEmail)
+              .limit(1)
+              .maybeSingle();
+          if (userRow != null && userRow['id'] != null) {
+            final memberRes = await client
+                .from('VenueMember')
+                .select('venueId, role, Venue(*)')
+                .eq('userId', userRow['id'])
+                .limit(1)
+                .maybeSingle();
+            if (memberRes != null && memberRes['Venue'] != null) {
+              final v = Map<String, dynamic>.from(memberRes['Venue'] as Map);
+              if (user != null && user.id != userRow['id']) {
+                try {
+                  await client.from('VenueMember').upsert({
+                    'venueId': v['id'],
+                    'userId': user.id,
+                    'role': 'Owner',
+                  });
+                } catch (_) {}
+              }
+              return v;
+            }
+          }
+        } catch (_) {}
+      }
+
       // 2. Self-healing fallback: Check ActivationRedemption for this operator's email
       if (targetEmail.isNotEmpty) {
         try {
@@ -153,6 +186,29 @@ class SupabaseService {
               .map((m) => Map<String, dynamic>.from(m['Venue'] as Map))
               .toList();
           if (venues.isNotEmpty) return venues;
+        } catch (_) {}
+      }
+
+      // 1b. Check User table by targetEmail
+      if (targetEmail.isNotEmpty) {
+        try {
+          final userRow = await client
+              .from('User')
+              .select('id')
+              .ilike('email', targetEmail)
+              .limit(1)
+              .maybeSingle();
+          if (userRow != null && userRow['id'] != null) {
+            final memberRes = await client
+                .from('VenueMember')
+                .select('venueId, role, Venue(*)')
+                .eq('userId', userRow['id']);
+            final venues = (memberRes as List)
+                .where((m) => m['Venue'] != null)
+                .map((m) => Map<String, dynamic>.from(m['Venue'] as Map))
+                .toList();
+            if (venues.isNotEmpty) return venues;
+          }
         } catch (_) {}
       }
 

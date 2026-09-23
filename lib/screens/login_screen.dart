@@ -110,13 +110,14 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
           await prefs.remove(RouterDiscoveryService.keyRouterUsername);
           await prefs.remove(RouterDiscoveryService.keyRouterPassword);
-          await VenueStateService.instance.clearVenue();
+          await VenueStateService.instance.clearVenue(preserveUserCache: false);
         }
         await prefs.remove('admin_token');
         await prefs.remove('wavepass_voucher_history_v1');
         await VoucherHistoryService.instance.clearCache();
         await prefs.setString('sb-user-email', email);
         await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
+        await VenueStateService.instance.refreshPlans();
         await ActivationCodeService.instance.isAccountActivated(email);
         await SessionService.instance.recordLogin(email);
         if (_biometricsEnabled) {
@@ -140,13 +141,14 @@ class _LoginScreenState extends State<LoginScreen> {
             await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
             await prefs.remove(RouterDiscoveryService.keyRouterUsername);
             await prefs.remove(RouterDiscoveryService.keyRouterPassword);
-            await VenueStateService.instance.clearVenue();
+            await VenueStateService.instance.clearVenue(preserveUserCache: false);
           }
           await prefs.setString('admin_token', j['token']);
           await prefs.remove('wavepass_voucher_history_v1');
           await VoucherHistoryService.instance.clearCache();
           await prefs.setString('sb-user-email', email);
           await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
+          await VenueStateService.instance.refreshPlans();
           await ActivationCodeService.instance.isAccountActivated(email);
           await SessionService.instance.recordLogin(email);
           if (_biometricsEnabled) {

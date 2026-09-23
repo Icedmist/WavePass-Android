@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
@@ -18,6 +19,9 @@ class VenueStateService {
   static const String keyLegacyVenueSlug = 'venueSlug';
   static const String keyVenueLogo = 'wavepass_active_venue_logo';
   static const String keyLegacyVenueLogo = 'venueLogo';
+  static const String keyVenuePlans = 'wavepass_active_venue_plans';
+  static const String keyCachedPlansPrefix = 'wavepass_cached_plans_';
+  static const String keyUserVenuePrefix = 'wavepass_user_venue_';
 
   final ValueNotifier<Map<String, dynamic>?> venueNotifier = ValueNotifier<Map<String, dynamic>?>(null);
   final ValueNotifier<List<Map<String, dynamic>>> plansNotifier = ValueNotifier<List<Map<String, dynamic>>>([]);
@@ -39,10 +43,29 @@ class VenueStateService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final cachedId = prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
+      final currentEmail = (prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
+      final cachedId = prefs.getString(keyVenueId) ??
+          prefs.getString(keyLegacyVenueId) ??
+          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null);
       final cachedName = prefs.getString(keyVenueName) ?? prefs.getString(keyLegacyVenueName);
       final cachedSlug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
       final cachedLogo = prefs.getString(keyVenueLogo) ?? prefs.getString(keyLegacyVenueLogo);
+
+      // Immediately hydrate cached plans from SharedPreferences before network latency
+      final cachedPlansRaw = (cachedId != null && cachedId.isNotEmpty)
+          ? (prefs.getString('$keyCachedPlansPrefix$cachedId') ?? prefs.getString(keyVenuePlans))
+          : prefs.getString(keyVenuePlans);
+      if (cachedPlansRaw != null && cachedPlansRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(cachedPlansRaw);
+          if (decoded is List) {
+            final list = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            if (list.isNotEmpty) {
+              plansNotifier.value = list;
+            }
+          }
+        } catch (_) {}
+      }
 
       if (cachedId != null && cachedId.isNotEmpty) {
         venueNotifier.value = {
@@ -58,7 +81,7 @@ class VenueStateService {
 
   /// Clears active venue state from memory and persistent storage.
   /// Must be called upon user logout.
-  Future<void> clearVenue() async {
+  Future<void> clearVenue({bool preserveUserCache = true}) async {
     venueNotifier.value = null;
     plansNotifier.value = [];
     try {
@@ -71,6 +94,9 @@ class VenueStateService {
       await prefs.remove(keyLegacyVenueSlug);
       await prefs.remove(keyVenueLogo);
       await prefs.remove(keyLegacyVenueLogo);
+      if (!preserveUserCache) {
+        await prefs.remove(keyVenuePlans);
+      }
     } catch (_) {}
   }
 
@@ -164,6 +190,10 @@ class VenueStateService {
       await prefs.setString(keyVenueLogo, effectiveLogo);
       await prefs.setString(keyLegacyVenueLogo, effectiveLogo);
     }
+    final currentEmail = (user?.email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
+    if (currentEmail.isNotEmpty && vId.isNotEmpty) {
+      await prefs.setString('$keyUserVenuePrefix$currentEmail', vId);
+    }
 
     venueNotifier.value = Map<String, dynamic>.from(created);
     await refreshPlans();
@@ -180,32 +210,63 @@ class VenueStateService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final vid = targetVenueId ?? prefs.getString(keyVenueId) ?? prefs.getString(keyLegacyVenueId);
-      final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
       final currentEmail = (prefs.getString('sb-user-email') ?? SupabaseService.instance.currentUser?.email ?? '').toLowerCase().trim();
+      final vid = targetVenueId ??
+          prefs.getString(keyVenueId) ??
+          prefs.getString(keyLegacyVenueId) ??
+          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null);
+      final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
 
-      // 1. Try target or cached ID from Supabase.
-      // Self-heal: if this device had the venue cached but the user has no
-      // VenueMember row (accounts created before linking / backend-created
-      // venues), re-link them now so the strict member-only lookup in step 2
-      // keeps working after updates. Cached ID proves prior access — this
-      // restores *their* venue, it never grants a new one.
+      // Hydrate cached plans immediately if plansNotifier is currently empty
+      if (vid != null && vid.isNotEmpty && plansNotifier.value.isEmpty) {
+        final cachedPlansRaw = prefs.getString('$keyCachedPlansPrefix$vid') ?? prefs.getString(keyVenuePlans);
+        if (cachedPlansRaw != null && cachedPlansRaw.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(cachedPlansRaw);
+            if (decoded is List) {
+              final list = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+              if (list.isNotEmpty) plansNotifier.value = list;
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 1. Try target or cached ID from backend API first (returns full venue with plans & routers)
       if (vid != null && vid.isNotEmpty) {
         try {
-          final res = await SupabaseService.instance.client
-              .from('Venue')
-              .select('*')
-              .eq('id', vid)
-              .maybeSingle();
-          if (res != null) venue = Map<String, dynamic>.from(res);
+          final res = await WavePassApi.instance.getVenue(vid);
+          if (res['id'] != null) {
+            venue = res;
+            if (res['plans'] is List) {
+              final apiPlans = (res['plans'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+              if (apiPlans.isNotEmpty) {
+                plansNotifier.value = apiPlans;
+                await prefs.setString(keyVenuePlans, jsonEncode(apiPlans));
+                await prefs.setString('$keyCachedPlansPrefix$vid', jsonEncode(apiPlans));
+              }
+            }
+          }
         } catch (_) {}
+
+        // Fallback to Supabase direct query
+        if (venue == null && SupabaseService.isInitialized) {
+          try {
+            final res = await SupabaseService.instance.client
+                .from('Venue')
+                .select('*')
+                .eq('id', vid)
+                .maybeSingle();
+            if (res != null) venue = Map<String, dynamic>.from(res);
+          } catch (_) {}
+        }
+
         if (venue != null) {
           try {
             final user = SupabaseService.instance.currentUser;
             if (user != null) {
               await SupabaseService.instance.client.from('User').upsert({
                 'id': user.id,
-                'email': user.email ?? '',
+                'email': user.email ?? currentEmail,
                 'authProvider': 'supabase',
                 'status': 'active',
               });
@@ -256,6 +317,20 @@ class VenueStateService {
         } catch (_) {}
       }
 
+      // 5. Offline fallback: if network lookups failed but vid was known from disk cache,
+      // recover cached venue identity so offline/spotty connections don't wipe active venue state
+      if (venue == null && vid != null && vid.isNotEmpty) {
+        final cachedName = prefs.getString(keyVenueName) ?? prefs.getString(keyLegacyVenueName) ?? 'WavePass Venue';
+        final cachedSlug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug) ?? 'venue';
+        final cachedLogo = prefs.getString(keyVenueLogo) ?? prefs.getString(keyLegacyVenueLogo);
+        venue = {
+          'id': vid,
+          'name': cachedName,
+          'slug': cachedSlug,
+          if (cachedLogo != null && cachedLogo.isNotEmpty) 'logoUrl': cachedLogo,
+        };
+      }
+
       if (venue != null) {
         venueNotifier.value = Map<String, dynamic>.from(venue);
         final id = venue['id']?.toString() ?? '';
@@ -269,6 +344,9 @@ class VenueStateService {
         await prefs.setString(keyLegacyVenueName, name);
         await prefs.setString(keyVenueSlug, slugVal);
         if (logo.isNotEmpty) await prefs.setString(keyVenueLogo, logo);
+        if (currentEmail.isNotEmpty && id.isNotEmpty) {
+          await prefs.setString('$keyUserVenuePrefix$currentEmail', id);
+        }
 
         await refreshPlans();
       }
@@ -283,7 +361,21 @@ class VenueStateService {
   /// Refreshes plans for the currently active venue.
   Future<List<Map<String, dynamic>>> refreshPlans() async {
     final vid = currentVenueId;
-    if (vid == null || vid.isEmpty) return [];
+    if (vid == null || vid.isEmpty) {
+      if (plansNotifier.value.isEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString(keyVenuePlans);
+          if (raw != null && raw.isNotEmpty) {
+            final decoded = jsonDecode(raw);
+            if (decoded is List) {
+              plansNotifier.value = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            }
+          }
+        } catch (_) {}
+      }
+      return plansNotifier.value;
+    }
 
     List<Map<String, dynamic>> plans = [];
 
@@ -305,8 +397,28 @@ class VenueStateService {
       } catch (_) {}
     }
 
+    // 3. Fallback to SharedPreferences cached plans if network failed
+    if (plans.isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('$keyCachedPlansPrefix$vid') ?? prefs.getString(keyVenuePlans);
+        if (raw != null && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            plans = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          }
+        }
+      } catch (_) {}
+    }
+
     if (plans.isNotEmpty) {
       plansNotifier.value = plans;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final encoded = jsonEncode(plans);
+        await prefs.setString(keyVenuePlans, encoded);
+        await prefs.setString('$keyCachedPlansPrefix$vid', encoded);
+      } catch (_) {}
     }
     return plansNotifier.value;
   }
@@ -464,6 +576,7 @@ class VenueStateService {
       final existingPlans = List<Map<String, dynamic>>.from(plansNotifier.value);
       existingPlans.add(created);
       plansNotifier.value = existingPlans;
+      await _persistPlansCache(vid, existingPlans);
     } else {
       // Trigger reactive plans update across all screens
       await refreshPlans();
@@ -501,6 +614,7 @@ class VenueStateService {
       if (idx != -1) {
         existingPlans[idx] = {...existingPlans[idx], ...updateData};
         plansNotifier.value = existingPlans;
+        await _persistPlansCache(currentVenueId, existingPlans);
       }
     }
 
@@ -510,11 +624,27 @@ class VenueStateService {
 
   /// Deletes or deactivates a Plan and refreshes all screens.
   Future<void> deletePlan(String planId) async {
+    final existingPlans = List<Map<String, dynamic>>.from(plansNotifier.value);
+    existingPlans.removeWhere((p) => p['id']?.toString() == planId);
+    plansNotifier.value = existingPlans;
+    await _persistPlansCache(currentVenueId, existingPlans);
+
     try {
       await WavePassApi.instance.deletePlan(planId);
     } catch (_) {
       await SupabaseService.instance.client.from('Plan').delete().eq('id', planId);
     }
     await refreshPlans();
+  }
+
+  Future<void> _persistPlansCache(String? vid, List<Map<String, dynamic>> plans) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(plans);
+      await prefs.setString(keyVenuePlans, encoded);
+      if (vid != null && vid.isNotEmpty) {
+        await prefs.setString('$keyCachedPlansPrefix$vid', encoded);
+      }
+    } catch (_) {}
   }
 }

@@ -1775,13 +1775,28 @@ $_rfc1321Md5Js
         } else {
           // Permanent auto-rejoin: if this device still holds an unexpired
           // voucher, reconnect it without asking the user to retype anything.
-          // Source of truth is the backend (expiry-aware); localStorage is
-          // only a fallback hint. Single-attempt guard prevents login loops
-          // when RouterOS bounces an expired code back to this page.
+          var errEl = document.querySelector('.error-msg');
+          var hasError = errEl && errEl.innerText && errEl.innerText.trim().length > 0;
+          if (hasError) {
+            // An error was returned by RouterOS (e.g. invalid credentials or expired uptime).
+            // Clear stale credentials so we don't loop, and allow clean manual re-entry.
+            try {
+              sessionStorage.removeItem('wp-auto-attempt');
+              localStorage.removeItem('wp-active-voucher');
+            } catch(e){}
+            return;
+          }
+
           var savedV = null;
           try {
             savedV = localStorage.getItem('wp-active-voucher') || sessionStorage.getItem('wp-active-voucher');
           } catch(e){}
+          var savedU = null, savedP = null;
+          try {
+            savedU = localStorage.getItem('wp-active-user') || sessionStorage.getItem('wp-active-user');
+            savedP = localStorage.getItem('wp-active-pass') || sessionStorage.getItem('wp-active-pass');
+          } catch(e){}
+
           var rawMac = "\$(mac)";
           var devMac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : null;
           try {
@@ -1804,37 +1819,50 @@ $_rfc1321Md5Js
           }
           var attempted = false;
           try { attempted = sessionStorage.getItem('wp-auto-attempt') === '1'; } catch(e){}
-          if (!attempted && (devMac || savedV)) {
+          if (!attempted && (devMac || savedV || (savedU && savedP))) {
             try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
             var autoVenueId = '$venueId' || '$slug';
             var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
             if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
-            else if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
-            fetch(autoUrl)
+            if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
+
+            var executed = false;
+            var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = controller ? setTimeout(function() { controller.abort(); }, 1500) : null;
+            var fetchOpts = controller ? { signal: controller.signal } : {};
+
+            fetch(autoUrl, fetchOpts)
               .then(function(res) { return res.json(); })
               .then(function(data) {
+                if (timer) clearTimeout(timer);
                 if (data && data.found && data.voucherCode) {
+                  executed = true;
                   try {
                     localStorage.setItem('wp-active-voucher', data.voucherCode);
                     sessionStorage.setItem('wp-active-voucher', data.voucherCode);
                   } catch(e){}
                   executeLogin(data.voucherCode, data.voucherCode);
-                } else if (savedV && data && !data.found) {
-                  // Saved hint is expired/invalid: verify it explicitly before
-                  // giving up, so a backend MAC-miss doesn't strand a valid
-                  // voucher typed on another browser.
-                  var verifyUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId) + '&q=' + encodeURIComponent(savedV);
-                  fetch(verifyUrl)
-                    .then(function(r) { return r.json(); })
-                    .then(function(v) {
-                      if (v && v.found && v.voucherCode) {
-                        executeLogin(v.voucherCode, v.voucherCode);
-                      }
-                    })
-                    .catch(function(){});
+                } else if (data && !data.found) {
+                  // Explicit cloud verification: voucher has expired or is invalid.
+                  try { localStorage.removeItem('wp-active-voucher'); } catch(e){}
+                  var sBox = document.getElementById('savedVoucherBox');
+                  if (sBox) sBox.style.display = 'none';
                 }
               })
-              .catch(function(){});
+              .catch(function() {
+                if (timer) clearTimeout(timer);
+                // Network error, timeout, or captive portal DNS block before authentication.
+                // Fall back immediately to authenticating with locally saved voucher or credentials
+                if (!executed) {
+                  if (savedV) {
+                    executed = true;
+                    executeLogin(savedV, savedV);
+                  } else if (savedU && savedP) {
+                    executed = true;
+                    executeLogin(savedU, savedP);
+                  }
+                }
+              });
           }
         }
       } catch (e) {}

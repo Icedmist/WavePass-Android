@@ -53,6 +53,10 @@ class WavePassApi {
     return _get('/api/v1/venues/default');
   }
 
+  Future<Map<String, dynamic>> getVenue(String id) {
+    return _get('/api/v1/venues/${Uri.encodeComponent(id)}');
+  }
+
   Future<Map<String, dynamic>> createVenue({required String name, required String slug, String? logoUrl}) {
     final body = {'name': name, 'slug': slug};
     if (logoUrl != null && logoUrl.trim().isNotEmpty) {

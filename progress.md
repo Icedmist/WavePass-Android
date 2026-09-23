@@ -620,7 +620,29 @@
   - In `sales_history_screen.dart`, merged offline and counter-sold vouchers from `VoucherHistoryService` into the sales history list, displaying both online orders and counter cash sales with accurate revenue totals.
   - In `barcode_scanner_screen.dart`, resolved actual venue UUID via `VenueStateService` and validated active venue presence before router registration instead of falling back to `'default'`.
   - Registered `assets/portal_templates/` in `pubspec.yaml`.
+- [x] PR [#123](https://github.com/Icedmist/WavePass-Android/pull/123) merged to `main`.
+
+### 49. Re-entrant Loops, Hung Loading States, Unsafe Type Casts & Widget Lifecycle Hardening (Issue #124, PR #125)
+- [x] **Eliminated Re-entrant Network Polling Loop**:
+  - In `NotificationService` (`lib/core/services/notification_service.dart`), introduced an in-flight concurrency lock `_isRefreshingPayments` with `try-finally` and reset in `stopPaymentPolling()`.
+  - Prevents network poll pileups if request latency exceeds the 30-second interval, eliminating duplicated push alerts and repeated modal dialogs.
+- [x] **Bounded Batch Voucher Generation Loop**:
+  - In `BatchVouchersScreen` (`lib/screens/batch_vouchers_screen.dart`), replaced unbounded code accumulation with a `Set<String>` and an explicit attempt ceiling `attempts < qty * 50`.
+  - Guarantees 100% unique voucher codes without colliding or looping indefinitely on high-quantity batches.
+  - Added null/num-safe parsing for plan prices and deduplicated pricing dropdown entries to eliminate `DropdownButtonFormField` duplicate value assertion crashes.
+- [x] **Eliminated Hung Button & Indefinite Loading States**:
+  - In `RouterSetupScreen` (`lib/screens/router_setup_screen.dart`), wrapped `_handleAutoDiscover` in a `try-finally` block ensuring `_isScanning = false` is always cleared even on unhandled network socket exceptions.
+  - In `SellPassScreen` (`lib/screens/sell_pass_screen.dart`), wrapped `_handleGenerate` in a `try-finally` block ensuring `_isGenerating = false` is always executed, preventing permanently locked spinner buttons.
+- [x] **Safe Numeric Parsing Across State & Widgets**:
+  - In `HomeDashboardScreen` (`lib/screens/home_dashboard_screen.dart`), replaced direct `(o['amountMinor'] as int)` cast with null/double-safe `(((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100)`.
+  - In `PlanConfiguratorSheet` (`lib/core/widgets/plan_configurator.dart`), converted `as int` casts for `durationSeconds`, `simultaneousDevices`, and `priceMinor` to `(e?['...'] as num?)?.toInt()` to eliminate fatal Dart `TypeError` crashes when consuming API responses with decimal numbers.
+- [x] **Widget Lifecycle Hardening (Unmounted setState Elimination)**:
+  - Added `if (mounted)` guards before `setState()` in `VoucherHistorySheet`, `PrinterSettingsScreen`, `AdminManagementScreen`, and `BatchVouchersScreen` search controllers to protect against asynchronous calls resolving after widget tree disposal.
+- [x] **Regression & Unit Tests**:
+  - Created `test/loops_and_runtime_bugs_test.dart` testing `NotificationService` re-entrancy locks and ID deduplication, `PlanConfiguratorSheet` initialization with floating-point JSON numbers, and bounded collision-free batch voucher generation.
 - [x] **Verification**:
-  - `flutter analyze` clean (0 issues).
-  - Full test suite passed (81 tests, 0 failures), including updated portal suite tests in `test/portal_subpage_credentials_logout_test.dart`.
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 84 tests passed** (0 failures).
+- [x] PR [#125](https://github.com/Icedmist/WavePass-Android/pull/125) merged to `main`.
+
 

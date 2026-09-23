@@ -92,13 +92,13 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   Future<void> _toggleAutoPrint(bool val) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('wavepass_auto_print_receipts', val);
-    setState(() => _autoPrint = val);
+    if (mounted) setState(() => _autoPrint = val);
   }
 
   Future<void> _setPaperWidth(int width) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('wavepass_printer_paper_width', width);
-    setState(() => _paperWidthMm = width);
+    if (mounted) setState(() => _paperWidthMm = width);
   }
 
   Future<void> _handleTestPrint() async {

@@ -176,7 +176,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           try {
             final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
             if (mounted) {
-              setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${((o['amountMinor'] as int) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
+              setState(() => _recentSales = List<Map<String, dynamic>>.from(orders).map((o) => {'code': o['customerRef'] ?? o['id'].toString().substring(0, 8).toUpperCase(), 'plan': o['Plan']?['name'] ?? 'Pass', 'amount': '₦${(((o['amountMinor'] as num?)?.toInt() ?? 0) ~/ 100)}', 'time': _timeAgo(o['createdAt'])}).toList());
             }
           } catch (_) {}
           try {

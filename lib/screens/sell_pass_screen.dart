@@ -177,108 +177,115 @@ class _SellPassScreenState extends State<SellPassScreen> {
       _isGenerating = true;
     });
 
-    final selectedPlan = _plans[_selectedPlanIndex];
-    final planId = selectedPlan['id'] as String?;
+    try {
+      final selectedPlan = _plans[_selectedPlanIndex];
+      final planId = selectedPlan['id'] as String?;
 
-    // Custom format: numbers only on default or numbers+letters without dashes
-    final code = _randomCode().replaceAll('-', '');
+      // Custom format: numbers only on default or numbers+letters without dashes
+      final code = _randomCode().replaceAll('-', '');
 
-    String password = code;
-    if (_userMode == 'Username & Password') {
-      if (_passPattern == 'Same as Username') {
-        password = code;
-      } else {
-        final passSeg = _generateSegment(_passLength, _passPattern);
-        final passPrefix = _passPrefixCtrl.text.trim().replaceAll('-', '');
-        password = '$passPrefix$passSeg'.replaceAll('-', '');
+      String password = code;
+      if (_userMode == 'Username & Password') {
+        if (_passPattern == 'Same as Username') {
+          password = code;
+        } else {
+          final passSeg = _generateSegment(_passLength, _passPattern);
+          final passPrefix = _passPrefixCtrl.text.trim().replaceAll('-', '');
+          password = '$passPrefix$passSeg'.replaceAll('-', '');
+        }
       }
-    }
 
-    // 1. Upload the exact code to cloud so records match app + router.
-    bool cloudOk = false;
-    if (_venueId != null && planId != null && planId.isNotEmpty) {
+      // 1. Upload the exact code to cloud so records match app + router.
+      bool cloudOk = false;
+      if (_venueId != null && planId != null && planId.isNotEmpty) {
+        try {
+          final res = await WavePassApi.instance.uploadVoucherBatch(
+            venueId: _venueId!,
+            planId: planId,
+            codes: [code],
+          ).timeout(const Duration(seconds: 8));
+          final created = (res['created'] as num?)?.toInt() ?? 0;
+          cloudOk = created > 0;
+        } catch (e) {
+          debugPrint('Cloud voucher upload failed: $e');
+        }
+      }
+
+      // 2. Provision directly onto router hardware (LAN Direct / Cloud Tunnel)
+      String? directMode;
       try {
-        final res = await WavePassApi.instance.uploadVoucherBatch(
-          venueId: _venueId!,
-          planId: planId,
-          codes: [code],
-        ).timeout(const Duration(seconds: 8));
-        final created = (res['created'] as num?)?.toInt() ?? 0;
-        cloudOk = created > 0;
+        final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
+        final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
+          code: code,
+          pass: password,
+          profile: RouterDiscoveryService.profileForDuration(durationSec),
+          sessionTimeoutSeconds: durationSec,
+        );
+        if (directRes['success'] == true) {
+          directMode = directRes['mode']?.toString();
+        }
       } catch (e) {
-        debugPrint('Cloud voucher upload failed: $e');
+        debugPrint('Direct router provisioning attempt: $e');
       }
-    }
 
-    // 2. Provision directly onto router hardware (LAN Direct / Cloud Tunnel)
-    String? directMode;
-    try {
+      // 3. Verify before presenting: router-pushed OR cloud-confirmed.
+      // Never present an unprovisioned code as valid.
+      final provisioned = directMode != null || cloudOk;
+
+      if (!mounted) return;
+
+      // Record voucher in local history
       final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
-      final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
+      VoucherHistoryService.instance.recordVoucher(
         code: code,
-        pass: password,
-        profile: RouterDiscoveryService.profileForDuration(durationSec),
-        sessionTimeoutSeconds: durationSec,
+        password: password,
+        planTitle: selectedPlan['title']?.toString() ?? 'Pass',
+        price: selectedPlan['price']?.toString() ?? '₦0',
+        durationSeconds: durationSec,
+        directMode: directMode,
+        source: 'pos',
+        provisioned: provisioned,
       );
-      if (directRes['success'] == true) {
-        directMode = directRes['mode']?.toString();
+
+      setState(() {
+        _generatedCode = code;
+        _generatedPassword = password;
+        _soldGenerated = false;
+        _provisioned = provisioned;
+        _provisionDetail = directMode != null
+            ? "Live on router (${directMode == 'local' ? 'LAN Direct' : 'Tunnel'})${cloudOk ? ' + cloud' : ''}"
+            : cloudOk
+                ? 'Confirmed in cloud — router will sync'
+                : 'Not provisioned anywhere';
+        _directProvisionMode = directMode;
+        _directProvisionAttempted = true;
+      });
+
+      if (!provisioned && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not provision this code on router or cloud. Tap Retry — do not hand it out yet.'),
+            backgroundColor: AppColors.accentRed,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        return;
       }
-    } catch (e) {
-      debugPrint('Direct router provisioning attempt: $e');
-    }
 
-    // 3. Verify before presenting: router-pushed OR cloud-confirmed.
-    // Never present an unprovisioned code as valid.
-    final provisioned = directMode != null || cloudOk;
-
-    if (!mounted) return;
-
-    // Record voucher in local history
-    final durationSec = (selectedPlan['durationSeconds'] as num?)?.toInt() ?? 3600;
-    VoucherHistoryService.instance.recordVoucher(
-      code: code,
-      password: password,
-      planTitle: selectedPlan['title']?.toString() ?? 'Pass',
-      price: selectedPlan['price']?.toString() ?? '₦0',
-      durationSeconds: durationSec,
-      directMode: directMode,
-      source: 'pos',
-      provisioned: provisioned,
-    );
-
-    setState(() {
-      _isGenerating = false;
-      _generatedCode = code;
-      _generatedPassword = password;
-      _soldGenerated = false;
-      _provisioned = provisioned;
-      _provisionDetail = directMode != null
-          ? "Live on router (${directMode == 'local' ? 'LAN Direct' : 'Tunnel'})${cloudOk ? ' + cloud' : ''}"
-          : cloudOk
-              ? 'Confirmed in cloud — router will sync'
-              : 'Not provisioned anywhere';
-      _directProvisionMode = directMode;
-      _directProvisionAttempted = true;
-    });
-
-    if (!provisioned && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not provision this code on router or cloud. Tap Retry — do not hand it out yet.'),
-          backgroundColor: AppColors.accentRed,
-          duration: Duration(seconds: 5),
-        ),
-      );
-      return;
-    }
-
-    // Auto-print receipt if enabled in printer settings
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool('wavepass_auto_print_receipts') ?? true) {
-        _handlePrint();
+      // Auto-print receipt if enabled in printer settings
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('wavepass_auto_print_receipts') ?? true) {
+          _handlePrint();
+        }
+      } catch (_) {}
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+        });
       }
-    } catch (_) {}
+    }
   }
 
   /// Re-runs router + cloud provisioning for the currently displayed code.

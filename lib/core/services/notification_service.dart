@@ -45,6 +45,8 @@ class AppNotifier {
   bool _barReady = false;
   Timer? _pollTimer;
   String? _pollVenueId;
+  bool _isRefreshingPayments = false;
+  bool get isRefreshingPayments => _isRefreshingPayments;
   final Set<String> _seenRemoteIds = {};
   GlobalKey<ScaffoldMessengerState>? _messengerKey;
 
@@ -407,9 +409,12 @@ class AppNotifier {
     _pollTimer?.cancel();
     _pollTimer = null;
     _pollVenueId = null;
+    _isRefreshingPayments = false;
   }
 
   Future<void> refreshPayments(String venueId, {bool showBar = true, bool showModal = true}) async {
+    if (_isRefreshingPayments) return;
+    _isRefreshingPayments = true;
     try {
       final rows = await WavePassApi.instance.listNotifications(venueId);
       for (final r in rows) {
@@ -473,7 +478,10 @@ class AppNotifier {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _isRefreshingPayments = false;
+    }
   }
 
   /// Interactive pop-up dialog upon adding or activating a venue to prompt enabling notifications.

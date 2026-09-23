@@ -469,7 +469,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                     );
                   } catch (_) {}
                 }
-                setState(() => _plans[index]['price'] = newPrice);
+                if (mounted) setState(() => _plans[index]['price'] = newPrice);
                 if (ctx.mounted) Navigator.of(ctx).pop();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

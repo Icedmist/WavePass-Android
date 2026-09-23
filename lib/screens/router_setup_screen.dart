@@ -224,31 +224,31 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     final user = _userCtrl.text.trim().isNotEmpty ? _userCtrl.text.trim() : "admin";
     final pass = _passCtrl.text.trim();
 
-    await _saveCredentials();
+    try {
+      await _saveCredentials();
 
-    // 1. Probe local router
-    DiscoveredRouter? router = await RouterDiscoveryService.discoverLocalRouter(
-      ip: targetIp,
-      username: user,
-      password: pass,
-    );
-
-    // 2. If local probe fails and tunnel endpoint provided, probe tunnel
-    if (router == null && tunnel.isNotEmpty) {
-      router = await RouterDiscoveryService.probeEndpoint(
-        tunnel,
+      // 1. Probe local router
+      DiscoveredRouter? router = await RouterDiscoveryService.discoverLocalRouter(
+        ip: targetIp,
         username: user,
         password: pass,
-        connectionType: "Tunnel",
       );
-    }
 
-    if (mounted) {
-      final isOnline = router != null && router.isReachable && !router.authFailed && !router.captivePortalIntercepted;
-      setState(() {
-        _isScanning = false;
-        _foundRouter = isOnline ? router : null;
-      });
+      // 2. If local probe fails and tunnel endpoint provided, probe tunnel
+      if (router == null && tunnel.isNotEmpty) {
+        router = await RouterDiscoveryService.probeEndpoint(
+          tunnel,
+          username: user,
+          password: pass,
+          connectionType: "Tunnel",
+        );
+      }
+
+      if (mounted) {
+        final isOnline = router != null && router.isReachable && !router.authFailed && !router.captivePortalIntercepted;
+        setState(() {
+          _foundRouter = isOnline ? router : null;
+        });
 
       if (router == null || (!router.isReachable && !router.captivePortalIntercepted && !router.authFailed)) {
         final errorMsg = router?.errorMessage ?? "No MikroTik router detected at $targetIp${tunnel.isNotEmpty ? ' or tunnel' : ''}. Verify you are connected to the router's Wi-Fi.";
@@ -294,7 +294,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
         );
       }
     }
+  } finally {
+    if (mounted) {
+      setState(() => _isScanning = false);
+    }
   }
+}
 
   Future<void> _handleInstallHotspot() async {
     if (_foundRouter == null) return;

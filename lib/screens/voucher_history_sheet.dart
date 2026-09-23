@@ -433,7 +433,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                         InkWell(
                                           onTap: () async {
                                             final ok = await VoucherHistoryService.instance.markSold(item.code, !item.sold);
-                                            if (ok) {
+                                            if (ok && mounted) {
                                               setState(() => item.sold = !item.sold);
                                             }
                                           },
@@ -641,6 +641,7 @@ class _RouterTargetRowState extends State<_RouterTargetRow> {
   Future<void> _reset() async {
     await RouterDiscoveryService.resetRouterTarget();
     await _refresh();
+    if (!mounted) return;
     setState(() {
       _valid = null;
       _identity = null;

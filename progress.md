@@ -645,4 +645,22 @@
   - `flutter test`: **All 84 tests passed** (0 failures).
 - [x] PR [#125](https://github.com/Icedmist/WavePass-Android/pull/125) merged to `main`.
 
+### 50. Operator Venue Retention, User Upsert & Membership Self-Healing (Issue #126, PR #127)
+- [x] **Root Cause Investigation on "Disappearing Venues"**:
+  - Investigated account `Sahabimusa963@gmail.com`: verified that the user had created "DAN MUSA WIFI" (`087e2f20-899e-419e-8af2-b8978f8cb70b`) with a 1-day pass (`30000` minor = ₦300), but `VenueMember` was empty because `public.User` had no matching row for Supabase Auth ID `5f28a9cf-57c6-4cb3-bb1d-fc836570a053`.
+  - Because `VenueMember` insertions had failed silently due to missing `User` foreign keys, `getPrimaryVenue` returned `null` upon app updates or re-logins, making the venue disappear and forcing repeated venue creation.
+- [x] **Guaranteed User Upsert in `VenueStateService`**:
+  - In `createVenue` and `refreshVenue`, added an explicit upsert for `public.User` (`id`, `email`, `authProvider: 'supabase'`, `status: 'active'`) before attempting to upsert into `VenueMember`.
+- [x] **Self-Healing Fallback in `SupabaseService`**:
+  - In `getPrimaryVenue` and `getVenues`, added fallback to `ActivationRedemption` by operator email. If `VenueMember` is missing, it resolves the operator's active venue and automatically heals both the `User` and `VenueMember` rows in Supabase.
+- [x] **Live Account Restoration**:
+  - Restored and linked `Sahabimusa963@gmail.com` to active venue `DAN MUSA WIFI` (`087e2f20-899e-419e-8af2-b8978f8cb70b`) as `Owner`, alongside their `ActivationRedemption` record.
+- [x] **Regression Tests**:
+  - Added test in `test/venue_creation_and_plan_self_healing_test.dart` verifying venue retention across refreshes for non-superadmin operator accounts.
+- [x] **Verification**:
+  - `flutter analyze`: **0 issues found** (clean).
+  - `flutter test`: **All 85 tests passed** (0 failures).
+- [x] PR [#127](https://github.com/Icedmist/WavePass-Android/pull/127) merged to `main`.
+
+
 

@@ -82,12 +82,45 @@ class SupabaseService {
             return Map<String, dynamic>.from(memberRes['Venue'] as Map);
           }
         } catch (_) {}
-        // Logged-in non-member: do NOT fall through to another venue's data.
-        // Only the platform super-admin may use the global fallback below.
-        if (!_isSuperAdmin(targetEmail)) return null;
       }
 
-      // 2. Fallback: super-admin only — latest venue for inspection/support.
+      // 2. Self-healing fallback: Check ActivationRedemption for this operator's email
+      if (targetEmail.isNotEmpty) {
+        try {
+          final redemption = await client
+              .from('ActivationRedemption')
+              .select('venueId, Venue(*)')
+              .ilike('email', targetEmail)
+              .not('venueId', 'is', null)
+              .limit(1)
+              .maybeSingle();
+          if (redemption != null && redemption['Venue'] != null) {
+            final v = Map<String, dynamic>.from(redemption['Venue'] as Map);
+            if (user != null) {
+              try {
+                await client.from('User').upsert({
+                  'id': user.id,
+                  'email': user.email ?? targetEmail,
+                  'authProvider': 'supabase',
+                  'status': 'active',
+                });
+                await client.from('VenueMember').upsert({
+                  'venueId': v['id'],
+                  'userId': user.id,
+                  'role': 'Owner',
+                });
+              } catch (_) {}
+            }
+            return v;
+          }
+        } catch (_) {}
+      }
+
+      // 3. Logged-in non-member: do NOT fall through to another venue's data.
+      // Only the platform super-admin may use the global fallback below.
+      if (user != null && !_isSuperAdmin(targetEmail)) return null;
+
+      // 4. Fallback: super-admin only — latest venue for inspection/support.
       if (targetEmail == superAdminEmail) {
         final res = await client
             .from('Venue')
@@ -121,9 +154,42 @@ class SupabaseService {
               .toList();
           if (venues.isNotEmpty) return venues;
         } catch (_) {}
-        // Non-member operators see zero venues — never the full table.
-        if (!_isSuperAdmin(targetEmail)) return [];
       }
+
+      // Self-healing fallback: Check ActivationRedemption for this operator's email
+      if (targetEmail.isNotEmpty) {
+        try {
+          final redemption = await client
+              .from('ActivationRedemption')
+              .select('venueId, Venue(*)')
+              .ilike('email', targetEmail)
+              .not('venueId', 'is', null)
+              .limit(1)
+              .maybeSingle();
+          if (redemption != null && redemption['Venue'] != null) {
+            final v = Map<String, dynamic>.from(redemption['Venue'] as Map);
+            if (user != null) {
+              try {
+                await client.from('User').upsert({
+                  'id': user.id,
+                  'email': user.email ?? targetEmail,
+                  'authProvider': 'supabase',
+                  'status': 'active',
+                });
+                await client.from('VenueMember').upsert({
+                  'venueId': v['id'],
+                  'userId': user.id,
+                  'role': 'Owner',
+                });
+              } catch (_) {}
+            }
+            return [v];
+          }
+        } catch (_) {}
+      }
+
+      // Non-member operators see zero venues — never the full table.
+      if (user != null && !_isSuperAdmin(targetEmail)) return [];
 
       if (targetEmail == superAdminEmail) {
         final res = await client.from('Venue').select('*').order('createdAt', ascending: false);

@@ -85,5 +85,24 @@ void main() {
       expect(find.textContaining('Test layout exception'), findsOneWidget);
       expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
     });
+
+    test('refreshVenue retains venue for non-superadmin operator across refreshes', () async {
+      final service = VenueStateService.instance;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sb-user-email', 'sahabimusa963@gmail.com');
+
+      // Create venue as operator
+      final created = await service.createVenue(name: 'DAN MUSA WIFI');
+      expect(created, isNotNull);
+      expect(service.currentVenueName, equals('DAN MUSA WIFI'));
+
+      final venueId = service.currentVenueId;
+      expect(venueId, isNotNull);
+
+      // Verify that refreshVenue preserves the operator's venue
+      await service.refreshVenue(targetVenueId: venueId);
+      expect(service.currentVenueName, equals('DAN MUSA WIFI'));
+      expect(service.currentVenueId, equals(venueId));
+    });
   });
 }

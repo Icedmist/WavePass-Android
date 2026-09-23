@@ -138,6 +138,12 @@ class VenueStateService {
     final user = SupabaseService.instance.currentUser;
     if (user != null) {
       try {
+        await SupabaseService.instance.client.from('User').upsert({
+          'id': user.id,
+          'email': user.email ?? '',
+          'authProvider': 'supabase',
+          'status': 'active',
+        });
         await SupabaseService.instance.client.from('VenueMember').upsert({
           'venueId': vId,
           'userId': user.id,
@@ -197,6 +203,12 @@ class VenueStateService {
           try {
             final user = SupabaseService.instance.currentUser;
             if (user != null) {
+              await SupabaseService.instance.client.from('User').upsert({
+                'id': user.id,
+                'email': user.email ?? '',
+                'authProvider': 'supabase',
+                'status': 'active',
+              });
               final existing = await SupabaseService.instance.client
                   .from('VenueMember')
                   .select('venueId')

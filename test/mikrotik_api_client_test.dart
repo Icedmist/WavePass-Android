@@ -268,8 +268,18 @@ void main() {
       expect(profileSentence, contains('login-by=http-pap,http-chap,mac-cookie,trial'));
       expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
       expect(profileSentence, contains('trial-uptime=2m/24h'));
-      expect(profileSentence, contains('addresses-per-mac=1'));
-      expect(profileSentence, contains('mac-cookie-timeout=3d'));
+      expect(profileSentence, isNot(contains('addresses-per-mac=1')));
+      expect(profileSentence, isNot(contains('mac-cookie-timeout=3d')));
+
+      final hotspotSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/add'));
+      expect(hotspotSentence, contains('addresses-per-mac=1'));
+
+      final dhcpSentence = executedWords.firstWhere((w) => w.contains('/ip/dhcp-server/set'));
+      expect(dhcpSentence, contains('lease-time=1d'));
+
+      final userProfileSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/user/profile/add'));
+      expect(userProfileSentence, contains('add-mac-cookie=yes'));
+      expect(userProfileSentence, contains('mac-cookie-timeout=3d'));
     });
   });
 }

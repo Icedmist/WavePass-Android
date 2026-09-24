@@ -655,22 +655,24 @@ add comment="Supabase Auth (HTTPS)" dst-host="*.supabase.co" action=accept
 # 4. Standard Rate-Limit User Profiles & Hard Timeouts
 # --------------------------------------------------------
 /ip hotspot user profile
-set [find default=yes] shared-users=2 keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m
-add name="profile_30m" rate-limit="10M/5M" shared-users=2 session-timeout=30m keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30m"
-add name="profile_1h" rate-limit="10M/5M" shared-users=2 session-timeout=1h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 1h"
-add name="profile_2h" rate-limit="10M/5M" shared-users=2 session-timeout=2h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 2h"
-add name="profile_3h" rate-limit="15M/5M" shared-users=2 session-timeout=3h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 3h"
-add name="profile_6h" rate-limit="15M/5M" shared-users=2 session-timeout=6h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 6h"
-add name="profile_12h" rate-limit="15M/5M" shared-users=2 session-timeout=12h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 12h"
-add name="profile_1d" rate-limit="20M/10M" shared-users=2 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 24h"
-add name="profile_7d" rate-limit="20M/10M" shared-users=2 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 7d"
-add name="profile_30d" rate-limit="25M/10M" shared-users=2 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m comment="WavePass 30d"
+set [find default=yes] shared-users=2 keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d
+add name="profile_30m" rate-limit="10M/5M" shared-users=2 session-timeout=30m keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 30m"
+add name="profile_1h" rate-limit="10M/5M" shared-users=2 session-timeout=1h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 1h"
+add name="profile_2h" rate-limit="10M/5M" shared-users=2 session-timeout=2h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 2h"
+add name="profile_3h" rate-limit="15M/5M" shared-users=2 session-timeout=3h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 3h"
+add name="profile_6h" rate-limit="15M/5M" shared-users=2 session-timeout=6h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 6h"
+add name="profile_12h" rate-limit="15M/5M" shared-users=2 session-timeout=12h keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 12h"
+add name="profile_1d" rate-limit="20M/10M" shared-users=2 session-timeout=1d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 24h"
+add name="profile_7d" rate-limit="20M/10M" shared-users=2 session-timeout=7d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 7d"
+add name="profile_30d" rate-limit="25M/10M" shared-users=2 session-timeout=30d keepalive-timeout=2m idle-timeout=5m status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d comment="WavePass 30d"
 
 # --------------------------------------------------------
 # 5. Enforce No Hotspot Sharing & 2-Minute Payment Trial
 # --------------------------------------------------------
-/ip hotspot user profile set [find] shared-users=2 on-login=":local u \\"\\\$user\\"; :local uc 0; :local ut \\"00:00:00\\"; :local ka; :foreach i in=[/ip hotspot active find user=\\\$u] do={ :local cur [/ip hotspot active get \\\$i uptime]; :if (\\\$cur > \\\$ut) do={ :set ut \\\$cur; :set ka \\\$i; }; :set uc (\\\$uc + 1); }; :if (\\\$uc > 1) do={ /ip hotspot active remove numbers=\\\$ka; }; :local huser [/ip hotspot user find name=\\\$u]; :if ([:len \\\$huser] > 0) do={ :local lu [/ip hotspot user get \\\$huser limit-uptime]; :if ([:len \\\$lu] > 0 && \\\$lu != \\"0s\\") do={ :local sname (\\"exp_\\" . \\\$u); :if ([:len [/system scheduler find name=\\\$sname]] = 0) do={ /system scheduler add name=\\\$sname interval=\\\$lu on-event=(\\"/ip hotspot active remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot user remove [find name=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot cookie remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /system scheduler remove [find name=\\\\\\"\\" . \\\$sname . \\"\\\\\\"];\\") comment=\\"Auto-expire voucher\\"; }; }; };"
-/ip hotspot profile set [find] addresses-per-mac=1 mac-cookie-timeout=3d login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
+/ip hotspot user profile set [find] shared-users=2 add-mac-cookie=yes mac-cookie-timeout=3d on-login=":local u \\"\\\$user\\"; :local curMac \\\$"mac-address\\"; :foreach i in=[/ip hotspot active find user=\\\$u] do={ :if ([/ip hotspot active get \\\$i mac-address] != \\\$curMac) do={ /ip hotspot active remove \\\$i; }; }; :local huser [/ip hotspot user find name=\\\$u]; :if ([:len \\\$huser] > 0) do={ :local lu [/ip hotspot user get \\\$huser limit-uptime]; :if ([:len \\\$lu] > 0 && \\\$lu != \\"0s\\") do={ :local sname (\\"exp_\\" . \\\$u); :if ([:len [/system scheduler find name=\\\$sname]] = 0) do={ /system scheduler add name=\\\$sname interval=\\\$lu on-event=(\\"/ip hotspot active remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot user remove [find name=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /ip hotspot cookie remove [find user=\\\\\\"\\" . \\\$u . \\"\\\\\\"]; /system scheduler remove [find name=\\\\\\"\\" . \\\$sname . \\"\\\\\\"];\\") comment=\\"Auto-expire voucher\\"; }; }; };"
+/ip hotspot set [find] addresses-per-mac=1
+/ip hotspot profile set [find] login-by=http-pap,http-chap,mac-cookie,trial trial-user-profile="wp-payment-trial" trial-uptime=2m/24h
+/ip dhcp-server set [find] lease-time=1d
 /interface wireless set [find] default-forwarding=no
 
 # Disable IPv6 bypass (HotSpot is IPv4-only; Linux automatically shares IPv6 if active)
@@ -1775,18 +1777,6 @@ $_rfc1321Md5Js
         } else {
           // Permanent auto-rejoin: if this device still holds an unexpired
           // voucher, reconnect it without asking the user to retype anything.
-          var errEl = document.querySelector('.error-msg');
-          var hasError = errEl && errEl.innerText && errEl.innerText.trim().length > 0;
-          if (hasError) {
-            // An error was returned by RouterOS (e.g. invalid credentials or expired uptime).
-            // Clear stale credentials so we don't loop, and allow clean manual re-entry.
-            try {
-              sessionStorage.removeItem('wp-auto-attempt');
-              localStorage.removeItem('wp-active-voucher');
-            } catch(e){}
-            return;
-          }
-
           var savedV = null;
           try {
             savedV = localStorage.getItem('wp-active-voucher') || sessionStorage.getItem('wp-active-voucher');
@@ -1807,6 +1797,7 @@ $_rfc1321Md5Js
               devMac = localStorage.getItem('wp-device-mac') || sessionStorage.getItem('wp-device-mac') || null;
             }
           } catch(e){}
+
           if (savedV) {
             var vInp = document.getElementById('voucher_input');
             if (vInp && !vInp.value) {
@@ -1817,6 +1808,25 @@ $_rfc1321Md5Js
               if (sCode) sCode.innerText = savedV;
             }
           }
+
+          var errEl = document.querySelector('.error-msg');
+          var hasError = errEl && errEl.innerText && errEl.innerText.trim().length > 0;
+          if (hasError) {
+            // An error was returned by RouterOS (e.g. temporary Wi-Fi / auth glitch).
+            // Clear auto-attempt so we don't enter an infinite reload loop,
+            // but PRESERVE saved voucher in localStorage so the user can easily 1-tap reconnect!
+            try {
+              sessionStorage.removeItem('wp-auto-attempt');
+            } catch(e){}
+            if (savedV) {
+              var sBox = document.getElementById('savedVoucherBox');
+              if (sBox) sBox.style.display = 'block';
+              var sCode = document.getElementById('savedVoucherCode');
+              if (sCode) sCode.innerText = savedV;
+            }
+            return;
+          }
+
           var attempted = false;
           try { attempted = sessionStorage.getItem('wp-auto-attempt') === '1'; } catch(e){}
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
@@ -1827,42 +1837,57 @@ $_rfc1321Md5Js
             if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
 
             var executed = false;
-            var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-            var timer = controller ? setTimeout(function() { controller.abort(); }, 1500) : null;
-            var fetchOpts = controller ? { signal: controller.signal } : {};
+            function doFetch(attempt) {
+              var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+              var timer = controller ? setTimeout(function() { controller.abort(); }, 4500) : null;
+              var fetchOpts = controller ? { signal: controller.signal } : {};
 
-            fetch(autoUrl, fetchOpts)
-              .then(function(res) { return res.json(); })
-              .then(function(data) {
-                if (timer) clearTimeout(timer);
-                if (data && data.found && data.voucherCode) {
-                  executed = true;
-                  try {
-                    localStorage.setItem('wp-active-voucher', data.voucherCode);
-                    sessionStorage.setItem('wp-active-voucher', data.voucherCode);
-                  } catch(e){}
-                  executeLogin(data.voucherCode, data.voucherCode);
-                } else if (data && !data.found) {
-                  // Explicit cloud verification: voucher has expired or is invalid.
-                  try { localStorage.removeItem('wp-active-voucher'); } catch(e){}
-                  var sBox = document.getElementById('savedVoucherBox');
-                  if (sBox) sBox.style.display = 'none';
-                }
-              })
-              .catch(function() {
-                if (timer) clearTimeout(timer);
-                // Network error, timeout, or captive portal DNS block before authentication.
-                // Fall back immediately to authenticating with locally saved voucher or credentials
-                if (!executed) {
-                  if (savedV) {
+              fetch(autoUrl, fetchOpts)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                  if (timer) clearTimeout(timer);
+                  if (data && data.found && data.voucherCode) {
                     executed = true;
-                    executeLogin(savedV, savedV);
-                  } else if (savedU && savedP) {
-                    executed = true;
-                    executeLogin(savedU, savedP);
+                    try {
+                      localStorage.setItem('wp-active-voucher', data.voucherCode);
+                      sessionStorage.setItem('wp-active-voucher', data.voucherCode);
+                    } catch(e){}
+                    executeLogin(data.voucherCode, data.voucherCode);
+                  } else if (data && !data.found) {
+                    // Explicit cloud verification: voucher has expired or is invalid.
+                    try {
+                      localStorage.removeItem('wp-active-voucher');
+                      sessionStorage.removeItem('wp-active-voucher');
+                    } catch(e){}
+                    var sBox = document.getElementById('savedVoucherBox');
+                    if (sBox) sBox.style.display = 'none';
                   }
-                }
-              });
+                })
+                .catch(function(err) {
+                  if (timer) clearTimeout(timer);
+                  if (attempt < 2) {
+                    setTimeout(function() { doFetch(attempt + 1); }, 600);
+                    return;
+                  }
+                  // Network error, timeout, or captive portal DNS block before authentication.
+                  // Fall back immediately to authenticating with locally saved voucher or credentials
+                  if (!executed) {
+                    if (savedV) {
+                      executed = true;
+                      executeLogin(savedV, savedV);
+                    } else if (savedU && savedP) {
+                      executed = true;
+                      executeLogin(savedU, savedP);
+                    } else {
+                      // MAC-only device with empty localStorage or link timeout:
+                      // Ensure 1-tap reconnect button is visible if any saved voucher is found
+                      var sBox = document.getElementById('savedVoucherBox');
+                      if (sBox && savedV) sBox.style.display = 'block';
+                    }
+                  }
+                });
+            }
+            doFetch(1);
           }
         }
       } catch (e) {}

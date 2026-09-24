@@ -410,12 +410,15 @@ class MikrotikApiClient {
           '/ip/hotspot/user/profile/add',
           '=name=wp-payment-trial',
           '=rate-limit=2M/2M',
-          '=shared-users=1',
+          '=shared-users=2',
           '=session-timeout=2m',
           '=keepalive-timeout=2m',
           '=idle-timeout=1m',
           '=status-autorefresh=1m',
           '=transparent-proxy=yes',
+          '=add-mac-cookie=yes',
+          '=mac-cookie-timeout=3d',
+          '=on-login=${RouterDiscoveryService.onLoginScript}',
           '=comment=WavePass 2-Minute Payment Trial',
         ]);
       }
@@ -431,8 +434,6 @@ class MikrotikApiClient {
         '=login-by=http-pap,http-chap,mac-cookie,trial',
         '=trial-user-profile=wp-payment-trial',
         '=trial-uptime=2m/24h',
-        '=addresses-per-mac=1',
-        '=mac-cookie-timeout=3d',
         if (localIp != null && localIp.isNotEmpty)
           '=hotspot-address=$localIp',
       ]);
@@ -455,8 +456,6 @@ class MikrotikApiClient {
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',
-              '=addresses-per-mac=1',
-              '=mac-cookie-timeout=3d',
             ]);
             results['profile'] = true;
           }
@@ -498,13 +497,14 @@ class MikrotikApiClient {
     }
     results['walledGarden'] = wgSuccess > 0;
 
-    // 4. HotSpot Server on wlan1 or default interface
+    // 4. HotSpot Server on wlan1 or default interface with addresses-per-mac=1
     try {
       await executeSentence([
         '/ip/hotspot/add',
         '=name=wavepass-hotspot',
         '=interface=wlan1',
         '=profile=wavepass-profile',
+        '=addresses-per-mac=1',
         '=disabled=no',
       ]);
       results['hotspot'] = true;
@@ -515,12 +515,31 @@ class MikrotikApiClient {
           '/ip/hotspot/print',
         ]);
         if (existing.isNotEmpty) {
+          final hsId = existing.first['.id'];
+          if (hsId != null) {
+            try {
+              await executeSentence([
+                '/ip/hotspot/set',
+                '=.id=$hsId',
+                '=addresses-per-mac=1',
+              ]);
+            } catch (_) {}
+          }
           results['hotspot'] = true; // HotSpot is already installed and active
         }
       } catch (_) {
         (results['errors'] as List<String>).add('HotSpot: $e');
       }
     }
+
+    // 4b. Configure DHCP server lease time to 1d to avoid IP churn and duplicate host table entries
+    try {
+      await executeSentence([
+        '/ip/dhcp-server/set',
+        '=[find]',
+        '=lease-time=1d',
+      ]);
+    } catch (_) {}
 
     // 5. Standard Duration User Profiles (with hard session-timeout & keepalives)
     int tierSuccess = 0;
@@ -535,6 +554,8 @@ class MikrotikApiClient {
           '=keepalive-timeout=${tier['keepalive-timeout']}',
           '=idle-timeout=${tier['idle-timeout']}',
           '=status-autorefresh=${tier['status-autorefresh']}',
+          '=add-mac-cookie=${tier['add-mac-cookie'] ?? 'yes'}',
+          '=mac-cookie-timeout=${tier['mac-cookie-timeout'] ?? '3d'}',
           if (tier['on-login'] != null)
             '=on-login=${tier['on-login']}',
           '=comment=${tier['comment']}',
@@ -559,6 +580,8 @@ class MikrotikApiClient {
                 '=keepalive-timeout=${tier['keepalive-timeout']}',
                 '=idle-timeout=${tier['idle-timeout']}',
                 '=status-autorefresh=${tier['status-autorefresh']}',
+                '=add-mac-cookie=${tier['add-mac-cookie'] ?? 'yes'}',
+                '=mac-cookie-timeout=${tier['mac-cookie-timeout'] ?? '3d'}',
                 if (tier['on-login'] != null)
                   '=on-login=${tier['on-login']}',
               ]);
@@ -568,7 +591,7 @@ class MikrotikApiClient {
         } catch (_) {}
       }
     }
-    // Enforce shared-users=2, on-login, keepalives, and idle timeout on 'default' user profile as well
+    // Enforce shared-users=2, on-login, add-mac-cookie, keepalives, and idle timeout on 'default' user profile as well
     try {
       final defProfiles = await executeSentence([
         '/ip/hotspot/user/profile/print',
@@ -584,6 +607,8 @@ class MikrotikApiClient {
             '=keepalive-timeout=2m',
             '=idle-timeout=5m',
             '=status-autorefresh=1m',
+            '=add-mac-cookie=yes',
+            '=mac-cookie-timeout=3d',
             '=on-login=${RouterDiscoveryService.onLoginScript}',
           ]);
         }
@@ -712,6 +737,8 @@ class MikrotikApiClient {
               '/ip/hotspot/user/profile/set',
               '=.id=$id',
               '=shared-users=2',
+              '=add-mac-cookie=yes',
+              '=mac-cookie-timeout=3d',
               '=on-login=${RouterDiscoveryService.onLoginScript}',
             ]);
           }
@@ -729,6 +756,8 @@ class MikrotikApiClient {
               '=idle-timeout=1m',
               '=status-autorefresh=1m',
               '=transparent-proxy=yes',
+              '=add-mac-cookie=yes',
+              '=mac-cookie-timeout=3d',
               '=on-login=${RouterDiscoveryService.onLoginScript}',
               '=comment=WavePass 2-Minute Payment Trial',
             ]);
@@ -739,7 +768,7 @@ class MikrotikApiClient {
         debugPrint('[MikrotikApiClient] enforceNoSharing profiles error: $e');
       }
 
-      // 2. Hotspot Server Profiles: addresses-per-mac=1, mac-cookie-timeout=3d, login-by, trial
+      // 2. Hotspot Server Profiles: login-by, trial
       try {
         final srvProfiles = await executeSentence(['/ip/hotspot/profile/print']);
         for (final sp in srvProfiles) {
@@ -748,8 +777,6 @@ class MikrotikApiClient {
             await executeSentence([
               '/ip/hotspot/profile/set',
               '=.id=$id',
-              '=addresses-per-mac=1',
-              '=mac-cookie-timeout=3d',
               '=login-by=http-pap,http-chap,mac-cookie,trial',
               '=trial-user-profile=wp-payment-trial',
               '=trial-uptime=2m/24h',
@@ -759,6 +786,34 @@ class MikrotikApiClient {
         results['serverProfiles'] = true;
       } catch (e) {
         debugPrint('[MikrotikApiClient] enforceNoSharing server profiles error: $e');
+      }
+
+      // 2b. Hotspot Server Instance: addresses-per-mac=1
+      try {
+        final hsList = await executeSentence(['/ip/hotspot/print']);
+        for (final hs in hsList) {
+          final id = hs['.id'];
+          if (id != null) {
+            await executeSentence([
+              '/ip/hotspot/set',
+              '=.id=$id',
+              '=addresses-per-mac=1',
+            ]);
+          }
+        }
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing hotspot server error: $e');
+      }
+
+      // 2c. DHCP Server lease time: 1d (prevents IP churn and duplicate host table entries)
+      try {
+        await executeSentence([
+          '/ip/dhcp-server/set',
+          '=[find]',
+          '=lease-time=1d',
+        ]);
+      } catch (e) {
+        debugPrint('[MikrotikApiClient] enforceNoSharing dhcp error: $e');
       }
 
       // 3. Wireless client isolation (default-forwarding=no)

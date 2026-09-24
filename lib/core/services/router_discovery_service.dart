@@ -934,17 +934,15 @@ class RouterDiscoveryService {
   }
 
   /// On-login script that:
-  /// 1. Kicks the oldest active session when reconnecting with the same voucher (eliminating 'already logged in' lockout).
+  /// 1. Evicts active sessions from a DIFFERENT device/MAC when reconnecting with the same voucher,
+  ///    while PRESERVING the active session and MAC cookie when the SAME device/MAC returns or reconnects.
   /// 2. Dynamically activates a per-voucher wall-clock expiration scheduler on RouterOS hardware upon first login.
   static const String onLoginScript =
-      ':local u "\$user"; :local uc 0; :local ut "00:00:00"; :local ka; '
+      ':local u "\$user"; :local curMac \$"mac-address"; '
       ':foreach i in=[/ip hotspot active find user=\$u] do={ '
-      ':local cur [/ip hotspot active get \$i uptime]; '
-      ':if (\$cur > \$ut) do={ :set ut \$cur; :set ka \$i; }; '
-      ':set uc (\$uc + 1); '
+      ':if ([/ip hotspot active get \$i mac-address] != \$curMac) do={ '
+      '/ip hotspot active remove \$i; '
       '}; '
-      ':if (\$uc > 1) do={ '
-      '/ip hotspot active remove numbers=\$ka; '
       '}; '
       ':local ur [/ip hotspot user find name=\$u]; '
       ':if ([:len \$ur] > 0) do={ '
@@ -979,6 +977,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 30m',
     },
@@ -990,6 +990,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 1h',
     },
@@ -1001,6 +1003,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 2h',
     },
@@ -1012,6 +1016,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 3h',
     },
@@ -1023,6 +1029,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 6h',
     },
@@ -1034,6 +1042,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 12h',
     },
@@ -1045,6 +1055,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 24h',
     },
@@ -1056,6 +1068,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 7d',
     },
@@ -1067,6 +1081,8 @@ class RouterDiscoveryService {
       'keepalive-timeout': '2m',
       'idle-timeout': '5m',
       'status-autorefresh': '1m',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 30d',
     },
@@ -1079,6 +1095,8 @@ class RouterDiscoveryService {
       'idle-timeout': '1m',
       'status-autorefresh': '1m',
       'transparent-proxy': 'yes',
+      'add-mac-cookie': 'yes',
+      'mac-cookie-timeout': '3d',
       'on-login': onLoginScript,
       'comment': 'WavePass 2-Minute Payment Trial',
     },
@@ -1538,12 +1556,15 @@ class RouterDiscoveryService {
           body: jsonEncode({
             'name': 'wp-payment-trial',
             'rate-limit': '2M/2M',
-            'shared-users': '1',
+            'shared-users': '2',
             'session-timeout': '2m',
             'keepalive-timeout': '2m',
             'idle-timeout': '1m',
             'status-autorefresh': '1m',
             'transparent-proxy': 'true',
+            'add-mac-cookie': 'yes',
+            'mac-cookie-timeout': '3d',
+            'on-login': onLoginScript,
             'comment': 'WavePass 2-Minute Payment Trial',
           }),
         ).timeout(const Duration(seconds: 3));
@@ -1562,8 +1583,6 @@ class RouterDiscoveryService {
             'login-by': 'http-pap,http-chap,mac-cookie,trial',
             'trial-user-profile': 'wp-payment-trial',
             'trial-uptime': '2m/24h',
-            'addresses-per-mac': '1',
-            'mac-cookie-timeout': '3d',
             'html-directory': 'hotspot',
           }),
         ).timeout(const Duration(seconds: 4));
@@ -1609,7 +1628,7 @@ class RouterDiscoveryService {
         (results['errors'] as List<String>).add('WalledGarden: $e');
       }
 
-      // 4. Ensure HotSpot Server on wlan1 or default interface
+      // 4. Ensure HotSpot Server on wlan1 or default interface with addresses-per-mac=1
       try {
         final hsUri = Uri.parse("http://$hostOnly:$port/rest/ip/hotspot");
         final hsRes = await client.put(
@@ -1619,6 +1638,7 @@ class RouterDiscoveryService {
             'name': 'wavepass-hotspot',
             'interface': 'wlan1',
             'profile': 'wavepass-profile',
+            'addresses-per-mac': '1',
             'disabled': 'false',
           }),
         ).timeout(const Duration(seconds: 4));
@@ -1626,6 +1646,16 @@ class RouterDiscoveryService {
       } catch (e) {
         (results['errors'] as List<String>).add('HotSpot: $e');
       }
+
+      // 4b. Configure DHCP server lease time to 1d to avoid IP churn and duplicate host table entries
+      try {
+        final dhcpUri = Uri.parse("http://$hostOnly:$port/rest/ip/dhcp-server");
+        await client.patch(
+          dhcpUri,
+          headers: headers,
+          body: jsonEncode({'lease-time': '1d'}),
+        ).timeout(const Duration(seconds: 3));
+      } catch (_) {}
 
       // 5. Configure Standard Rate-Limit User Profiles (with hard session timeouts)
       try {
@@ -1641,7 +1671,7 @@ class RouterDiscoveryService {
             if (tRes.statusCode >= 200 && tRes.statusCode < 300) tierSuccess++;
           } catch (_) {}
         }
-        // Enforce shared-users=2, keepalives, on-login, and idle timeout on 'default' profile
+        // Enforce shared-users=2, keepalives, on-login, add-mac-cookie, and idle timeout on 'default' profile
         try {
           await client.put(
             userProfUri,
@@ -1652,6 +1682,8 @@ class RouterDiscoveryService {
               'keepalive-timeout': '2m',
               'idle-timeout': '5m',
               'status-autorefresh': '1m',
+              'add-mac-cookie': 'yes',
+              'mac-cookie-timeout': '3d',
               'on-login': onLoginScript,
             }),
           ).timeout(const Duration(seconds: 3));
@@ -1913,6 +1945,8 @@ class RouterDiscoveryService {
                   headers: headers,
                   body: jsonEncode({
                     'shared-users': '2',
+                    'add-mac-cookie': 'yes',
+                    'mac-cookie-timeout': '3d',
                     'on-login': onLoginScript,
                   }),
                 ).timeout(const Duration(seconds: 2));
@@ -1937,13 +1971,15 @@ class RouterDiscoveryService {
             'idle-timeout': '1m',
             'status-autorefresh': '1m',
             'transparent-proxy': 'true',
+            'add-mac-cookie': 'yes',
+            'mac-cookie-timeout': '3d',
             'on-login': onLoginScript,
             'comment': 'WavePass 2-Minute Payment Trial',
           }),
         ).timeout(const Duration(seconds: 3));
       } catch (_) {}
 
-      // Hotspot server profiles: addresses-per-mac=1, mac-cookie-timeout=3d, login-by with trial support
+      // Hotspot server profiles: login-by with trial support
       try {
         final srvProfRes = await client.get(
           Uri.parse("$target/rest/ip/hotspot/profile"),
@@ -1959,8 +1995,6 @@ class RouterDiscoveryService {
                   Uri.parse("$target/rest/ip/hotspot/profile/$id"),
                   headers: headers,
                   body: jsonEncode({
-                    'addresses-per-mac': '1',
-                    'mac-cookie-timeout': '3d',
                     'login-by': 'http-pap,http-chap,mac-cookie,trial',
                     'trial-user-profile': 'wp-payment-trial',
                     'trial-uptime': '2m/24h',
@@ -1969,6 +2003,56 @@ class RouterDiscoveryService {
               }
             }
             results['serverProfiles'] = true;
+          }
+        }
+      } catch (_) {}
+
+      // Hotspot server instance: addresses-per-mac=1
+      try {
+        final hsRes = await client.get(
+          Uri.parse("$target/rest/ip/hotspot"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+        if (hsRes.statusCode == 200) {
+          final list = jsonDecode(hsRes.body);
+          if (list is List) {
+            for (final hs in list) {
+              final id = hs['.id'];
+              if (id != null) {
+                await client.patch(
+                  Uri.parse("$target/rest/ip/hotspot/$id"),
+                  headers: headers,
+                  body: jsonEncode({
+                    'addresses-per-mac': '1',
+                  }),
+                ).timeout(const Duration(seconds: 2));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // DHCP server lease time: 1d (prevents IP churn and duplicate host table entries)
+      try {
+        final dhcpRes = await client.get(
+          Uri.parse("$target/rest/ip/dhcp-server"),
+          headers: headers,
+        ).timeout(const Duration(seconds: 4));
+        if (dhcpRes.statusCode == 200) {
+          final list = jsonDecode(dhcpRes.body);
+          if (list is List) {
+            for (final ds in list) {
+              final id = ds['.id'];
+              if (id != null) {
+                await client.patch(
+                  Uri.parse("$target/rest/ip/dhcp-server/$id"),
+                  headers: headers,
+                  body: jsonEncode({
+                    'lease-time': '1d',
+                  }),
+                ).timeout(const Duration(seconds: 2));
+              }
+            }
           }
         }
       } catch (_) {}
@@ -2376,6 +2460,8 @@ class RouterDiscoveryService {
           'idle-timeout': '1m',
           'status-autorefresh': '1m',
           'transparent-proxy': 'true',
+          'add-mac-cookie': 'yes',
+          'mac-cookie-timeout': '3d',
           'on-login': onLoginScript,
           'comment': 'WavePass 2-Minute Payment Trial',
         }),
@@ -2391,10 +2477,34 @@ class RouterDiscoveryService {
           'login-by': 'http-pap,http-chap,mac-cookie,trial',
           'trial-user-profile': 'wp-payment-trial',
           'trial-uptime': '2m/24h',
-          'addresses-per-mac': '1',
-          'mac-cookie-timeout': '3d',
         }),
       ).timeout(const Duration(seconds: 2));
+
+      try {
+        await client.patch(
+          Uri.parse('$target/rest/ip/hotspot/wavepass-hotspot'),
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'addresses-per-mac': '1',
+          }),
+        ).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+
+      try {
+        await client.patch(
+          Uri.parse('$target/rest/ip/dhcp-server'),
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'lease-time': '1d',
+          }),
+        ).timeout(const Duration(seconds: 2));
+      } catch (_) {}
     } catch (_) {}
 
     try {
@@ -2412,6 +2522,8 @@ class RouterDiscoveryService {
             '=idle-timeout=1m',
             '=status-autorefresh=1m',
             '=transparent-proxy=yes',
+            '=add-mac-cookie=yes',
+            '=mac-cookie-timeout=3d',
             '=on-login=$onLoginScript',
             '=comment=WavePass 2-Minute Payment Trial',
           ]);
@@ -2422,9 +2534,21 @@ class RouterDiscoveryService {
           '=login-by=http-pap,http-chap,mac-cookie,trial',
           '=trial-user-profile=wp-payment-trial',
           '=trial-uptime=2m/24h',
-          '=addresses-per-mac=1',
-          '=mac-cookie-timeout=3d',
         ]);
+        try {
+          await api.executeSentence([
+            '/ip/hotspot/set',
+            '=[find]',
+            '=addresses-per-mac=1',
+          ]);
+        } catch (_) {}
+        try {
+          await api.executeSentence([
+            '/ip/dhcp-server/set',
+            '=[find]',
+            '=lease-time=1d',
+          ]);
+        } catch (_) {}
         await api.close();
       }
     } catch (_) {}

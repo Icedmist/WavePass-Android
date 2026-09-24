@@ -38,6 +38,8 @@ void main() {
 
       for (final p in profiles) {
         expect(p['shared-users'], '2');
+        expect(p['add-mac-cookie'], 'yes');
+        expect(p['mac-cookie-timeout'], '3d');
         expect(p['on-login'], RouterDiscoveryService.onLoginScript);
         expect(p['keepalive-timeout'], '2m');
         expect(p['idle-timeout'], isNotNull);

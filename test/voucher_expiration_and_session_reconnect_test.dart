@@ -23,10 +23,11 @@ void main() {
   });
 
   group('On-Login Script & Session Eviction Tests', () {
-    test('onLoginScript includes duplicate session detection and oldest session kick', () {
+    test('onLoginScript evicts sessions from different devices while preserving same-device cookies', () {
       final script = RouterDiscoveryService.onLoginScript;
+      expect(script, contains(r':local u "$user"; :local curMac $"mac-address";'));
       expect(script, contains(r'/ip hotspot active find user=$u'));
-      expect(script, contains(r':if ($uc > 1) do={ /ip hotspot active remove numbers=$ka; };'));
+      expect(script, contains(r':if ([/ip hotspot active get $i mac-address] != $curMac) do={ /ip hotspot active remove $i; };'));
     });
 
     test('onLoginScript dynamically adds per-voucher countdown scheduler', () {

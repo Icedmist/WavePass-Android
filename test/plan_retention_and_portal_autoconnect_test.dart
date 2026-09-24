@@ -162,17 +162,19 @@ void main() {
       expect(html.contains("else if (savedV) autoUrl += '&q='"), isFalse);
     });
 
-    test('generateLoginHtml includes RouterOS error detection and loop guard', () {
+    test('generateLoginHtml includes RouterOS error detection and loop guard without wiping saved voucher', () {
       final html = RouterSetupScreen.generateLoginHtml(
         'Test Venue',
         'test-slug',
       );
 
       // Verify that RouterOS error message (.error-msg) clears attempt flags to prevent infinite submit loops
+      // but PRESERVES the saved voucher in localStorage for 1-tap reconnect
       expect(html.contains("var errEl = document.querySelector('.error-msg');"), isTrue);
       expect(html.contains("var hasError = errEl && errEl.innerText && errEl.innerText.trim().length > 0;"), isTrue);
       expect(html.contains("sessionStorage.removeItem('wp-auto-attempt');"), isTrue);
-      expect(html.contains("localStorage.removeItem('wp-active-voucher');"), isTrue);
+      expect(html.contains("setTimeout(function() { controller.abort(); }, 4500)"), isTrue);
+      expect(html.contains("doFetch(attempt + 1);"), isTrue);
     });
 
     test('generateLoginHtml provides offline captive portal fallback to executeLogin with saved voucher', () {

@@ -471,6 +471,7 @@ class MikrotikApiClient {
       '*.nexawavepass.com',
       'api.nexawavepass.com',
       '*.paystack.co',
+      '*.paystack.com',
       'api.paystack.co',
       'checkout.paystack.com',
       'standard.paystack.co',

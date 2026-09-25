@@ -1648,7 +1648,7 @@ $_rfc1321Md5Js
 
         if (window.PaystackPop) {
           var handler = PaystackPop.setup({
-            key: 'pk_live_34438c1d62f92132561142576056470fbc70e4ce',
+            key: data.publicKey || 'pk_live_1ce70fedd570347809711ae3e77b495ef09f5f84',
             email: email || ('guest_' + mac.replace(/[:-]/g, '').toLowerCase() + '@nexawavepass.com'),
             amount: data.amount || (parseInt(price.replace(/[^0-9]/g, '')) * 100),
             ref: data.reference,

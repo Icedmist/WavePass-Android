@@ -944,6 +944,9 @@ class RouterDiscoveryService {
       '/ip hotspot active remove \$i; '
       '}; '
       '}; '
+      ':if ([:len \$curMac] > 0 && [:len [/ip hotspot ip-binding find mac-address=\$curMac]] = 0) do={ '
+      '/ip hotspot ip-binding add mac-address=\$curMac type=bypassed comment=("WP:" . \$u); '
+      '}; '
       ':local ur [/ip hotspot user find name=\$u]; '
       ':if ([:len \$ur] > 0) do={ '
       ':local lu [/ip hotspot user get \$ur limit-uptime]; '
@@ -954,7 +957,7 @@ class RouterDiscoveryService {
       ':if ([:len \$lu] > 0 && \$lu != 0s) do={ '
       ':local sn ("exp_" . \$u); '
       ':if ([:len [/system scheduler find name=\$sn]] = 0) do={ '
-      '/system scheduler add name=\$sn interval=\$lu on-event=("/ip hotspot active remove [find user=\\"" . \$u . "\\"]; /ip hotspot user remove [find name=\\"" . \$u . "\\"]; /ip hotspot cookie remove [find user=\\"" . \$u . "\\"]; /system scheduler remove [find name=\\"" . \$sn . "\\"]"); '
+      '/system scheduler add name=\$sn interval=\$lu on-event=("/ip hotspot active remove [find user=\\"" . \$u . "\\"]; /ip hotspot user remove [find name=\\"" . \$u . "\\"]; /ip hotspot cookie remove [find user=\\"" . \$u . "\\"]; /ip hotspot ip-binding remove [find comment~\\"" . \$u . "\\"]; /system scheduler remove [find name=\\"" . \$sn . "\\"]"); '
       '}; '
       '}; '
       '};';
@@ -963,8 +966,9 @@ class RouterDiscoveryService {
   /// removes orphan cookies in /ip/hotspot/cookie, and cleans expired vouchers.
   static const String cleanupScriptSource =
       ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; '
-      ':foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; /ip hotspot cookie remove [find user=\$un]; /system scheduler remove [find name=("exp_" . \$un)]; } }; '
+      ':foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; /ip hotspot cookie remove [find user=\$un]; /ip hotspot ip-binding remove [find comment~("WP:" . \$un)]; /system scheduler remove [find name=("exp_" . \$un)]; } }; '
       ':foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \$c user]; :if ([:len [/ip hotspot user find name=\$cu]] = 0) do={ /ip hotspot cookie remove \$c; } }; '
+      ':foreach b in=[/ip hotspot ip-binding find type=bypassed] do={ :local bc [/ip hotspot ip-binding get \$b comment]; :if ([:len \$bc] > 3) do={ :local bu [:pick \$bc 3 [:len \$bc]]; :if ([:len [/ip hotspot user find name=\$bu]] = 0) do={ /ip hotspot ip-binding remove \$b; } } }; '
       '/ip hotspot user remove [find comment~"expired"]';
 
   /// Standard duration-based rate-limit profiles configured on RouterOS with hard timeouts and session auto-kick.
@@ -1115,6 +1119,7 @@ class RouterDiscoveryService {
     int? sessionTimeoutSeconds,
     int? limitBytesTotal,
     int? sharedUsers,
+    String? macAddress,
     String comment = "wavepass-provisioned",
   }) async {
     var raw = endpoint.trim();
@@ -1138,7 +1143,7 @@ class RouterDiscoveryService {
       try {
         final ok = await client.connectAndLogin(username, password);
         if (ok) {
-          return await client.createHotspotUser(
+          final created = await client.createHotspotUser(
             code: code,
             pass: pass,
             profile: profile,
@@ -1147,6 +1152,10 @@ class RouterDiscoveryService {
             sharedUsers: sharedUsers,
             comment: comment,
           );
+          if (created && macAddress != null && macAddress.isNotEmpty) {
+            await client.addIpBinding(mac: macAddress, type: 'bypassed', comment: 'WP:$code');
+          }
+          return created;
         }
         return false;
       } catch (e) {
@@ -1160,22 +1169,21 @@ class RouterDiscoveryService {
     // 2. Otherwise attempt HTTP REST API first
     final client = createRouterClient();
     bool httpSuccess = false;
+    var normalized = raw;
+    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+      normalized = 'http://$normalized';
+    }
+    if (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+
+    final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+    final headers = {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
     try {
-      var normalized = raw;
-      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-        normalized = 'http://$normalized';
-      }
-      if (normalized.endsWith('/')) {
-        normalized = normalized.substring(0, normalized.length - 1);
-      }
-
-      final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
-      final headers = {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-
       final uptimeStr = sessionTimeoutSeconds != null && sessionTimeoutSeconds > 0
           ? formatRouterOsDuration(sessionTimeoutSeconds)
           : null;
@@ -1284,6 +1292,20 @@ class RouterDiscoveryService {
     } catch (e) {
       debugPrint('Direct router HTTP provisioning error: $e');
     } finally {
+      if (httpSuccess && macAddress != null && macAddress.isNotEmpty) {
+        try {
+          final ipBindingPayload = {
+            'mac-address': macAddress.toUpperCase().trim(),
+            'type': 'bypassed',
+            'comment': 'WP:$code',
+          };
+          await client.put(
+            Uri.parse('$normalized/rest/ip/hotspot/ip-binding'),
+            headers: headers,
+            body: jsonEncode(ipBindingPayload),
+          ).timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
       client.close();
     }
 
@@ -1299,7 +1321,7 @@ class RouterDiscoveryService {
       try {
         final ok = await client8728.connectAndLogin(username, password);
         if (ok) {
-          return await client8728.createHotspotUser(
+          final created = await client8728.createHotspotUser(
             code: code,
             pass: pass,
             profile: profile,
@@ -1308,6 +1330,10 @@ class RouterDiscoveryService {
             sharedUsers: sharedUsers,
             comment: comment,
           );
+          if (created && macAddress != null && macAddress.isNotEmpty) {
+            await client8728.addIpBinding(mac: macAddress, type: 'bypassed', comment: 'WP:$code');
+          }
+          return created;
         }
       } catch (e) {
         debugPrint('Fallback Port 8728 provisioning error: $e');
@@ -1328,6 +1354,7 @@ class RouterDiscoveryService {
     int? sessionTimeoutSeconds,
     int? limitBytesTotal,
     int? sharedUsers,
+    String? macAddress,
     String? localIp,
     String? tunnelEndpoint,
     String? username,
@@ -1352,6 +1379,7 @@ class RouterDiscoveryService {
       sessionTimeoutSeconds: sessionTimeoutSeconds,
       limitBytesTotal: limitBytesTotal,
       sharedUsers: sharedUsers,
+      macAddress: macAddress,
     );
 
     if (localSuccess) {
@@ -1370,6 +1398,7 @@ class RouterDiscoveryService {
         sessionTimeoutSeconds: sessionTimeoutSeconds,
         limitBytesTotal: limitBytesTotal,
         sharedUsers: sharedUsers,
+        macAddress: macAddress,
       );
 
       if (tunnelSuccess) {

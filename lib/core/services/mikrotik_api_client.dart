@@ -262,6 +262,76 @@ class MikrotikApiClient {
     }
   }
 
+  /// Adds a bypassed (or regular/blocked) IP-binding for a MAC address.
+  /// Bypassed IP-bindings allow authenticated/active clients to bypass captive portal
+  /// interception completely on reconnect, eliminating "Sign into network" prompts.
+  Future<bool> addIpBinding({
+    required String mac,
+    String type = 'bypassed',
+    String? comment,
+  }) async {
+    final cleanMac = mac.trim().toUpperCase();
+    if (!RegExp(r'^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$').hasMatch(cleanMac)) {
+      return false;
+    }
+
+    try {
+      final existing = await executeSentence([
+        '/ip/hotspot/ip-binding/print',
+        '?mac-address=$cleanMac',
+      ]);
+      if (existing.isNotEmpty) {
+        final id = existing.first['.id'];
+        if (id != null) {
+          await executeSentence([
+            '/ip/hotspot/ip-binding/set',
+            '=.id=$id',
+            '=type=$type',
+            if (comment != null) '=comment=$comment',
+          ]);
+          return true;
+        }
+      }
+
+      await executeSentence([
+        '/ip/hotspot/ip-binding/add',
+        '=mac-address=$cleanMac',
+        '=type=$type',
+        if (comment != null) '=comment=$comment',
+      ]);
+      return true;
+    } catch (e) {
+      debugPrint('[MikrotikApiClient] addIpBinding error: $e');
+      return false;
+    }
+  }
+
+  /// Removes an IP-binding for a given MAC address.
+  Future<bool> removeIpBinding(String mac) async {
+    final cleanMac = mac.trim().toUpperCase();
+    try {
+      final existing = await executeSentence([
+        '/ip/hotspot/ip-binding/print',
+        '?mac-address=$cleanMac',
+      ]);
+      for (final item in existing) {
+        final id = item['.id'];
+        if (id != null) {
+          try {
+            await executeSentence([
+              '/ip/hotspot/ip-binding/remove',
+              '=.id=$id',
+            ]);
+          } catch (_) {}
+        }
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[MikrotikApiClient] removeIpBinding error: $e');
+      return false;
+    }
+  }
+
   /// Returns all currently logged-in active HotSpot users on the router.
   Future<List<Map<String, String>>> getHotspotActiveUsers() async {
     try {

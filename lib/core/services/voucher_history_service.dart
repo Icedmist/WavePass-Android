@@ -593,22 +593,33 @@ class VoucherHistoryService {
           if (activeCode == null || activeCode.isEmpty) continue;
 
           for (final record in history) {
-            if (record.code.toUpperCase() == activeCode && record.status == 'unused') {
-              record.status = 'in_use';
-              // Backdate usedAt based on actual router elapsed uptime
-              record.usedAt = now.subtract(Duration(seconds: uptimeSec));
-              record.mac = mac;
-              record.ip = ip;
-              stateChanged = true;
+            if (record.code.toUpperCase() == activeCode) {
+              if (record.status == 'unused') {
+                record.status = 'in_use';
+                // Backdate usedAt based on actual router elapsed uptime
+                record.usedAt = now.subtract(Duration(seconds: uptimeSec));
+                record.mac = mac;
+                record.ip = ip;
+                stateChanged = true;
 
-              // In-app and device notification for owner
-              if (context != null && context.mounted) {
-                AppNotifier.instance.show(
-                  context,
-                  type: NotifyType.success,
-                  title: 'Voucher In Use',
-                  message: 'Pass ${record.code} (${record.planTitle}) is now active on $mac ($ip).',
-                );
+                // In-app and device notification for owner
+                if (context != null && context.mounted) {
+                  AppNotifier.instance.show(
+                    context,
+                    type: NotifyType.success,
+                    title: 'Voucher In Use',
+                    message: 'Pass ${record.code} (${record.planTitle}) is now active on $mac ($ip).',
+                  );
+                }
+              } else if (record.status == 'in_use') {
+                if (mac != '—' && (record.mac == null || record.mac!.isEmpty || record.mac == '—')) {
+                  record.mac = mac;
+                  stateChanged = true;
+                }
+                if (ip != '—' && (record.ip == null || record.ip!.isEmpty || record.ip == '—')) {
+                  record.ip = ip;
+                  stateChanged = true;
+                }
               }
             }
           }
@@ -714,6 +725,9 @@ class VoucherHistoryService {
               try {
                 await client.disconnectActiveUser(record.code);
                 await client.removeHotspotUser(record.code);
+                if (record.mac != null && record.mac!.isNotEmpty && record.mac != '—') {
+                  await client.removeIpBinding(record.mac!);
+                }
               } catch (_) {}
             }
           }
@@ -745,6 +759,11 @@ class VoucherHistoryService {
                 if (record.code.toUpperCase() == uName.toUpperCase() && record.status != 'expired') {
                   record.status = 'expired';
                   stateChanged = true;
+                  if (record.mac != null && record.mac!.isNotEmpty && record.mac != '—') {
+                    try {
+                      await client.removeIpBinding(record.mac!);
+                    } catch (_) {}
+                  }
                 }
               }
             } else if (currentSec > 0) {
@@ -768,6 +787,9 @@ class VoucherHistoryService {
           if (record.status == 'expired') {
             try {
               await client.removeHotspotUser(record.code);
+              if (record.mac != null && record.mac!.isNotEmpty && record.mac != '—') {
+                await client.removeIpBinding(record.mac!);
+              }
             } catch (_) {}
           }
         }
@@ -792,9 +814,11 @@ class VoucherHistoryService {
   /// Manually marks a voucher as expired and removes it from router
   Future<void> expireVoucher(String code) async {
     final history = await getHistory();
+    String? mac;
     for (final v in history) {
       if (v.code.toUpperCase() == code.toUpperCase()) {
         v.status = 'expired';
+        mac = v.mac;
         break;
       }
     }
@@ -805,6 +829,9 @@ class VoucherHistoryService {
       if (client != null) {
         await client.disconnectActiveUser(code);
         await client.removeHotspotUser(code);
+        if (mac != null && mac.isNotEmpty && mac != '—') {
+          await client.removeIpBinding(mac);
+        }
         await client.close();
       }
     } catch (_) {}
@@ -827,6 +854,9 @@ class VoucherHistoryService {
           try {
             await client.disconnectActiveUser(v.code);
             await client.removeHotspotUser(v.code);
+            if (v.mac != null && v.mac!.isNotEmpty && v.mac != '—') {
+              await client.removeIpBinding(v.mac!);
+            }
           } catch (_) {}
         }
         await client.close();

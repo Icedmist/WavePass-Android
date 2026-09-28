@@ -38,7 +38,7 @@ class _WalletScreenState extends State<WalletScreen> {
   int _selectedHistoryTab = 0; // 0: All, 1: Paystack Store Sales, 2: Cashouts
   String? _vaError;
   bool _refreshingVa = false;
-  final bool _isPaystackLocked = true;
+  final bool _isPaystackLocked = false;
 
   // New bank account form
   final _nameCtrl = TextEditingController();
@@ -695,8 +695,10 @@ class _WalletScreenState extends State<WalletScreen> {
                         ),
                       ),
                     // PAYSTACK FEATURES LOCKED NOTIFICATION
-                    _buildPaystackLockedCard(),
-                    const SizedBox(height: 16),
+                    if (_isPaystackLocked) ...[
+                      _buildPaystackLockedCard(),
+                      const SizedBox(height: 16),
+                    ],
                     // VIRTUAL ACCOUNT / WALLET STATUS
                     if (_hasActiveVirtualAccount)
                       Container(

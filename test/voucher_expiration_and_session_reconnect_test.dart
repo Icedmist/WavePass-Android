@@ -82,6 +82,54 @@ void main() {
       );
       expect(expiredRecord.isExpired, isTrue);
       expect(expiredRecord.remainingSeconds, 0);
+
+      // Unsold/unused voucher past its expiresAt => proactively expired
+      final staleUnsoldRecord = VoucherRecord(
+        code: 'WP-TEST-UNSOLD-EXPIRED',
+        planTitle: '1 Hour',
+        price: '₦500',
+        durationSeconds: 3600,
+        createdAt: now.subtract(const Duration(days: 31)),
+        expiresAt: now.subtract(const Duration(days: 1)),
+        status: 'unused',
+      );
+      expect(staleUnsoldRecord.isExpired, isTrue);
+      expect(staleUnsoldRecord.remainingSeconds, 0);
+
+      // Unsold/unused voucher before its expiresAt => not expired
+      final validUnsoldRecord = VoucherRecord(
+        code: 'WP-TEST-UNSOLD-VALID',
+        planTitle: '1 Hour',
+        price: '₦500',
+        durationSeconds: 3600,
+        createdAt: now,
+        expiresAt: now.add(const Duration(days: 30)),
+        status: 'unused',
+      );
+      expect(validUnsoldRecord.isExpired, isFalse);
+      expect(validUnsoldRecord.remainingSeconds, 3600);
+    });
+
+    test('VoucherRecord serializes and restores expiresAt and marks stale json as expired', () {
+      final now = DateTime.now();
+      final record = VoucherRecord(
+        code: 'WP-TEST-SERIALIZE',
+        planTitle: 'Daily',
+        price: '₦200',
+        durationSeconds: 86400,
+        createdAt: now.subtract(const Duration(days: 40)),
+        expiresAt: now.subtract(const Duration(days: 10)),
+        status: 'unused',
+      );
+
+      final json = record.toJson();
+      expect(json['expiresAt'], isNotNull);
+      expect(json['status'], 'expired'); // toJson emits 'expired' when isExpired is true
+
+      final restored = VoucherRecord.fromJson(json);
+      expect(restored.expiresAt, isNotNull);
+      expect(restored.status, 'expired');
+      expect(restored.isExpired, isTrue);
     });
   });
 }

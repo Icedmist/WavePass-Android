@@ -248,6 +248,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
       // Best-effort: router-pushed codes work regardless; cloud enables
       // portal redeem, retrieve-voucher, and success-page verification.
       final Set<String> cloudConfirmed = {};
+      final Map<String, DateTime> cloudExpiryMap = {};
       if (_selectedVenueId != null && _selectedPlanId != null) {
         try {
           final res = await WavePassApi.instance.uploadVoucherBatch(
@@ -259,7 +260,13 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           if (list is List) {
             for (final v in list) {
               final c = (v is Map ? v['code'] : null)?.toString().toUpperCase();
-              if (c != null && c.isNotEmpty) cloudConfirmed.add(c);
+              if (c != null && c.isNotEmpty) {
+                cloudConfirmed.add(c);
+                if (v is Map && v['expiresAt'] != null) {
+                  final exp = DateTime.tryParse(v['expiresAt'].toString());
+                  if (exp != null) cloudExpiryMap[c] = exp;
+                }
+              }
             }
           }
         } catch (e) {
@@ -277,6 +284,7 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           planTitle: planName,
           price: price,
           durationSeconds: durationSec,
+          expiresAt: cloudExpiryMap[code.toUpperCase()] ?? DateTime.now().add(const Duration(days: 30)),
           directMode: routerMode,
           source: 'batch',
           provisioned: cloudConfirmed.contains(code.toUpperCase()),

@@ -17,6 +17,7 @@ class VoucherRecord {
   final String price;
   final int durationSeconds;
   final DateTime createdAt;
+  DateTime? expiresAt;
   String status; // 'unused', 'in_use', 'expired'
   bool sold;
   bool provisioned;
@@ -36,6 +37,7 @@ class VoucherRecord {
     required this.price,
     required this.durationSeconds,
     required this.createdAt,
+    this.expiresAt,
     this.status = 'unused',
     this.sold = false,
     this.provisioned = true,
@@ -76,6 +78,9 @@ class VoucherRecord {
 
   bool get isExpired {
     if (status == 'expired') return true;
+    if (expiresAt != null && DateTime.now().isAfter(expiresAt!)) {
+      return true;
+    }
     if (usedAt != null) {
       final elapsed = DateTime.now().difference(usedAt!).inSeconds;
       return elapsed >= durationSeconds;
@@ -84,7 +89,7 @@ class VoucherRecord {
   }
 
   int get remainingSeconds {
-    if (status == 'expired') return 0;
+    if (status == 'expired' || isExpired) return 0;
     if (usedAt == null) return durationSeconds;
     final elapsed = DateTime.now().difference(usedAt!).inSeconds;
     final rem = durationSeconds - elapsed;
@@ -98,7 +103,8 @@ class VoucherRecord {
         'price': price,
         'durationSeconds': durationSeconds,
         'createdAt': createdAt.toIso8601String(),
-        'status': status,
+        'expiresAt': expiresAt?.toIso8601String(),
+        'status': isExpired ? 'expired' : status,
         'sold': sold,
         'provisioned': provisioned,
         'directMode': directMode,
@@ -111,27 +117,35 @@ class VoucherRecord {
         'source': source,
       };
 
-  factory VoucherRecord.fromJson(Map<String, dynamic> json) => VoucherRecord(
-        code: json['code']?.toString() ?? '',
-        password: json['password']?.toString(),
-        planTitle: json['planTitle']?.toString() ?? 'Pass',
-        price: json['price']?.toString() ?? '₦0',
-        durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 3600,
-        createdAt: json['createdAt'] != null
-            ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
-            : DateTime.now(),
-        status: json['status']?.toString() ?? 'unused',
-        sold: json['sold'] == true,
-        provisioned: json['provisioned'] == null ? true : json['provisioned'] == true,
-        directMode: json['directMode']?.toString(),
-        usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
-        mac: json['mac']?.toString(),
-        ip: json['ip']?.toString(),
-        uptime: json['uptime']?.toString(),
-        bytesIn: (json['bytesIn'] as num?)?.toInt(),
-        bytesOut: (json['bytesOut'] as num?)?.toInt(),
-        source: json['source']?.toString(),
-      );
+  factory VoucherRecord.fromJson(Map<String, dynamic> json) {
+    final expStr = json['expiresAt']?.toString();
+    final exp = expStr != null ? DateTime.tryParse(expStr) : null;
+    final rawStatus = json['status']?.toString() ?? 'unused';
+    final isStale = exp != null && DateTime.now().isAfter(exp);
+
+    return VoucherRecord(
+      code: json['code']?.toString() ?? '',
+      password: json['password']?.toString(),
+      planTitle: json['planTitle']?.toString() ?? 'Pass',
+      price: json['price']?.toString() ?? '₦0',
+      durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 3600,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      expiresAt: exp,
+      status: isStale ? 'expired' : rawStatus,
+      sold: json['sold'] == true,
+      provisioned: json['provisioned'] == null ? true : json['provisioned'] == true,
+      directMode: json['directMode']?.toString(),
+      usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
+      mac: json['mac']?.toString(),
+      ip: json['ip']?.toString(),
+      uptime: json['uptime']?.toString(),
+      bytesIn: (json['bytesIn'] as num?)?.toInt(),
+      bytesOut: (json['bytesOut'] as num?)?.toInt(),
+      source: json['source']?.toString(),
+    );
+  }
 }
 
 /// Service to store voucher sales history, monitor real-time lifecycle on router,
@@ -175,6 +189,7 @@ class VoucherHistoryService {
     required String planTitle,
     required String price,
     required int durationSeconds,
+    DateTime? expiresAt,
     String? directMode,
     String? source,
     bool sold = false,
@@ -185,6 +200,8 @@ class VoucherHistoryService {
       // Avoid duplicate entries
       history.removeWhere((v) => v.code.toUpperCase() == code.toUpperCase());
 
+      final isPastExpiry = expiresAt != null && DateTime.now().isAfter(expiresAt);
+
       final record = VoucherRecord(
         code: code,
         password: password,
@@ -192,7 +209,8 @@ class VoucherHistoryService {
         price: price,
         durationSeconds: durationSeconds,
         createdAt: DateTime.now(),
-        status: 'unused',
+        expiresAt: expiresAt,
+        status: isPastExpiry ? 'expired' : 'unused',
         sold: sold,
         provisioned: provisioned,
         directMode: directMode,
@@ -429,11 +447,14 @@ class VoucherHistoryService {
         final priceMinor = (plan?['priceMinor'] as num?)?.toInt() ?? 0;
         final durationSec = (plan?['durationSeconds'] as num?)?.toInt() ?? 3600;
         final cloudStatus = vMap['status']?.toString().toUpperCase();
+        final expiresAtStr = vMap['expiresAt']?.toString();
+        final cloudExpiresAt = expiresAtStr != null ? DateTime.tryParse(expiresAtStr) : null;
+        final isPastExpiry = cloudExpiresAt != null && DateTime.now().isAfter(cloudExpiresAt);
 
         String status = 'unused';
         if (cloudStatus == 'ACTIVE') {
           status = 'in_use';
-        } else if (cloudStatus == 'EXPIRED' || cloudStatus == 'CONSUMED' || cloudStatus == 'REVOKED') {
+        } else if (cloudStatus == 'EXPIRED' || cloudStatus == 'CONSUMED' || cloudStatus == 'REVOKED' || isPastExpiry) {
           status = 'expired';
         }
 
@@ -445,7 +466,10 @@ class VoucherHistoryService {
 
         if (consolidated.containsKey(key)) {
           final existing = consolidated[key]!;
-          if (existing.status == 'unused' && status != 'unused') {
+          if (cloudExpiresAt != null) existing.expiresAt ??= cloudExpiresAt;
+          if (existing.isExpired) {
+            existing.status = 'expired';
+          } else if (existing.status == 'unused' && status != 'unused') {
             existing.status = status;
           }
           if (latestSession != null) {
@@ -461,7 +485,8 @@ class VoucherHistoryService {
             price: '₦${priceMinor ~/ 100}',
             durationSeconds: durationSec,
             createdAt: DateTime.tryParse(vMap['issuedAt']?.toString() ?? '') ?? DateTime.now(),
-            status: status,
+            expiresAt: cloudExpiresAt,
+            status: isPastExpiry ? 'expired' : status,
             mac: latestSession?['mac']?.toString(),
             ip: latestSession?['ip']?.toString(),
             bytesIn: (latestSession?['bytesIn'] as num?)?.toInt(),
@@ -657,11 +682,20 @@ class VoucherHistoryService {
         }
       }
 
-      // 3. Detect expired vouchers from elapsed duration and delete from hardware
+      // 3. Detect expired vouchers from elapsed duration or expiresAt date and delete from hardware
       for (final record in history) {
-        if (record.status == 'in_use' && record.usedAt != null) {
-          final elapsed = now.difference(record.usedAt!).inSeconds;
-          if (elapsed >= record.durationSeconds) {
+        if (record.status != 'expired') {
+          bool shouldExpire = false;
+          if (record.expiresAt != null && now.isAfter(record.expiresAt!)) {
+            shouldExpire = true;
+          } else if (record.status == 'in_use' && record.usedAt != null) {
+            final elapsed = now.difference(record.usedAt!).inSeconds;
+            if (elapsed >= record.durationSeconds) {
+              shouldExpire = true;
+            }
+          }
+
+          if (shouldExpire) {
             record.status = 'expired';
             stateChanged = true;
 

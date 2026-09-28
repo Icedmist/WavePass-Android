@@ -197,6 +197,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
 
       // 1. Upload the exact code to cloud so records match app + router.
       bool cloudOk = false;
+      DateTime? cloudExpiresAt;
       if (_venueId != null && planId != null && planId.isNotEmpty) {
         try {
           final res = await WavePassApi.instance.uploadVoucherBatch(
@@ -206,6 +207,13 @@ class _SellPassScreenState extends State<SellPassScreen> {
           ).timeout(const Duration(seconds: 8));
           final created = (res['created'] as num?)?.toInt() ?? 0;
           cloudOk = created > 0;
+          final list = res['vouchers'];
+          if (list is List && list.isNotEmpty) {
+            final v = list.first;
+            if (v is Map && v['expiresAt'] != null) {
+              cloudExpiresAt = DateTime.tryParse(v['expiresAt'].toString());
+            }
+          }
         } catch (e) {
           debugPrint('Cloud voucher upload failed: $e');
         }
@@ -242,6 +250,7 @@ class _SellPassScreenState extends State<SellPassScreen> {
         planTitle: selectedPlan['title']?.toString() ?? 'Pass',
         price: selectedPlan['price']?.toString() ?? '₦0',
         durationSeconds: durationSec,
+        expiresAt: cloudExpiresAt ?? DateTime.now().add(const Duration(days: 30)),
         directMode: directMode,
         source: 'pos',
         provisioned: provisioned,

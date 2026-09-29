@@ -6,6 +6,7 @@ import 'core/services/venue_state_service.dart';
 import 'core/services/activation_code_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/router_discovery_service.dart';
+import 'core/services/voucher_history_service.dart';
 import 'core/widgets/graceful_error_widget.dart';
 import 'core/router/app_router.dart';
 
@@ -59,6 +60,9 @@ void main() async {
   } catch (e) {
     debugPrint('AppNotifier initial init: $e');
   }
+
+  // Start background router lifecycle sync and hardware reconciliation
+  VoucherHistoryService.instance.startPeriodicSync();
 
   runApp(const WavePassApp());
 }

@@ -231,6 +231,16 @@ class WavePassApi {
     });
   }
 
+  Future<Map<String, dynamic>> finalizeCashoutOtp({
+    required String cashoutId,
+    required String otp,
+  }) {
+    return _post('/api/v1/cashouts/finalize-otp', {
+      'cashoutId': cashoutId,
+      'otp': otp,
+    });
+  }
+
   Future<Map<String, dynamic>> listCashouts(String venueId) {
     return _get('/api/v1/cashouts?venueId=$venueId');
   }

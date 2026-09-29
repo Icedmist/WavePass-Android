@@ -1628,11 +1628,15 @@ class RouterDiscoveryService {
           'nexawavepass.com',
           '*.nexawavepass.com',
           'api.nexawavepass.com',
+          '*paystack*',
           '*.paystack.co',
           '*.paystack.com',
           'api.paystack.co',
           'checkout.paystack.com',
+          'checkout-v3.paystack.com',
           'standard.paystack.co',
+          'assets.paystack.com',
+          'js.paystack.co',
           '*.supabase.co',
         ];
         int wgSuccess = 0;

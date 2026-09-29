@@ -179,10 +179,33 @@ class VoucherHistoryService {
     _monitorTimer = null;
   }
 
+  Timer? _periodicSyncTimer;
+
+  /// Starts persistent background synchronization and hardware reconciliation.
+  /// Runs periodically across the entire application lifecycle, sweeping active users,
+  /// expiring exhausted vouchers, purging hardware accounts and orphan IP bindings.
+  void startPeriodicSync({Duration interval = const Duration(minutes: 2)}) {
+    if (_periodicSyncTimer?.isActive == true) return;
+    _periodicSyncTimer = Timer.periodic(interval, (_) async {
+      try {
+        await checkVoucherLifecycle();
+        await purgeExpiredVouchers();
+      } catch (_) {}
+    });
+    // Trigger initial background check
+    checkVoucherLifecycle();
+  }
+
+  void stopPeriodicSync() {
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = null;
+  }
+
   /// Wipes the local cached voucher history and stops monitoring timers
   Future<void> clearCache() async {
     try {
       stopMonitoring();
+      stopPeriodicSync();
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyHistory);
     } catch (_) {}

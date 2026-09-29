@@ -633,10 +633,15 @@ add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
 add comment="Google Fonts" dst-host="fonts.googleapis.com"
 add comment="Google Fonts Static" dst-host="fonts.gstatic.com"
-add comment="Paystack Checkout" dst-host="*.paystack.co"
+add comment="Paystack Wildcard" dst-host="*paystack*"
+add comment="Paystack Checkout Co" dst-host="*.paystack.co"
+add comment="Paystack Checkout Com" dst-host="*.paystack.com"
 add comment="Paystack API" dst-host="api.paystack.co"
 add comment="Paystack Checkout UI" dst-host="checkout.paystack.com"
+add comment="Paystack Checkout V3" dst-host="checkout-v3.paystack.com"
 add comment="Paystack Standard" dst-host="standard.paystack.co"
+add comment="Paystack Assets" dst-host="assets.paystack.com"
+add comment="Paystack JS" dst-host="js.paystack.co"
 add comment="Supabase Auth" dst-host="*.supabase.co"
 
 /ip hotspot walled-garden ip
@@ -645,10 +650,15 @@ add comment="WavePass API (HTTPS)" dst-host="api.nexawavepass.com" action=accept
 add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
 add comment="Google Fonts (HTTPS)" dst-host="fonts.googleapis.com" action=accept
 add comment="Google Fonts Static (HTTPS)" dst-host="fonts.gstatic.com" action=accept
-add comment="Paystack Checkout (HTTPS)" dst-host="*.paystack.co" action=accept
+add comment="Paystack Wildcard (HTTPS)" dst-host="*paystack*" action=accept
+add comment="Paystack Checkout Co (HTTPS)" dst-host="*.paystack.co" action=accept
+add comment="Paystack Checkout Com (HTTPS)" dst-host="*.paystack.com" action=accept
 add comment="Paystack API (HTTPS)" dst-host="api.paystack.co" action=accept
 add comment="Paystack Checkout UI (HTTPS)" dst-host="checkout.paystack.com" action=accept
+add comment="Paystack Checkout V3 (HTTPS)" dst-host="checkout-v3.paystack.com" action=accept
 add comment="Paystack Standard (HTTPS)" dst-host="standard.paystack.co" action=accept
+add comment="Paystack Assets (HTTPS)" dst-host="assets.paystack.com" action=accept
+add comment="Paystack JS (HTTPS)" dst-host="js.paystack.co" action=accept
 add comment="Supabase Auth (HTTPS)" dst-host="*.supabase.co" action=accept
 
 # --------------------------------------------------------
@@ -1308,6 +1318,33 @@ set name="WavePass-Hotspot"
       margin-bottom: 12px;
       text-align: center;
     }
+    .trial-countdown-banner {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1.5px solid #10B981;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      text-align: center;
+      animation: pulse-trial-glow 2s infinite ease-in-out;
+    }
+    @keyframes pulse-trial-glow {
+      0%, 100% { border-color: #10B981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
+      50% { border-color: #34D399; box-shadow: 0 0 20px rgba(16, 185, 129, 0.45); }
+    }
+    .trial-countdown-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .pulse-timer {
+      display: inline-block;
+      font-size: 14px;
+    }
     .trial-box {
       background: #141414;
       border: 1px solid #333333;
@@ -1395,6 +1432,14 @@ set name="WavePass-Hotspot"
     <div class="error-msg">\$(error)</div>
     \$(endif)
 
+    <!-- Sticky Trial Countdown Banner -->
+    <div id="trialCountdownBanner" style="display:none;" class="trial-countdown-banner">
+      <div class="trial-countdown-content">
+        <span class="pulse-timer">⚡</span>
+        <span id="trialCountdownText">Payment Window: 02:00 remaining</span>
+      </div>
+    </div>
+
     <!-- Segmented Tab Switcher (Voucher, Buy Online, Retrieve, User & Pass) -->
     <div class="tabs">
       <button type="button" id="tabVoucher" class="tab-btn active" onclick="switchTab('voucher')">🎟️ Voucher Code</button>
@@ -1443,7 +1488,7 @@ set name="WavePass-Hotspot"
       <div class="trial-box">
         <div class="trial-title">⚡ Need Internet to Pay?</div>
         <div class="trial-desc">Get a 2-minute temporary connection window to open your bank app or complete Paystack checkout.</div>
-        <form name="trial_form" action="\$(link-login-only)" method="get">
+        <form name="trial_form" action="\$(link-login-only)" method="get" onsubmit="recordTrialStart()">
           <input type="hidden" name="dst" value="\$(link-orig)">
           <input type="hidden" name="username" value="T-\$(mac-esc)">
           <button type="submit" class="btn-trial">Activate 2-Min Payment Trial &rarr;</button>
@@ -1517,8 +1562,57 @@ set name="WavePass-Hotspot"
       }
     };
     var switchTab = window.switchTab;
+    function recordTrialStart() {
+      try {
+        localStorage.setItem('wp_trial_start', Date.now().toString());
+      } catch(e){}
+    }
+
+    function initTrialCountdown() {
+      var banner = document.getElementById('trialCountdownBanner');
+      var text = document.getElementById('trialCountdownText');
+      if (!banner || !text) return;
+
+      var startStr = null;
+      try {
+        startStr = localStorage.getItem('wp_trial_start');
+      } catch(e){}
+      if (!startStr) return;
+
+      var startMs = parseInt(startStr, 10);
+      if (isNaN(startMs)) return;
+
+      var totalSec = 120; // 2-minute payment grace period
+      var elapsed = Math.floor((Date.now() - startMs) / 1000);
+      if (elapsed >= totalSec) {
+        banner.style.display = 'none';
+        try { localStorage.removeItem('wp_trial_start'); } catch(e){}
+        return;
+      }
+
+      banner.style.display = 'block';
+
+      function updateCountdown() {
+        var nowElapsed = Math.floor((Date.now() - startMs) / 1000);
+        var rem = totalSec - nowElapsed;
+        if (rem <= 0) {
+          text.innerText = '⚠️ 2-min payment window expired. Connect with pass or retry.';
+          banner.style.borderColor = '#EF4444';
+          banner.style.background = 'rgba(239, 68, 68, 0.15)';
+          try { localStorage.removeItem('wp_trial_start'); } catch(e){}
+          return;
+        }
+        var m = Math.floor(rem / 60);
+        var s = rem % 60;
+        var formatted = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        text.innerText = '⚡ Payment Window: ' + formatted + ' remaining to finish transfer';
+        setTimeout(updateCountdown, 1000);
+      }
+      updateCountdown();
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
+      initTrialCountdown();
       var tabBox = document.querySelector('.tabs');
       if (tabBox) {
         tabBox.addEventListener('click', function(e) {

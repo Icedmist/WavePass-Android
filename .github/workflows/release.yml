@@ -34,6 +34,27 @@ jobs:
       - name: Run Tests
         run: flutter test
 
+      - name: Configure Keystore (if secrets present)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "🔐 Decoding release keystore from secrets..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload.keystore
+            cat <<EOF > android/key.properties
+storePassword=$KEYSTORE_PASSWORD
+keyPassword=$KEY_PASSWORD
+keyAlias=$KEY_ALIAS
+storeFile=app/upload.keystore
+EOF
+            echo "✅ Release signing configured via key.properties"
+          else
+            echo "ℹ️ No release keystore secrets found, using default signing"
+          fi
+
       - name: Build APK (Release)
         run: flutter build apk --release
 

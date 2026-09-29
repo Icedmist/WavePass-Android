@@ -504,20 +504,111 @@ class _WalletScreenState extends State<WalletScreen> {
 
     setState(() => _submitting = true);
     try {
-      await _api.requestCashout(
+      final res = await _api.requestCashout(
         venueId: venueId,
         amountMinor: (amount * 100).round(),
         password: password,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cashout complete — funds on the way.')),
-      );
+
+      final cashoutId = res['id']?.toString() ?? res['cashoutId']?.toString();
+      final status = res['status']?.toString();
+      final reason = (res['failureReason'] ?? '').toString();
+      final requiresOtp = status == 'otp' || reason.contains('OTP_REQUIRED') || res['requiresOtp'] == true;
+
+      if (requiresOtp && cashoutId != null && mounted) {
+        final otp = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) {
+            final otpCtrl = TextEditingController();
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.shield_outlined, color: AppColors.primary, size: 22),
+                  SizedBox(width: 8),
+                  Text('Paystack Transfer OTP', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Paystack sent an authorization OTP to your registered phone or authenticator app. Enter it below to complete your payout:',
+                    style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: otpCtrl,
+                    keyboardType: TextInputType.number,
+                    autofocus: true,
+                    maxLength: 6,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 4),
+                    decoration: InputDecoration(
+                      hintText: '••••••',
+                      counterText: '',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel Payout'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(otpCtrl.text.trim()),
+                  child: const Text('Authorize Transfer'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (otp != null && otp.isNotEmpty) {
+          try {
+            await _api.finalizeCashoutOtp(cashoutId: cashoutId, otp: otp);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ OTP verified — payout completed and funds sent!'),
+                backgroundColor: AppColors.accentGreen,
+              ),
+            );
+          } catch (otpErr) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('OTP authorization failed: $otpErr'),
+                backgroundColor: AppColors.accentRed,
+              ),
+            );
+          }
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cashout pending OTP confirmation. You can retry from wallet.'),
+              backgroundColor: AppColors.warmSand,
+            ),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cashout complete — funds on the way.'),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      }
       await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
+          SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.accentRed),
         );
       }
     } finally {

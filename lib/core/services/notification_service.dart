@@ -174,13 +174,16 @@ class AppNotifier {
   }
 
   /// Same modal as [show], for callers without a BuildContext (payment poll).
-  /// No-op when the messenger key is not bound yet.
+  /// Always records into the app feed, triggers device notification bar, and displays
+  /// SnackBar if messengerKey is mounted.
   void showViaKey({
     required NotifyType type,
     required String title,
     required String message,
     bool showDeviceBar = true,
   }) {
+    final n = AppNotification(type: type, title: title, message: message);
+    _add(n);
     try {
       _messengerKey?.currentState?.showSnackBar(
         _buildModal(type: type, title: title, message: message),
@@ -188,6 +191,38 @@ class AppNotifier {
     } catch (_) {}
     if (showDeviceBar) {
       _showBar(title: title, message: message, type: type);
+    }
+  }
+
+  /// Unified notifier that reliably dispatches to either the active BuildContext
+  /// or the fallback global messenger key, guaranteeing that in-app notification feed,
+  /// SnackBar, and system device bar notifications fire even if context is null or unmounted.
+  void notify({
+    BuildContext? context,
+    required NotifyType type,
+    required String title,
+    required String message,
+    String? actionLabel,
+    VoidCallback? onAction,
+    bool showDeviceBar = true,
+  }) {
+    if (context != null && context.mounted) {
+      show(
+        context,
+        type: type,
+        title: title,
+        message: message,
+        actionLabel: actionLabel,
+        onAction: onAction,
+        showDeviceBar: showDeviceBar,
+      );
+    } else {
+      showViaKey(
+        type: type,
+        title: title,
+        message: message,
+        showDeviceBar: showDeviceBar,
+      );
     }
   }
   void success(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction, bool showDeviceBar = true}) =>

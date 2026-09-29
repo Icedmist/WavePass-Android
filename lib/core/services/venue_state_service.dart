@@ -297,6 +297,16 @@ class VenueStateService {
         } catch (_) {}
       }
 
+      // 2b. If primary venue returned null, check user's venues list
+      if (venue == null && allowFallbackToPrimary && currentEmail.isNotEmpty) {
+        try {
+          final venues = await SupabaseService.instance.getVenues(email: currentEmail);
+          if (venues.isNotEmpty) {
+            venue = venues.first;
+          }
+        } catch (_) {}
+      }
+
       // 3. Try finding by slug from backend
       if (venue == null && slug != null && slug.isNotEmpty) {
         try {

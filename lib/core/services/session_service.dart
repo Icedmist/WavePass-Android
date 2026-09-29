@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
-import 'venue_state_service.dart';
-import 'voucher_history_service.dart';
 import 'router_discovery_service.dart';
 import 'activation_code_service.dart';
 
@@ -103,17 +101,17 @@ class SessionService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(keySessionLoginTime);
       await prefs.remove('admin_token');
-      await prefs.remove('wavepass_voucher_history_v1');
-      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
-      await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
-      await prefs.remove(RouterDiscoveryService.keyRouterUsername);
-      await prefs.remove(RouterDiscoveryService.keyRouterPassword);
       if (markedExpired) {
         await prefs.setBool(keySessionExpiredNotice, true);
+      } else {
+        await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
+        await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
+        await prefs.remove(RouterDiscoveryService.keyRouterUsername);
+        await prefs.remove(RouterDiscoveryService.keyRouterPassword);
+        await ActivationCodeService.instance.clearCache();
       }
-      await VenueStateService.instance.clearVenue();
-      await ActivationCodeService.instance.clearCache();
-      await VoucherHistoryService.instance.clearCache();
+      // Never wipe venue identity or voucher history on simple session expiration:
+      // user will re-authenticate with credentials and seamlessly resume their venue and vouchers.
     } catch (e) {
       debugPrint('SessionService: Error clearing session: $e');
     }

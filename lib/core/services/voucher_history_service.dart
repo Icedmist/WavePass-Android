@@ -88,6 +88,12 @@ class VoucherRecord {
     return false;
   }
 
+  String get effectiveStatus {
+    if (isExpired) return 'expired';
+    if (status == 'in_use' || usedAt != null) return 'in_use';
+    return 'unused';
+  }
+
   int get remainingSeconds {
     if (status == 'expired' || isExpired) return 0;
     if (usedAt == null) return durationSeconds;
@@ -342,8 +348,10 @@ class VoucherHistoryService {
     };
 
     final currentVenue = VenueStateService.instance.currentVenue;
-    final venueId = currentVenue?['id']?.toString();
-    final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
+    final venueId = currentVenue?['id']?.toString() ?? VenueStateService.instance.currentVenueId;
+    final prefs = await SharedPreferences.getInstance();
+    final currentEmail = (SupabaseService.instance.currentUser?.email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
+    final isSuperAdmin = currentEmail == SupabaseService.superAdminEmail || await SystemAdminService.instance.isSystemAdmin();
 
     // 1. Query Router Hardware via MikrotikApiClient only if venue is configured or superadmin
     if (currentVenue != null || isSuperAdmin) {
@@ -450,10 +458,11 @@ class VoucherHistoryService {
         final expiresAtStr = vMap['expiresAt']?.toString();
         final cloudExpiresAt = expiresAtStr != null ? DateTime.tryParse(expiresAtStr) : null;
         final isPastExpiry = cloudExpiresAt != null && DateTime.now().isAfter(cloudExpiresAt);
+        final hasRedeemed = vMap['redeemedAt'] != null || vMap['firstLoginAt'] != null;
 
         String status = 'unused';
-        if (cloudStatus == 'ACTIVE') {
-          status = 'in_use';
+        if (cloudStatus == 'ACTIVE' || cloudStatus == 'REDEEMED' || cloudStatus == 'IN_USE' || hasRedeemed) {
+          status = isPastExpiry ? 'expired' : 'in_use';
         } else if (cloudStatus == 'EXPIRED' || cloudStatus == 'CONSUMED' || cloudStatus == 'REVOKED' || isPastExpiry) {
           status = 'expired';
         }
@@ -464,17 +473,27 @@ class VoucherHistoryService {
           latestSession = sessions.first;
         }
 
+        final usedAtDt = DateTime.tryParse(vMap['redeemedAt']?.toString() ?? '') ??
+            (latestSession != null ? DateTime.tryParse(latestSession['startedAt']?.toString() ?? '') : null);
+        final sessionMac = latestSession?['mac']?.toString() ?? vMap['redeemedMac']?.toString();
+        final sessionIp = latestSession?['ip']?.toString() ?? vMap['redeemedIp']?.toString();
+
         if (consolidated.containsKey(key)) {
           final existing = consolidated[key]!;
           if (cloudExpiresAt != null) existing.expiresAt ??= cloudExpiresAt;
-          if (existing.isExpired) {
+          if (existing.isExpired || status == 'expired') {
             existing.status = 'expired';
-          } else if (existing.status == 'unused' && status != 'unused') {
-            existing.status = status;
+          } else if (status == 'in_use') {
+            existing.status = 'in_use';
+          }
+          if (usedAtDt != null) existing.usedAt ??= usedAtDt;
+          if (sessionMac != null && sessionMac.isNotEmpty && sessionMac != '—') {
+            existing.mac ??= sessionMac;
+          }
+          if (sessionIp != null && sessionIp.isNotEmpty && sessionIp != '—') {
+            existing.ip ??= sessionIp;
           }
           if (latestSession != null) {
-            existing.mac ??= latestSession['mac']?.toString();
-            existing.ip ??= latestSession['ip']?.toString();
             existing.bytesIn ??= (latestSession['bytesIn'] as num?)?.toInt();
             existing.bytesOut ??= (latestSession['bytesOut'] as num?)?.toInt();
           }
@@ -487,8 +506,9 @@ class VoucherHistoryService {
             createdAt: DateTime.tryParse(vMap['issuedAt']?.toString() ?? '') ?? DateTime.now(),
             expiresAt: cloudExpiresAt,
             status: isPastExpiry ? 'expired' : status,
-            mac: latestSession?['mac']?.toString(),
-            ip: latestSession?['ip']?.toString(),
+            usedAt: usedAtDt,
+            mac: sessionMac,
+            ip: sessionIp,
             bytesIn: (latestSession?['bytesIn'] as num?)?.toInt(),
             bytesOut: (latestSession?['bytesOut'] as num?)?.toInt(),
             source: 'supabase',
@@ -603,14 +623,11 @@ class VoucherHistoryService {
                 stateChanged = true;
 
                 // In-app and device notification for owner
-                if (context != null && context.mounted) {
-                  AppNotifier.instance.show(
-                    context,
-                    type: NotifyType.success,
-                    title: 'Voucher In Use',
-                    message: 'Pass ${record.code} (${record.planTitle}) is now active on $mac ($ip).',
-                  );
-                }
+                AppNotifier.instance.notify(
+                  type: NotifyType.success,
+                  title: 'Voucher In Use',
+                  message: 'Pass ${record.code} (${record.planTitle}) is now active on $mac ($ip).',
+                );
               } else if (record.status == 'in_use') {
                 if (mac != '—' && (record.mac == null || record.mac!.isEmpty || record.mac == '—')) {
                   record.mac = mac;
@@ -657,14 +674,11 @@ class VoucherHistoryService {
                 record.usedAt = record.usedAt ?? now;
               }
               stateChanged = true;
-              if (context != null && context.mounted) {
-                AppNotifier.instance.show(
-                  context,
-                  type: NotifyType.info,
-                  title: 'Voucher In Use (cloud)',
-                  message: 'Pass ${record.code} (${record.planTitle}) is active per cloud records. Router unreachable — check target IP.',
-                );
-              }
+              AppNotifier.instance.notify(
+                type: NotifyType.info,
+                title: 'Voucher In Use (cloud)',
+                message: 'Pass ${record.code} (${record.planTitle}) is active per cloud records.',
+              );
             }
           }
         } catch (_) {}
@@ -711,14 +725,11 @@ class VoucherHistoryService {
             stateChanged = true;
 
             // Notify owner of expiration
-            if (context != null && context.mounted) {
-              AppNotifier.instance.show(
-                context,
-                type: NotifyType.warning,
-                title: 'Voucher Expired',
-                message: 'Pass ${record.code} (${record.planTitle}) has expired and was removed.',
-              );
-            }
+            AppNotifier.instance.notify(
+              type: NotifyType.warning,
+              title: 'Voucher Expired',
+              message: 'Pass ${record.code} (${record.planTitle}) has expired and was removed.',
+            );
 
             // Remove expired user from router hardware
             if (routerConnected) {
@@ -759,6 +770,11 @@ class VoucherHistoryService {
                 if (record.code.toUpperCase() == uName.toUpperCase() && record.status != 'expired') {
                   record.status = 'expired';
                   stateChanged = true;
+                  AppNotifier.instance.notify(
+                    type: NotifyType.warning,
+                    title: 'Voucher Expired',
+                    message: 'Pass ${record.code} (${record.planTitle}) reached uptime limit and expired.',
+                  );
                   if (record.mac != null && record.mac!.isNotEmpty && record.mac != '—') {
                     try {
                       await client.removeIpBinding(record.mac!);
@@ -774,6 +790,11 @@ class VoucherHistoryService {
                   record.status = 'in_use';
                   record.usedAt = now.subtract(Duration(seconds: currentSec));
                   stateChanged = true;
+                  AppNotifier.instance.notify(
+                    type: NotifyType.success,
+                    title: 'Voucher In Use',
+                    message: 'Pass ${record.code} (${record.planTitle}) is active on router (consumed ${record.uptimeFormatted}).',
+                  );
                 }
               }
             }
@@ -840,10 +861,10 @@ class VoucherHistoryService {
   /// Purges all expired vouchers from storage and router hardware, keeping the history clean
   Future<int> purgeExpiredVouchers() async {
     final history = await getHistory();
-    final expired = history.where((v) => v.status == 'expired').toList();
+    final expired = history.where((v) => v.effectiveStatus == 'expired').toList();
     if (expired.isEmpty) return 0;
 
-    history.removeWhere((v) => v.status == 'expired');
+    history.removeWhere((v) => v.effectiveStatus == 'expired');
     await _saveHistory(history);
 
     // Clean up hardware

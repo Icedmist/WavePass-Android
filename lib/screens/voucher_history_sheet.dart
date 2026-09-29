@@ -66,7 +66,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   bool _isPurging = false;
 
   Future<void> _handlePurgeExpired() async {
-    final expiredCount = _vouchers.where((v) => v.status == 'expired').length;
+    final expiredCount = _vouchers.where((v) => v.effectiveStatus == 'expired').length;
     if (expiredCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -100,7 +100,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
     if (_filter == 'all') {
       return _vouchers;
     }
-    return _vouchers.where((v) => v.status == _filter).toList();
+    return _vouchers.where((v) => v.effectiveStatus == _filter).toList();
   }
 
   String _formatTime(DateTime dt) {
@@ -135,9 +135,9 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final activeCount = _vouchers.where((v) => v.status == 'in_use').length;
-    final unusedCount = _vouchers.where((v) => v.status == 'unused').length;
-    final expiredCount = _vouchers.where((v) => v.status == 'expired').length;
+    final activeCount = _vouchers.where((v) => v.effectiveStatus == 'in_use').length;
+    final unusedCount = _vouchers.where((v) => v.effectiveStatus == 'unused').length;
+    final expiredCount = _vouchers.where((v) => v.effectiveStatus == 'expired').length;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -278,7 +278,8 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                             separatorBuilder: (_, _) => const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final item = _filteredVouchers[index];
-                              final statusColor = _statusColor(item.status);
+                              final effectiveStatus = item.effectiveStatus;
+                              final statusColor = _statusColor(effectiveStatus);
                               final isDual = item.isDualCredential;
 
                               return Container(
@@ -287,7 +288,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                   color: AppColors.containerBg,
                                   borderRadius: BorderRadius.circular(18),
                                   border: Border.all(
-                                    color: item.status == 'in_use'
+                                    color: effectiveStatus == 'in_use'
                                         ? AppColors.accentGreen.withValues(alpha: 0.3)
                                         : AppColors.cardBorder,
                                   ),
@@ -402,7 +403,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
-                                            _statusLabel(item.status),
+                                            _statusLabel(effectiveStatus),
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.w900,
@@ -496,7 +497,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                         ),
                                       ],
                                     ),
-                                    if (item.status == 'in_use') ...[
+                                    if (effectiveStatus == 'in_use') ...[
                                       const SizedBox(height: 8),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -538,7 +539,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                           ],
                                         ),
                                       ),
-                                    ] else if (item.status == 'expired') ...[
+                                    ] else if (effectiveStatus == 'expired') ...[
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [

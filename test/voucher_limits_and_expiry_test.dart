@@ -176,5 +176,83 @@ void main() {
       expect(activity.isNotEmpty, isTrue);
       expect(activity.any((v) => v.code == 'WP-HIST-1'), isTrue);
     });
+
+    test('effectiveStatus computes accurate state based on expiration and usage', () {
+      final now = DateTime.now();
+
+      final unusedVoucher = VoucherRecord(
+        code: 'WP-UNUSED',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'unused',
+      );
+      expect(unusedVoucher.effectiveStatus, 'unused');
+
+      final activeVoucher = VoucherRecord(
+        code: 'WP-ACTIVE',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'in_use',
+        usedAt: now.subtract(const Duration(minutes: 10)),
+      );
+      expect(activeVoucher.effectiveStatus, 'in_use');
+
+      // Voucher whose raw status is 'in_use' but elapsed time exceeded duration
+      final timeExpiredVoucher = VoucherRecord(
+        code: 'WP-TIME-EXP',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now.subtract(const Duration(hours: 2)),
+        status: 'in_use',
+        usedAt: now.subtract(const Duration(hours: 2)),
+      );
+      expect(timeExpiredVoucher.isExpired, isTrue);
+      expect(timeExpiredVoucher.effectiveStatus, 'expired');
+
+      // Unsold voucher whose expiresAt has passed
+      final shelfExpiredVoucher = VoucherRecord(
+        code: 'WP-SHELF-EXP',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now.subtract(const Duration(days: 35)),
+        expiresAt: now.subtract(const Duration(days: 5)),
+        status: 'unused',
+      );
+      expect(shelfExpiredVoucher.isExpired, isTrue);
+      expect(shelfExpiredVoucher.effectiveStatus, 'expired');
+    });
+
+    test('purgeExpiredVouchers purges vouchers whose effectiveStatus is expired', () async {
+      final service = VoucherHistoryService.instance;
+      final now = DateTime.now();
+
+      await service.recordVoucher(
+        code: 'WP-PURGE-ACTIVE',
+        planTitle: 'Pass',
+        price: '₦100',
+        durationSeconds: 3600,
+      );
+
+      await service.recordVoucher(
+        code: 'WP-PURGE-EXPIRED',
+        planTitle: 'Pass',
+        price: '₦100',
+        durationSeconds: 3600,
+        expiresAt: now.subtract(const Duration(days: 1)),
+      );
+
+      final purged = await service.purgeExpiredVouchers();
+      expect(purged, greaterThanOrEqualTo(1));
+
+      final history = await service.getHistory();
+      expect(history.any((v) => v.code == 'WP-PURGE-EXPIRED'), isFalse);
+      expect(history.any((v) => v.code == 'WP-PURGE-ACTIVE'), isTrue);
+    });
   });
 }

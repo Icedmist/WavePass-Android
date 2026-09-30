@@ -7,6 +7,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Release APK & App Bundle
@@ -34,6 +37,12 @@ jobs:
       - name: Run Tests
         run: flutter test
 
+      - name: Extract Version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | tr -d '\r')
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
       - name: Configure Keystore (if secrets present)
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -44,12 +53,12 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "🔐 Decoding release keystore from secrets..."
             echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload.keystore
-            cat <<EOF > android/key.properties
-storePassword=$KEYSTORE_PASSWORD
-keyPassword=$KEY_PASSWORD
-keyAlias=$KEY_ALIAS
-storeFile=app/upload.keystore
-EOF
+            {
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyPassword=$KEY_PASSWORD"
+              echo "keyAlias=$KEY_ALIAS"
+              echo "storeFile=app/upload.keystore"
+            } > android/key.properties
             echo "✅ Release signing configured via key.properties"
           else
             echo "ℹ️ No release keystore secrets found, using default signing"
@@ -72,3 +81,14 @@ EOF
         with:
           name: wavepass-release-bundle
           path: build/app/outputs/bundle/release/app-release.aab
+
+      - name: Create or Update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || steps.get_version.outputs.version }}
+          name: WavePass ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || steps.get_version.outputs.version }}
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          generate_release_notes: true

@@ -719,5 +719,45 @@
   - `flutter test --no-pub`: **All 98 tests passed** (0 failures).
 - [x] PR [#131](https://github.com/Icedmist/WavePass-Android/pull/131) merged to `main`.
 
+### 53. In-App Self-Updater via GitHub Releases for Sideloaded Android (Issue #136, PR #137)
+- [x] **Direct APK Download & Sideload Updating**:
+  - Added `android.permission.REQUEST_INSTALL_PACKAGES` to `AndroidManifest.xml` to allow seamless in-place updating of sideloaded installs without Play Store dependency.
+  - Implemented `AppUpdateService` (`lib/core/services/app_update_service.dart`) managing remote release checks against GitHub Releases API (`https://api.github.com/repos/Icedmist/WavePass-Android/releases/latest`).
+  - Added semver comparator (`isNewerVersion`) supporting `v` prefixes and build numbers (e.g. `1.0.1+2` vs `1.0.2`).
+  - Implemented streamed chunked APK downloading with progress callback (`MB / Total MB`) and `OpenFile.open` installer invocation.
+  - Added modern interactive update dialog (`_AppUpdateDialog`) displaying latest version, current version, release notes, progress bar, and action triggers.
+- [x] **UI & Lifecycle Integration**:
+  - Integrated post-frame background update check on dashboard mount (`home_dashboard_screen.dart`) with 4-hour cooldown caching.
+  - Added "WavePass Version" and manual "Check for Updates" tile to Account Center (`account_center_screen.dart`).
+- [x] **Unit Testing**:
+  - Created `test/app_update_service_test.dart` verifying semver bump detections (patch, minor, major, build numbers) and API resilience.
+- [x] **Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 109 tests passed**.
+- [x] PR [#137](https://github.com/Icedmist/WavePass-Android/pull/137) merged to `main`.
 
+### 54. Check for Updates Component in Settings & Admin Hub (Issue #138, PR #139)
+- [x] **Admin Hub & Account Center Integration**:
+  - Added dedicated `Check for Updates` tool tile under Advanced & Hardware Tools in Admin Hub (`lib/screens/admin_management_screen.dart`).
+  - Upgraded Account Center update tile with full `InkWell` card wrapping to allow tap-anywhere triggers.
+  - Added real-time user feedback with toast/snackbars indicating check status, up-to-date notifications, and error resilience.
+- [x] **Automated UI Verification**:
+  - Created `test/update_ui_verification_test.dart` testing the update UI flow with mock HTTP release responses.
+  - Verified update dialog presentation, release notes rendering, "Update Now", and "Later" buttons.
+  - Verified up-to-date snackbar feedback when version matches.
+- [x] **Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 111 tests passed**.
+- [x] PR [#139](https://github.com/Icedmist/WavePass-Android/pull/139) merged to `main`.
 
+### 55. Fix GitHub Pages Deployment & Release Workflow YAML Syntax (Issue #140, PR #141)
+- [x] **GitHub Pages 404 Resolution**:
+  - Diagnosed `404 Not Found` in `actions/deploy-pages@v4` on `pages.yml`.
+  - Enabled GitHub Pages with `build_type: workflow` via GitHub REST API (`POST /repos/Icedmist/WavePass-Android/pages`).
+  - Re-ran workflow; `Deploy Flutter Web to GitHub Pages` passed successfully in 2m8s (`https://icedmist.github.io/WavePass-Android/`).
+- [x] **Release Workflow YAML Fix**:
+  - Diagnosed `ScannerError` in `.github/workflows/release.yml` caused by root-level unindented heredoc lines in `android/key.properties` generation.
+  - Replaced unindented heredoc with structured, indented echo block to guarantee valid YAML.
+  - Added `permissions: contents: write`.
+  - Added version extraction from `pubspec.yaml` and `softprops/action-gh-release@v2` publishing step with compiled APK and AppBundle attached.
+- [x] PR [#141](https://github.com/Icedmist/WavePass-Android/pull/141) merged to `main`.

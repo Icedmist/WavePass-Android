@@ -798,3 +798,21 @@
   - `flutter test`: **All 115 tests passed**.
 - [x] PR [#145](https://github.com/Icedmist/WavePass-Android/pull/145) merged to `main` (commit `2c35dd3`).
 
+### 58. Dynamic Wallet Active Venue Synchronization & Auto-Provision DVA (Issue #146, PR #147)
+- [x] **Wallet Screen Dynamic Venue Synchronization (`lib/screens/wallet_screen.dart`)**:
+  - Registered `VenueStateService.instance.venueNotifier` listener in `WalletScreenState.initState()` with proper disposal in `dispose()`.
+  - Added dynamic `_onVenueChanged()` handler to automatically reload wallet balances, transaction logs, and Dedicated Virtual Accounts (DVA) whenever an operator switches active venues or creates a new venue.
+  - Enhanced `_load()` to actively query `VenueStateService.instance.currentVenueId` and hydrate active venue state before falling back to default venue.
+  - Updated Dedicated Virtual Account card header to explicitly display active venue name: `DEDICATED ACCOUNT • ${VenueStateService.instance.currentVenueName.toUpperCase()}` for unambiguous operator visual confirmation.
+- [x] **Automatic DVA Provisioning on Venue Creation (`lib/core/services/venue_state_service.dart`)**:
+  - Automatically invokes `WavePassApi.ensureVirtualAccount(newVenue.id)` upon venue creation in `createVenue()`.
+  - Ensures newly created venues immediately initialize their dedicated bank account without waiting for an initial manual wallet tab visit.
+- [x] **Backend Paystack Customer Scoping & Collision Prevention (`WavePass-Backend` Issue #68, PR #69)**:
+  - Addressed root cause of venues sharing virtual accounts where synthetic Paystack customer email generation relied solely on venue name.
+  - Scoped customer emails to venue ID and slug (`venue.${cleanSlug}.${shortId}@nexawavepass.com`) ensuring 100% 1-to-1 customer and DVA uniqueness.
+  - Added collision detection in `ensureForVenue` to purge collided DVA entries and re-provision dedicated accounts.
+- [x] **Automated Testing & Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All tests passed**.
+- [x] PR [#147](https://github.com/Icedmist/WavePass-Android/pull/147) merged to `main` (commit `aff3867`).
+

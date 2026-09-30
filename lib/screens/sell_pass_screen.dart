@@ -124,9 +124,8 @@ class _SellPassScreenState extends State<SellPassScreen> {
     try {
       if (VenueStateService.instance.currentVenue == null) {
         await VenueStateService.instance.refreshVenue();
-      } else {
-        await VenueStateService.instance.refreshPlans();
       }
+      await VenueStateService.instance.refreshPlans();
     } catch (e) {
       debugPrint('Error loading plans: $e');
     } finally {

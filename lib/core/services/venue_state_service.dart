@@ -22,6 +22,7 @@ class VenueStateService {
   static const String keyVenuePlans = 'wavepass_active_venue_plans';
   static const String keyCachedPlansPrefix = 'wavepass_cached_plans_';
   static const String keyUserVenuePrefix = 'wavepass_user_venue_';
+  static const String keyLastKnownVenueId = 'wavepass_last_known_venue_id';
 
   final ValueNotifier<Map<String, dynamic>?> venueNotifier = ValueNotifier<Map<String, dynamic>?>(null);
   final ValueNotifier<List<Map<String, dynamic>>> plansNotifier = ValueNotifier<List<Map<String, dynamic>>>([]);
@@ -46,7 +47,8 @@ class VenueStateService {
       final currentEmail = (prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
       final cachedId = prefs.getString(keyVenueId) ??
           prefs.getString(keyLegacyVenueId) ??
-          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null);
+          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null) ??
+          prefs.getString(keyLastKnownVenueId);
       final cachedName = prefs.getString(keyVenueName) ?? prefs.getString(keyLegacyVenueName);
       final cachedSlug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
       final cachedLogo = prefs.getString(keyVenueLogo) ?? prefs.getString(keyLegacyVenueLogo);
@@ -96,6 +98,7 @@ class VenueStateService {
       await prefs.remove(keyLegacyVenueLogo);
       if (!preserveUserCache) {
         await prefs.remove(keyVenuePlans);
+        await prefs.remove(keyLastKnownVenueId);
       }
     } catch (_) {}
   }
@@ -194,6 +197,7 @@ class VenueStateService {
     if (currentEmail.isNotEmpty && vId.isNotEmpty) {
       await prefs.setString('$keyUserVenuePrefix$currentEmail', vId);
     }
+    await prefs.setString(keyLastKnownVenueId, vId);
 
     venueNotifier.value = Map<String, dynamic>.from(created);
     await refreshPlans();
@@ -223,7 +227,8 @@ class VenueStateService {
       final vid = targetVenueId ??
           prefs.getString(keyVenueId) ??
           prefs.getString(keyLegacyVenueId) ??
-          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null);
+          (currentEmail.isNotEmpty ? prefs.getString('$keyUserVenuePrefix$currentEmail') : null) ??
+          prefs.getString(keyLastKnownVenueId);
       final slug = prefs.getString(keyVenueSlug) ?? prefs.getString(keyLegacyVenueSlug);
 
       // Hydrate cached plans immediately if plansNotifier is currently empty
@@ -324,9 +329,7 @@ class VenueStateService {
         } catch (_) {}
       }
 
-      // 4. Default-venue fallback is super-admin / logged-out only.
-      // Binding a regular operator to the global default venue is what leaked
-      // other venues' pricing tiers into Admin Hub / Sell / guest portal.
+      // 4. Default-venue fallback from backend API
       final isSuperAdmin =
           currentEmail == SupabaseService.superAdminEmail;
       if (venue == null && allowFallbackToPrimary && (isSuperAdmin || currentEmail.isEmpty)) {
@@ -362,6 +365,7 @@ class VenueStateService {
         await prefs.setString(keyVenueName, name);
         await prefs.setString(keyLegacyVenueName, name);
         await prefs.setString(keyVenueSlug, slugVal);
+        await prefs.setString(keyLastKnownVenueId, id);
         if (logo.isNotEmpty) await prefs.setString(keyVenueLogo, logo);
         if (currentEmail.isNotEmpty && id.isNotEmpty) {
           await prefs.setString('$keyUserVenuePrefix$currentEmail', id);
@@ -379,11 +383,15 @@ class VenueStateService {
 
   /// Refreshes plans for the currently active venue.
   Future<List<Map<String, dynamic>>> refreshPlans() async {
-    final vid = currentVenueId;
+    final prefs = await SharedPreferences.getInstance();
+    final vid = currentVenueId ??
+        prefs.getString(keyVenueId) ??
+        prefs.getString(keyLegacyVenueId) ??
+        prefs.getString(keyLastKnownVenueId);
+
     if (vid == null || vid.isEmpty) {
       if (plansNotifier.value.isEmpty) {
         try {
-          final prefs = await SharedPreferences.getInstance();
           final raw = prefs.getString(keyVenuePlans);
           if (raw != null && raw.isNotEmpty) {
             final decoded = jsonDecode(raw);
@@ -419,8 +427,10 @@ class VenueStateService {
     // 3. Fallback to SharedPreferences cached plans if network failed
     if (plans.isEmpty) {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final raw = prefs.getString('$keyCachedPlansPrefix$vid') ?? prefs.getString(keyVenuePlans);
+        final vidCached = prefs.getString('$keyCachedPlansPrefix$vid');
+        final raw = (vidCached != null && vidCached.isNotEmpty && vidCached != '[]')
+            ? vidCached
+            : prefs.getString(keyVenuePlans);
         if (raw != null && raw.isNotEmpty) {
           final decoded = jsonDecode(raw);
           if (decoded is List) {
@@ -433,7 +443,6 @@ class VenueStateService {
     if (plans.isNotEmpty) {
       plansNotifier.value = plans;
       try {
-        final prefs = await SharedPreferences.getInstance();
         final encoded = jsonEncode(plans);
         await prefs.setString(keyVenuePlans, encoded);
         await prefs.setString('$keyCachedPlansPrefix$vid', encoded);

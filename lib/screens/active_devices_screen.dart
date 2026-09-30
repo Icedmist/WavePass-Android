@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/router/app_router.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
+import '../core/services/venue_state_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/theme/app_theme.dart';
@@ -61,42 +62,76 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
       final pass = prefs.getString(RouterDiscoveryService.keyRouterPassword) ?? '';
       String? tunnel = prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint);
 
-      final venue = await SupabaseService.instance.getPrimaryVenue();
-      final venueId = venue?['id']?.toString();
+      final venueId = VenueStateService.instance.currentVenueId ??
+          prefs.getString(VenueStateService.keyVenueId) ??
+          prefs.getString(VenueStateService.keyLastKnownVenueId) ??
+          (await SupabaseService.instance.getPrimaryVenue())?['id']?.toString();
 
-      // If tunnel endpoint is empty, look up router endpoint from DB
+      // If tunnel endpoint is empty, look up router endpoint from backend API or DB
       if ((tunnel == null || tunnel.isEmpty) && venueId != null) {
         try {
-          final rList = await SupabaseService.instance.client
-              .from('Router')
-              .select('endpoint')
-              .eq('venueId', venueId)
-              .limit(1);
-          if (rList.isNotEmpty) {
-            final ep = rList.first['endpoint']?.toString();
-            if (ep != null && ep.isNotEmpty) tunnel = ep;
+          final venueData = await WavePassApi.instance.getVenue(venueId);
+          if (venueData['routers'] is List) {
+            for (final r in venueData['routers']) {
+              final ep = r['endpoint']?.toString();
+              if (ep != null && ep.startsWith('http') && !ep.contains('localhost') && !ep.contains('127.0.0.1')) {
+                tunnel = ep;
+                break;
+              }
+            }
           }
         } catch (_) {}
+
+        if (tunnel == null || tunnel.isEmpty) {
+          try {
+            final rList = await SupabaseService.instance.client
+                .from('Router')
+                .select('endpoint')
+                .eq('venueId', venueId)
+                .limit(1);
+            if (rList.isNotEmpty) {
+              final ep = rList.first['endpoint']?.toString();
+              if (ep != null && ep.isNotEmpty) tunnel = ep;
+            }
+          } catch (_) {}
+        }
       }
 
-      // 1. Fetch Supabase active sessions
+      // 1. Fetch active sessions from Backend API & Supabase
       List<dynamic> dbSessions = [];
       if (venueId != null) {
         try {
-          dbSessions = await SupabaseService.instance.getActiveSessions(venueId);
+          dbSessions = await WavePassApi.instance.listSessions(venueId);
         } catch (_) {}
+
+        if (dbSessions.isEmpty) {
+          try {
+            dbSessions = await SupabaseService.instance.getActiveSessions(venueId);
+          } catch (_) {}
+        }
       }
 
-      // 2. Fetch live RouterOS active sessions from hardware
+      // 2. Fetch live RouterOS active sessions from hardware (dual-probe LAN then tunnel)
       List<Map<String, dynamic>> hwUsers = [];
       try {
         hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
           ip: localIp,
           username: user,
           password: pass,
-          endpoint: tunnel,
+          endpoint: null,
         );
       } catch (_) {}
+
+      if (hwUsers.isEmpty && tunnel != null && tunnel.isNotEmpty) {
+        try {
+          hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
+            ip: localIp,
+            username: user,
+            password: pass,
+            endpoint: tunnel,
+          );
+        } catch (_) {}
+      }
 
       // 3. Merge both sources
       final merged = <Map<String, dynamic>>[];

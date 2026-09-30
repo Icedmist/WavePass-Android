@@ -79,15 +79,23 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
+    VenueStateService.instance.venueNotifier.addListener(_onVenueChanged);
     _load();
   }
 
   @override
   void dispose() {
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
     _nameCtrl.dispose();
     _acctCtrl.dispose();
     _bankCtrl.dispose();
     super.dispose();
+  }
+
+  void _onVenueChanged() {
+    if (mounted) {
+      _load();
+    }
   }
 
   Future<void> _toggleHideBalance() async {
@@ -109,8 +117,12 @@ class _WalletScreenState extends State<WalletScreen> {
       if (venueId == 'default') {
         venueId = VenueStateService.instance.currentVenueId ?? 'default';
         if (venueId == 'default') {
-          final venue = await _api.getDefaultVenue();
-          venueId = venue['id']?.toString() ?? 'default';
+          final activeVenue = await VenueStateService.instance.refreshVenue();
+          venueId = activeVenue?['id']?.toString() ?? VenueStateService.instance.currentVenueId ?? 'default';
+          if (venueId == 'default') {
+            final venue = await _api.getDefaultVenue();
+            venueId = venue['id']?.toString() ?? 'default';
+          }
         }
       }
 
@@ -1136,9 +1148,17 @@ class _WalletScreenState extends State<WalletScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('VENUE VIRTUAL ACCOUNT', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: Colors.white54)),
-                              if (_virtualAccount?['bankName'] != null)
+                              Expanded(
+                                child: Text(
+                                  'DEDICATED ACCOUNT • ${VenueStateService.instance.currentVenueName.toUpperCase()}',
+                                  style: const TextStyle(fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.bold, color: Colors.white70),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (_virtualAccount?['bankName'] != null) ...[
+                                const SizedBox(width: 8),
                                 Text(_virtualAccount!['bankName'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70)),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 12),

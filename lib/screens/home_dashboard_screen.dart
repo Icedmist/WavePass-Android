@@ -47,6 +47,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     _loadDashboard();
     _enforceActivation();
     VoucherHistoryService.instance.startMonitoring(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppNotifier.instance.requestPermission();
+    });
   }
 
   @override

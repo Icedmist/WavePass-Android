@@ -35,7 +35,7 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
-  static const String currentVersion = '1.0.1+2';
+  static const String currentVersion = '1.0.2+3';
   static const String repoOwner = 'Icedmist';
   static const String distributionRepo = 'WavePass-App';
   static const String sourceRepo = 'WavePass-Android';

@@ -493,7 +493,7 @@ class AppNotifier {
           isApproval: isApproval,
         );
 
-        if (typeRaw == 'PAYMENT' || isApproval) {
+        if (typeRaw == 'PAYMENT' || isApproval || typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
           if (showModal) {
             showViaKey(
               type: isApproval ? NotifyType.warning : type,

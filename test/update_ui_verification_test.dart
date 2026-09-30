@@ -23,14 +23,14 @@ void main() {
 
   testWidgets('Check for Updates component triggers update check and displays update dialog', (WidgetTester tester) async {
     final mockRelease = jsonEncode({
-      'tag_name': 'v1.0.2',
+      'tag_name': 'v1.0.3',
       'body': 'Brand new router diagnostics & offline recovery.',
-      'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v1.0.2',
+      'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v1.0.3',
       'published_at': '2026-09-30T00:00:00Z',
       'assets': [
         {
           'name': 'app-release.apk',
-          'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.2/app-release.apk',
+          'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.3/app-release.apk',
           'size': 25000000,
         }
       ],
@@ -81,7 +81,7 @@ void main() {
 
   testWidgets('Check for Updates component reports up to date when no newer version exists', (WidgetTester tester) async {
     final mockRelease = jsonEncode({
-      'tag_name': 'v1.0.1+2',
+      'tag_name': 'v${AppUpdateService.currentVersion}',
       'body': 'Current release notes.',
       'assets': [],
     });
@@ -118,7 +118,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(upToDateCalled, isTrue);
-    expect(find.text('WavePass is up to date (v1.0.1+2)'), findsOneWidget);
+    expect(find.text('WavePass is up to date (v${AppUpdateService.currentVersion})'), findsOneWidget);
     expect(find.text('Update Available'), findsNothing);
   });
 }

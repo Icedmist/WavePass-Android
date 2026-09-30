@@ -41,19 +41,19 @@ void main() {
 
     test('parses newer release and extracts apk download url', () async {
       final mockResponse = jsonEncode({
-        'tag_name': 'v1.0.2',
+        'tag_name': 'v2.0.0',
         'body': 'Paystack wallet cashout OTP fix and router resilience.',
-        'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v1.0.2',
+        'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v2.0.0',
         'published_at': '2026-09-30T00:00:00Z',
         'assets': [
           {
             'name': 'app-release.apk',
-            'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.2/app-release.apk',
+            'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v2.0.0/app-release.apk',
             'size': 25000000,
           },
           {
             'name': 'app-release.aab',
-            'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.2/app-release.aab',
+            'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v2.0.0/app-release.aab',
             'size': 18000000,
           },
         ],
@@ -72,15 +72,15 @@ void main() {
       final update = await service.checkForUpdate(force: true);
 
       expect(update.hasUpdate, isTrue);
-      expect(update.latestVersion, equals('1.0.2'));
-      expect(update.downloadUrl, equals('https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.2/app-release.apk'));
+      expect(update.latestVersion, equals('2.0.0'));
+      expect(update.downloadUrl, equals('https://github.com/Icedmist/WavePass-Android/releases/download/v2.0.0/app-release.apk'));
       expect(update.releaseNotes, contains('Paystack wallet'));
       expect(update.assetSizeBytes, equals(25000000));
     });
 
     test('returns hasUpdate false when release matches current version', () async {
       final mockResponse = jsonEncode({
-        'tag_name': 'v1.0.1',
+        'tag_name': 'v${AppUpdateService.currentVersion}',
         'body': 'Current release',
         'assets': [],
       });

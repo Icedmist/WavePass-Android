@@ -836,4 +836,32 @@
   - `flutter test`: **All 115 tests passed**.
 - [x] PR [#149](https://github.com/Icedmist/WavePass-Android/pull/149) merged to `main` (commit `b4d31c7`).
 
+### 60. Captive Portal Checkout Redirect, Venue Plans Persistence Across Logout/Update, & Active Devices Discovery (Issue #150, PR #151)
+- [x] **Captive Portal Paystack Hosted Checkout Redirect (`lib/screens/router_setup_screen.dart`)**:
+  - Addressed root cause where Android CaptivePortalLogin and iOS CNA (Captive Network Assistant) sandboxes block `PaystackPop.openIframe()` popups and 3rd-party banking redirects.
+  - Prioritized direct navigation: `if (data.authorization_url) { window.location.href = data.authorization_url; return; }` to allow native checkout flows (Cards, USSD, Bank Transfer).
+  - Stored `data.reference` in `localStorage` and `sessionStorage` (`wp_pending_ref`).
+  - Added `DOMContentLoaded` listener that detects return payment parameters (`?reference=`, `?trxref=`, or `wp_pending_ref`), fetches the voucher from `/api/v1/portal/retrieve-voucher`, and triggers instant `executeLogin(voucherCode, voucherCode)`.
+- [x] **Venue & Plans Persistence Across Logout & App Updates (`lib/core/services/venue_state_service.dart`)**:
+  - Introduced `keyLastKnownVenueId = 'wavepass_last_known_venue_id'`.
+  - In `clearVenue({bool preserveUserCache = true})`, preserved `keyLastKnownVenueId`, `$keyCachedPlansPrefix$vid`, and `keyVenuePlans` when `preserveUserCache` is true.
+  - In `init()` and `refreshVenue()`, resolved venue ID from `keyLastKnownVenueId` and added backend `getDefaultVenue()` fallback.
+  - In `refreshPlans()`, resolved venue ID from `currentVenueId ?? keyVenueId ?? keyLastKnownVenueId`, pulling plans from backend `WavePassApi.listPlans`, Supabase `getActivePlans`, and disk cache `$keyCachedPlansPrefix$vid`.
+  - Updated plan fallback logic to fall back to `keyVenuePlans` if venue-specific plan cache is empty.
+  - In `lib/core/services/supabase_service.dart`, prioritized the flagship venue (`0e65c025-480a-4a42-8c49-68b6f0b27712`) in `getPrimaryVenue()` for super-admin (`talk2icedmist@gmail.com`) instead of falling back to arbitrary newly created test venues.
+- [x] **Screens Plan Recovery & Proactive Hydration (`sell_pass_screen.dart`, `batch_vouchers_screen.dart`, `admin_management_screen.dart`)**:
+  - Ensured `refreshPlans()` runs proactively during initial venue resolution.
+  - In `admin_management_screen.dart`, added backend `WavePassApi.instance.listPlans(venueId: _venueId!)` fallback.
+- [x] **Online Devices Discovery Dual-Probe (`lib/screens/active_devices_screen.dart`, `lib/screens/home_dashboard_screen.dart`)**:
+  - Resolved `venueId` using `VenueStateService.currentVenueId ?? keyVenueId ?? keyLastKnownVenueId ?? primaryVenue`.
+  - Implemented dual-probe logic: probes local LAN (`192.168.88.1`) first, and if empty/unreachable, falls back to the remote tunnel endpoint.
+  - Fetches sessions via `WavePassApi.instance.listSessions(venueId)` before falling back to Supabase.
+  - In `lib/core/services/wavepass_api.dart`, exposed public `get(String path)` and added `listSessions(String venueId)` helper.
+- [x] **Automated Testing & Verification**:
+  - Added comprehensive unit tests in `test/plan_retention_and_portal_autoconnect_test.dart` for authorization redirect priority, `DOMContentLoaded` auto-retrieval, and plan hydration via `keyLastKnownVenueId`.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 117 tests passed**.
+- [x] PR [#151](https://github.com/Icedmist/WavePass-Android/pull/151) merged to `main` (commit `5b8d0da`).
+
+
 

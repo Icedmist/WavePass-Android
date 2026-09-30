@@ -761,3 +761,20 @@
   - Added `permissions: contents: write`.
   - Added version extraction from `pubspec.yaml` and `softprops/action-gh-release@v2` publishing step with compiled APK and AppBundle attached.
 - [x] PR [#141](https://github.com/Icedmist/WavePass-Android/pull/141) merged to `main`.
+
+### 56. Dual-Repository Release Publishing & Multi-Tier Fallback Update Checking (Issue #142, PR #143)
+- [x] **Cross-Repository Release Automation (`.github/workflows/release.yml`)**:
+  - Configured automated dual release deployment on tagged builds (`v*`) and manual workflow dispatches.
+  - Automatically publishes releases and binary artifacts (`app-release.apk` and `app-release.aab`) to both the primary source repository (`Icedmist/WavePass-Android`) and the public distribution repository (`Icedmist/WavePass-App`).
+  - Integrated `GH_RELEASE_TOKEN` secret and `gh release create` / `gh release upload --clobber` for automated asset uploads.
+- [x] **Multi-Tier Fallback App Update Service (`lib/core/services/app_update_service.dart`)**:
+  - Implemented multi-tier fallback update resolution:
+    1. **Primary**: Backend API version endpoint (`https://api.nexawavepass.com/api/v1/app/version`)
+    2. **Secondary**: Public distribution repository releases (`Icedmist/WavePass-App`)
+    3. **Tertiary**: Source repository releases (`Icedmist/WavePass-Android`)
+  - Ensures remote in-app updates continue functioning seamlessly even if the primary source repository is made private.
+- [x] **Automated Testing & Verification**:
+  - Updated `test/app_update_service_test.dart` to verify backend API prioritization, public distribution repository fallback, and graceful error handling.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 113 tests passed**.
+- [x] PR [#143](https://github.com/Icedmist/WavePass-Android/pull/143) merged to `main`.

@@ -1,9 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/widgets/shimmer.dart';
+
+class _NigerianBankChoice {
+  final String name;
+  final String code;
+  const _NigerianBankChoice(this.name, this.code);
+}
+
+const List<_NigerianBankChoice> _kPopularNigerianBanks = [
+  _NigerianBankChoice('Access Bank', '044'),
+  _NigerianBankChoice('Guaranty Trust Bank (GTBank)', '058'),
+  _NigerianBankChoice('Zenith Bank', '057'),
+  _NigerianBankChoice('First Bank of Nigeria', '011'),
+  _NigerianBankChoice('United Bank for Africa (UBA)', '033'),
+  _NigerianBankChoice('Kuda Bank', '50211'),
+  _NigerianBankChoice('OPay Digital Services', '999992'),
+  _NigerianBankChoice('PalmPay', '999991'),
+  _NigerianBankChoice('Moniepoint MFB', '50515'),
+  _NigerianBankChoice('Stanbic IBTC Bank', '221'),
+  _NigerianBankChoice('Sterling Bank', '232'),
+  _NigerianBankChoice('Fidelity Bank', '070'),
+  _NigerianBankChoice('First City Monument Bank (FCMB)', '214'),
+  _NigerianBankChoice('Wema Bank', '035'),
+  _NigerianBankChoice('Union Bank of Nigeria', '032'),
+  _NigerianBankChoice('Polaris Bank', '076'),
+  _NigerianBankChoice('Providus Bank', '101'),
+  _NigerianBankChoice('Ecobank Nigeria', '050'),
+  _NigerianBankChoice('Jaiz Bank', '301'),
+  _NigerianBankChoice('Taj Bank', '302'),
+  _NigerianBankChoice('Other / Custom Bank Code', 'custom'),
+];
 
 /// Wallet / cashout hub. Shows the venue's dedicated virtual account (funded
 /// via the single Nexa Paystack key), the available balance, and lets the venue
@@ -395,10 +426,43 @@ class _WalletScreenState extends State<WalletScreen> {
       return;
     }
 
+    if (_bankAccounts.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.account_balance_outlined, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Bank Account Required', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'You do not have a registered settlement bank account yet. Where should Paystack send your cashout funds?\n\nPlease add your Nigerian bank account first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _registerBank();
+              },
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Bank Account'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     if (_availableNgn <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No funds currently available for cashout.'),
+          content: Text('No funds currently available for cashout. Available balance is ₦0.00.'),
           backgroundColor: AppColors.warmSand,
         ),
       );
@@ -414,43 +478,83 @@ class _WalletScreenState extends State<WalletScreen> {
         final amtCtrl = TextEditingController(text: _availableNgn > 0 ? _availableNgn.toStringAsFixed(0) : '');
         final passCtrl = TextEditingController();
         bool obscurePass = true;
+        String? amtError;
+        String? passError;
+
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Cash Out'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            title: const Row(
               children: [
-                Text(
-                  'Payout Destination:\n$bankLabel',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textLight),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amtCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Amount (NGN)',
-                    helperText: 'Max available: ₦${_availableNgn.toStringAsFixed(2)}',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passCtrl,
-                  obscureText: obscurePass,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm your password',
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                        color: AppColors.textLight,
-                        size: 20,
-                      ),
-                      onPressed: () => setDialogState(() => obscurePass = !obscurePass),
+                Icon(Icons.currency_exchange, color: AppColors.primary, size: 22),
+                SizedBox(width: 8),
+                Text('Cash Out Funds', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.containerBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'PAYOUT DESTINATION',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textLight, letterSpacing: 0.5),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          bankLabel,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: amtCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Amount (NGN)',
+                      prefixText: '₦ ',
+                      helperText: 'Available: ₦${_availableNgn.toStringAsFixed(2)} (Min ₦500)',
+                      errorText: amtError,
+                    ),
+                    onChanged: (_) {
+                      if (amtError != null) setDialogState(() => amtError = null);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: obscurePass,
+                    decoration: InputDecoration(
+                      labelText: 'Venue / Owner Password',
+                      helperText: 'Required to authorize payout',
+                      errorText: passError,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          color: AppColors.textLight,
+                          size: 20,
+                        ),
+                        onPressed: () => setDialogState(() => obscurePass = !obscurePass),
+                      ),
+                    ),
+                    onChanged: (_) {
+                      if (passError != null) setDialogState(() => passError = null);
+                    },
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -458,10 +562,35 @@ class _WalletScreenState extends State<WalletScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: () => Navigator.of(ctx).pop({
-                  'amount': double.tryParse(amtCtrl.text),
-                  'password': passCtrl.text,
-                }),
+                onPressed: () {
+                  final rawAmt = amtCtrl.text.trim();
+                  final enteredAmt = double.tryParse(rawAmt);
+                  final enteredPass = passCtrl.text;
+                  bool hasError = false;
+
+                  if (rawAmt.isEmpty || enteredAmt == null || enteredAmt <= 0) {
+                    setDialogState(() => amtError = 'Please enter a valid cashout amount.');
+                    hasError = true;
+                  } else if (enteredAmt < 500) {
+                    setDialogState(() => amtError = 'Minimum cashout amount is ₦500.');
+                    hasError = true;
+                  } else if (enteredAmt > _availableNgn) {
+                    setDialogState(() => amtError = 'Cannot exceed available balance (₦${_availableNgn.toStringAsFixed(2)}).');
+                    hasError = true;
+                  }
+
+                  if (enteredPass.trim().isEmpty) {
+                    setDialogState(() => passError = 'Password is required to authorize payout.');
+                    hasError = true;
+                  }
+
+                  if (hasError) return;
+
+                  Navigator.of(ctx).pop({
+                    'amount': enteredAmt,
+                    'password': enteredPass,
+                  });
+                },
                 child: const Text('Cash Out'),
               ),
             ],
@@ -475,7 +604,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (amount == null || amount <= 0 || password == null || password.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter an amount and your password.')),
+          const SnackBar(content: Text('Missing required cashout details (amount and password).')),
         );
       }
       return;
@@ -608,7 +737,7 @@ class _WalletScreenState extends State<WalletScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.accentRed),
+          SnackBar(content: Text('Cashout failed: $e'), backgroundColor: AppColors.accentRed),
         );
       }
     } finally {
@@ -641,28 +770,192 @@ class _WalletScreenState extends State<WalletScreen> {
       );
       return;
     }
+
+    _nameCtrl.clear();
+    _acctCtrl.clear();
+    _bankCtrl.clear();
+
     final form = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) {
-        final h = AlertDialog(
-          title: const Text('Register Bank Account'),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Account Name')),
-              TextField(controller: _acctCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account Number')),
-              TextField(controller: _bankCtrl, decoration: const InputDecoration(labelText: 'Bank Code (e.g. 058 for GTBank, 011 for FirstBank, 057 for Zenith)')),
-            ]),
+        _NigerianBankChoice? selectedBank = _kPopularNigerianBanks.first;
+        String? nameError;
+        String? acctError;
+        String? bankError;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.account_balance, color: AppColors.primary, size: 22),
+                SizedBox(width: 8),
+                Text('Add Payout Bank', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Register a 10-digit Nigerian NUBAN account to receive instant Paystack automated payouts.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textLight, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<_NigerianBankChoice>(
+                    initialValue: selectedBank,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Select Bank',
+                      errorText: bankError,
+                    ),
+                    items: _kPopularNigerianBanks.map((b) {
+                      return DropdownMenuItem<_NigerianBankChoice>(
+                        value: b,
+                        child: Text(
+                          b.name,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedBank = val;
+                        bankError = null;
+                      });
+                    },
+                  ),
+                  if (selectedBank?.code == 'custom') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _bankCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(6),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'Bank Code (e.g. 058)',
+                        helperText: 'Enter 3-to-6 digit CBN bank code',
+                        errorText: bankError,
+                      ),
+                      onChanged: (_) {
+                        if (bankError != null) setDialogState(() => bankError = null);
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _acctCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'Account Number',
+                      hintText: '10 digits (NUBAN)',
+                      helperText: 'Must be exactly 10 digits',
+                      errorText: acctError,
+                    ),
+                    onChanged: (_) {
+                      if (acctError != null) setDialogState(() => acctError = null);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _nameCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: 'Account Holder Name',
+                      hintText: 'e.g. John Doe / Venue Name',
+                      helperText: 'Name as registered on the bank account',
+                      errorText: nameError,
+                    ),
+                    onChanged: (_) {
+                      if (nameError != null) setDialogState(() => nameError = null);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final name = _nameCtrl.text.trim();
+                  final acct = _acctCtrl.text.trim();
+                  bool hasError = false;
+
+                  if (selectedBank == null) {
+                    setDialogState(() => bankError = 'Please select a bank.');
+                    hasError = true;
+                  } else if (selectedBank!.code == 'custom') {
+                    final code = _bankCtrl.text.trim();
+                    if (code.isEmpty) {
+                      setDialogState(() => bankError = 'Enter a valid bank code.');
+                      hasError = true;
+                    } else if (code.length < 3 || !RegExp(r'^\d{3,6}$').hasMatch(code)) {
+                      setDialogState(() => bankError = 'Bank code must be 3 to 6 digits.');
+                      hasError = true;
+                    }
+                  }
+
+                  if (acct.isEmpty) {
+                    setDialogState(() => acctError = 'Account number is required.');
+                    hasError = true;
+                  } else if (acct.length != 10 || !RegExp(r'^\d{10}$').hasMatch(acct)) {
+                    setDialogState(() => acctError = 'Account number must be exactly 10 digits.');
+                    hasError = true;
+                  }
+
+                  if (name.isEmpty) {
+                    setDialogState(() => nameError = 'Account holder name is required.');
+                    hasError = true;
+                  }
+
+                  if (hasError) return;
+
+                  final bankCode = selectedBank!.code == 'custom' ? _bankCtrl.text.trim() : selectedBank!.code;
+                  final bankName = selectedBank!.code == 'custom' ? 'Custom Bank ($bankCode)' : selectedBank!.name;
+
+                  Navigator.of(ctx).pop({
+                    'name': name,
+                    'acct': acct,
+                    'bankCode': bankCode,
+                    'bankName': bankName,
+                  });
+                },
+                child: const Text('Save Bank Account'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop({'name': _nameCtrl.text.trim(), 'acct': _acctCtrl.text.trim(), 'bank': _bankCtrl.text.trim()}), child: const Text('Save')),
-          ],
         );
-        return h;
       },
     );
+
     if (form == null) return;
-    if (form['name']!.isEmpty || form['acct']!.isEmpty || form['bank']!.isEmpty) return;
+    final name = form['name'] ?? '';
+    final acct = form['acct'] ?? '';
+    final bankCode = form['bankCode'] ?? '';
+    final bankName = form['bankName'];
+
+    if (name.isEmpty || acct.isEmpty || bankCode.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Missing required bank details. Please check name, 10-digit account number, and bank.'),
+            backgroundColor: AppColors.accentRed,
+          ),
+        );
+      }
+      return;
+    }
+
     var venueId = widget.venueId;
     if (venueId == 'default') {
       try {
@@ -670,22 +963,51 @@ class _WalletScreenState extends State<WalletScreen> {
         venueId = venue['id']?.toString() ?? venueId;
       } catch (_) {}
     }
+
     setState(() => _submitting = true);
     try {
-      await _api.registerBankAccount(venueId: venueId, accountName: form['name']!, accountNumber: form['acct']!, bankCode: form['bank']!);
+      await _api.registerBankAccount(
+        venueId: venueId,
+        accountName: name,
+        accountNumber: acct,
+        bankCode: bankCode,
+        bankName: bankName,
+      );
       _nameCtrl.clear();
       _acctCtrl.clear();
       _bankCtrl.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bank account registered for payouts.')),
+          SnackBar(
+            content: Text('✅ $bankName ($acct) registered for payouts.'),
+            backgroundColor: AppColors.accentGreen,
+          ),
         );
       }
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
+        final errStr = e.toString().replaceFirst('Exception: ', '');
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline, color: AppColors.accentRed),
+                SizedBox(width: 8),
+                Text('Bank Registration Failed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Text(
+              'Could not register this account with Paystack:\n\n$errStr\n\nPlease ensure the 10-digit account number and bank match the registered account name.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
         );
       }
     } finally {
@@ -695,7 +1017,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _adminConfirmCashout(String id) async {
     final pass = await _askAdminPassword();
-    if (pass == null) return;
+    if (pass == null || pass.trim().isEmpty) return;
     setState(() => _submitting = true);
     try {
       await _api.confirmCashout(cashoutId: id, adminPassword: pass);
@@ -721,31 +1043,46 @@ class _WalletScreenState extends State<WalletScreen> {
       context: context,
       builder: (ctx) {
         final ctrl = TextEditingController();
-        return AlertDialog(
-          title: const Text('Confirm Cashout'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter your password to authorise this payout.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
+        String? passError;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Confirm Cashout'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Enter your password to authorise this payout.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    errorText: passError,
+                  ),
+                  onChanged: (_) {
+                    if (passError != null) setDialogState(() => passError = null);
+                  },
                 ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (ctrl.text.trim().isEmpty) {
+                    setDialogState(() => passError = 'Password is required.');
+                    return;
+                  }
+                  Navigator.of(ctx).pop(ctrl.text);
+                },
+                child: const Text('Confirm'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-              child: const Text('Confirm'),
-            ),
-          ],
         );
       },
     );

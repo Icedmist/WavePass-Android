@@ -647,6 +647,7 @@ add comment="Supabase Auth" dst-host="*.supabase.co"
 /ip hotspot walled-garden ip
 add comment="WavePass Root Portal (HTTPS)" dst-host="nexawavepass.com" action=accept
 add comment="WavePass API (HTTPS)" dst-host="api.nexawavepass.com" action=accept
+add comment="WavePass API Static IP (HTTPS)" dst-address=134.209.116.20 action=accept
 add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
 add comment="Google Fonts (HTTPS)" dst-host="fonts.googleapis.com" action=accept
 add comment="Google Fonts Static (HTTPS)" dst-host="fonts.gstatic.com" action=accept

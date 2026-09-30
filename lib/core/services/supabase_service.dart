@@ -153,8 +153,15 @@ class SupabaseService {
       // Only the platform super-admin may use the global fallback below.
       if (user != null && !_isSuperAdmin(targetEmail)) return null;
 
-      // 4. Fallback: super-admin only — latest venue for inspection/support.
+      // 4. Fallback: super-admin only — check flagship venue first, then latest
       if (targetEmail == superAdminEmail) {
+        final flagship = await client
+            .from('Venue')
+            .select('*')
+            .eq('id', '0e65c025-480a-4a42-8c49-68b6f0b27712')
+            .maybeSingle();
+        if (flagship != null) return flagship;
+
         final res = await client
             .from('Venue')
             .select('*')

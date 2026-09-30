@@ -35,11 +35,19 @@ class WavePassApi {
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> get(String path) => _get(path);
+
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) => _post(path, body);
 
   Future<Map<String, dynamic>> clientPatch(String path, Map<String, dynamic> body) => _patch(path, body);
 
   Future<Map<String, dynamic>> patchVenue(String id, Map<String, dynamic> data) => _patch('/api/v1/venues/$id', data);
+
+  Future<List<dynamic>> listSessions(String venueId) async {
+    final res = await _get('/api/v1/sessions?venueId=$venueId');
+    if (res['data'] is List) return res['data'] as List;
+    return [];
+  }
 
   Map<String, dynamic> _decode(http.Response res) {
     if (res.body.isEmpty) return {'status': res.statusCode};

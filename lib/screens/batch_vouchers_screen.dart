@@ -126,6 +126,8 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
           _selectedVenueId = vId;
         });
         await VenueStateService.instance.refreshPlans();
+      } else {
+        await VenueStateService.instance.refreshPlans();
       }
     } catch (e) {
       debugPrint('Error loading venues: $e');

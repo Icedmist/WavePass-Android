@@ -292,6 +292,14 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       } catch (_) {
         raw = await SupabaseService.instance.getActivePlans(_venueId!);
       }
+      if (raw.isEmpty) {
+        try {
+          final apiList = await WavePassApi.instance.listPlans(venueId: _venueId!);
+          if (apiList.isNotEmpty) {
+            raw = apiList.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          }
+        } catch (_) {}
+      }
       final plans = raw;
       if (mounted) {
         setState(() {

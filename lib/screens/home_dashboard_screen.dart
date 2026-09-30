@@ -180,9 +180,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             }
           } catch (_) {}
           try {
-            final sessions = await SupabaseService.instance.getActiveSessions(vid);
-            if (mounted) setState(() => _activeUsers = sessions.length);
-          } catch (_) {}
+            final res = await WavePassApi.instance.listSessions(vid);
+            int count = res.length;
+            if (count == 0) {
+              final sessions = await SupabaseService.instance.getActiveSessions(vid);
+              count = sessions.length;
+            }
+            if (mounted && (count > 0 || _activeUsers == 0)) setState(() => _activeUsers = count);
+          } catch (_) {
+            try {
+              final sessions = await SupabaseService.instance.getActiveSessions(vid);
+              if (mounted && sessions.isNotEmpty) setState(() => _activeUsers = sessions.length);
+            } catch (_) {}
+          }
           try {
             final orders = await SupabaseService.instance.client.from('Order').select('id, customerRef, amountMinor, createdAt, Plan(name)').eq('venueId', vid).order('createdAt', ascending: false).limit(5);
             if (mounted) {
@@ -244,11 +254,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
           if (isHardwareOnline) {
             try {
+              final hwEndpoint = (lp?.ip != null && lp!.ip != localIp && lp.ip.startsWith('http')) ? lp.ip : null;
               final hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
                 ip: localIp,
                 username: user,
                 password: pass,
-                endpoint: lp?.ip,
+                endpoint: hwEndpoint,
               );
               if (mounted && (hwUsers.isNotEmpty || _activeUsers == 0)) {
                 setState(() => _activeUsers = hwUsers.length);

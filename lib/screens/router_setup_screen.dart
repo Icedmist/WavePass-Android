@@ -1739,7 +1739,20 @@ $_rfc1321Md5Js
         return res.json();
       })
       .then(function(data) {
-        if (!data) throw new Error('Invalid payment initialization response');
+        // Save pending payment state so when guest returns, pass is auto-redeemed
+        try {
+          if (data.reference) {
+            localStorage.setItem('wp_pending_ref', data.reference);
+            sessionStorage.setItem('wp_pending_ref', data.reference);
+          }
+        } catch(e) {}
+
+        // In captive webviews and mobile network assistants, full page redirect
+        // to authorization_url is required (iframes are sandboxed or block 3DS/OTP popups).
+        if (data.authorization_url) {
+          window.location.href = data.authorization_url;
+          return;
+        }
 
         if (window.PaystackPop) {
           var handler = PaystackPop.setup({
@@ -1774,8 +1787,6 @@ $_rfc1321Md5Js
             }
           });
           handler.openIframe();
-        } else if (data.authorization_url) {
-          window.location.href = data.authorization_url;
         } else {
           throw new Error(data.message || 'No checkout URL returned.');
         }
@@ -1839,6 +1850,30 @@ $_rfc1321Md5Js
     window.addEventListener('DOMContentLoaded', function() {
       try {
         var params = new URLSearchParams(window.location.search);
+        var ref = params.get('reference') || params.get('trxref') || params.get('ref');
+        if (!ref) {
+          try {
+            ref = sessionStorage.getItem('wp_pending_ref') || localStorage.getItem('wp_pending_ref');
+          } catch(e) {}
+        }
+        if (ref) {
+          try {
+            sessionStorage.removeItem('wp_pending_ref');
+            localStorage.removeItem('wp_pending_ref');
+          } catch(e) {}
+          var effectiveVenueId = '$venueId' || '$slug';
+          fetch('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?reference=' + encodeURIComponent(ref) + '&venueId=' + encodeURIComponent(effectiveVenueId))
+            .then(function(vRes) { return vRes.json(); })
+            .then(function(vData) {
+              var vCode = (vData && (vData.voucherCode || vData.code || (vData.voucher && vData.voucher.code))) || '';
+              if (vCode) {
+                try { localStorage.setItem('wp-active-voucher', vCode); } catch(e){}
+                executeLogin(vCode, vCode);
+              }
+            })
+            .catch(function(e) {});
+        }
+
         var c = params.get('code') || params.get('voucher');
         var u = params.get('username') || params.get('user');
         var p = params.get('password') || params.get('pass');

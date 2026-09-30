@@ -199,5 +199,54 @@ void main() {
       expect(html.contains('id="savedVoucherCode"'), isTrue);
       expect(html.contains('1-Tap Reconnect Now'), isTrue);
     });
+
+    test('generateLoginHtml prioritizes data.authorization_url and stores pending reference for captive portal', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Nexa WavePass',
+        'flagship',
+      );
+
+      // Verify that authorization_url full page redirect is prioritized over iframe
+      expect(html.contains("localStorage.setItem('wp_pending_ref', data.reference);"), isTrue);
+      expect(html.contains("if (data.authorization_url) {\n          window.location.href = data.authorization_url;\n          return;\n        }"), isTrue);
+      // Verify DOMContentLoaded auto-retrieves payment reference on return
+      expect(html.contains("var ref = params.get('reference') || params.get('trxref') || params.get('ref');"), isTrue);
+      expect(html.contains("wp_pending_ref"), isTrue);
+      expect(html.contains("retrieve-voucher?reference="), isTrue);
+    });
+  });
+
+  group('Venue & Plan Persistence Across Logout / Update Tests (Issue #150)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('VenueStateService preserves and hydrates plans via keyLastKnownVenueId', () async {
+      final samplePlans = [
+        {
+          'id': 'plan-flagship-1',
+          'venueId': 'venue-flagship-1',
+          'name': 'Custom Pass',
+          'priceMinor': 20000,
+          'durationSeconds': 1800,
+          'active': true,
+        },
+      ];
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(VenueStateService.keyLastKnownVenueId, 'venue-flagship-1');
+      await prefs.setString('${VenueStateService.keyCachedPlansPrefix}venue-flagship-1', jsonEncode(samplePlans));
+      await prefs.setString(VenueStateService.keyVenuePlans, jsonEncode(samplePlans));
+
+      final service = VenueStateService.instance;
+      service.venueNotifier.value = null;
+      service.plansNotifier.value = [];
+
+      // Even if currentVenueId in memory is null and keyVenueId is not set, refreshPlans recovers using keyLastKnownVenueId
+      final plans = await service.refreshPlans();
+      expect(plans, isNotEmpty);
+      expect(plans.first['name'], equals('Custom Pass'));
+      expect(service.currentPlans, isNotEmpty);
+    });
   });
 }

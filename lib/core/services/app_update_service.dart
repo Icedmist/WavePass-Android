@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/api_constants.dart';
 import '../theme/app_theme.dart';
 
 class AppUpdateInfo {
@@ -36,7 +37,9 @@ class AppUpdateService {
 
   static const String currentVersion = '1.0.1+2';
   static const String repoOwner = 'Icedmist';
-  static const String repoName = 'WavePass-Android';
+  static const String distributionRepo = 'WavePass-App';
+  static const String sourceRepo = 'WavePass-Android';
+  static const String backendVersionEndpoint = '${ApiConstants.cloudBaseUrl}/api/v1/app/version';
   static const String keyLastCheck = 'wavepass_last_update_check_ms';
   static const int checkCooldownHours = 4;
 
@@ -81,7 +84,7 @@ class AppUpdateService {
     }
   }
 
-  /// Checks GitHub Releases for a newer version of WavePass Android.
+  /// Checks backend API and GitHub Releases for a newer version of WavePass Android.
   Future<AppUpdateInfo> checkForUpdate({bool force = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final lastCheck = prefs.getInt(keyLastCheck) ?? 0;
@@ -95,15 +98,70 @@ class AppUpdateService {
       );
     }
 
+    // 1. Try Backend API first
     try {
-      final url = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
+      final backendUrl = Uri.parse(backendVersionEndpoint);
+      final res = await _httpClient.get(backendUrl, headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'WavePass-Android-Updater',
+      }).timeout(const Duration(seconds: 4));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final version = data['version']?.toString() ?? data['latestVersion']?.toString() ?? '';
+        final downloadUrl = data['downloadUrl']?.toString();
+        final releaseNotes = data['releaseNotes']?.toString() ?? 'Performance improvements and bug fixes.';
+        final hasNewer = isNewerVersion(version, currentVersion);
+        if (hasNewer && downloadUrl != null && downloadUrl.isNotEmpty) {
+          await prefs.setInt(keyLastCheck, now);
+          return AppUpdateInfo(
+            hasUpdate: true,
+            latestVersion: version.replaceFirst(RegExp(r'^[vV]'), ''),
+            currentVersion: currentVersion,
+            releaseNotes: releaseNotes,
+            downloadUrl: downloadUrl,
+            htmlUrl: data['htmlUrl']?.toString(),
+            publishedAt: data['publishedAt'] != null ? DateTime.tryParse(data['publishedAt'].toString()) : null,
+          );
+        }
+      }
+    } catch (_) {}
+
+    // 2. Try Public Distribution Repo (WavePass-App)
+    final publicInfo = await _checkGitHubRelease(repoOwner, distributionRepo);
+    if (publicInfo != null && publicInfo.hasUpdate) {
+      await prefs.setInt(keyLastCheck, now);
+      return publicInfo;
+    }
+
+    // 3. Fallback to Source Repo (WavePass-Android)
+    final sourceInfo = await _checkGitHubRelease(repoOwner, sourceRepo);
+    if (sourceInfo != null) {
+      await prefs.setInt(keyLastCheck, now);
+      return sourceInfo;
+    }
+
+    if (publicInfo != null) {
+      await prefs.setInt(keyLastCheck, now);
+      return publicInfo;
+    }
+
+    return const AppUpdateInfo(
+      hasUpdate: false,
+      latestVersion: currentVersion,
+      currentVersion: currentVersion,
+    );
+  }
+
+  Future<AppUpdateInfo?> _checkGitHubRelease(String owner, String repo) async {
+    try {
+      final url = Uri.parse('https://api.github.com/repos/$owner/$repo/releases/latest');
       final response = await _httpClient.get(url, headers: {
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'WavePass-Android-Updater',
-      }).timeout(const Duration(seconds: 10));
+      }).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
-        await prefs.setInt(keyLastCheck, now);
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final tagName = data['tag_name']?.toString() ?? '';
         final body = data['body']?.toString() ?? 'Bug fixes and performance improvements.';
@@ -139,12 +197,7 @@ class AppUpdateService {
         );
       }
     } catch (_) {}
-
-    return const AppUpdateInfo(
-      hasUpdate: false,
-      latestVersion: currentVersion,
-      currentVersion: currentVersion,
-    );
+    return null;
   }
 
   /// Downloads the release APK with progress and triggers native Android package installer.

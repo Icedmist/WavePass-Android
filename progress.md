@@ -816,3 +816,24 @@
   - `flutter test`: **All tests passed**.
 - [x] PR [#147](https://github.com/Icedmist/WavePass-Android/pull/147) merged to `main` (commit `aff3867`).
 
+### 59. Fix Captive Portal CORS Preflight, Voucher Device Notifications, Walled Garden IP & Release Automation (Issue #148, PR #149 & Backend Issue #70, PR #71)
+- [x] **Captive Portal CORS Preflight 500 Fix (`WavePass-Backend` Issue #70, PR #71)**:
+  - Addressed root cause of `Payment Error: Failed to fetch` on captive portal domains (e.g. `nuru.net`, `192.168.88.1`).
+  - Fastify previously threw an unhandled Error for origins outside `FRONTEND_URL`, returning `HTTP 500` on browser `OPTIONS` preflight requests.
+  - Updated `src/main.ts` CORS origin handler to reflect the request origin (`cb(null, true)`) and allow standard headers (`Content-Type`, `Authorization`, `x-paystack-signature`, `Accept`, `Origin`, `X-Requested-With`).
+  - Built, tested (150/150 tests passed), and deployed to droplet; verified live `curl -i -X OPTIONS https://api.nexawavepass.com/api/v1/portal/init-payment -H "Origin: http://nuru.net"` returns `HTTP 204 No Content` with `access-control-allow-origin: http://nuru.net`.
+- [x] **Voucher Device Status Notifications (`lib/core/services/notification_service.dart`)**:
+  - Broadened `refreshPayments` notification filter from only `PAYMENT` to also include `VOUCHER` events (`typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')`), ensuring pass usage and status changes trigger the Android system notification bar (`_showBar`).
+  - Added post-frame callback in `HomeDashboardScreen.initState()` to request Android 13+ `POST_NOTIFICATIONS` runtime permissions once the activity is fully mounted.
+- [x] **Router Setup Script Walled Garden Static IP (`lib/screens/router_setup_screen.dart`)**:
+  - Added `add comment="WavePass API Static IP (HTTPS)" dst-address=134.209.116.20 action=accept` to `/ip hotspot walled-garden ip` rules, preventing HTTPS pre-auth drops when clients use DNS-over-HTTPS (DoH).
+- [x] **Dual-Repository Automated Release Publishing (`.github/workflows/release.yml`)**:
+  - Updated release triggers to publish compiled APK and AppBundle assets to both `Icedmist/WavePass-Android` and `Icedmist/WavePass-App` on push to `main` as well as tagged releases and manual dispatch.
+  - Bumped version to `1.0.2+3` across `pubspec.yaml` and `lib/core/services/app_update_service.dart`.
+  - Pushed git tag `v1.0.2+3` to establish the new release.
+- [x] **Automated Testing & Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 115 tests passed**.
+- [x] PR [#149](https://github.com/Icedmist/WavePass-Android/pull/149) merged to `main` (commit `b4d31c7`).
+
+

@@ -802,47 +802,51 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                 const SizedBox(height: 16),
 
                 // APP VERSION & REMOTE UPDATE CHECK
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.containerBg,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.cardBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.cardBorder),
+                InkWell(
+                  onTap: _checkingForUpdates ? null : _handleCheckForUpdates,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.containerBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: const Icon(Icons.system_update_rounded, size: 18, color: AppColors.navy),
                         ),
-                        child: const Icon(Icons.system_update_rounded, size: 18, color: AppColors.navy),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'WavePass Version',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
-                            ),
-                            Text(
-                              'v${AppUpdateService.currentVersion}',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'WavePass Version',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                              ),
+                              Text(
+                                'v${AppUpdateService.currentVersion}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      TextButton(
-                        onPressed: _checkingForUpdates ? null : _handleCheckForUpdates,
-                        child: _checkingForUpdates
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.navy)),
-                      ),
-                    ],
+                        TextButton(
+                          onPressed: _checkingForUpdates ? null : _handleCheckForUpdates,
+                          child: _checkingForUpdates
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.navy)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),

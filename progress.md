@@ -778,3 +778,23 @@
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 113 tests passed**.
 - [x] PR [#143](https://github.com/Icedmist/WavePass-Android/pull/143) merged to `main`.
+
+### 57. Wallet Input Validation, Missing Details Error Handling & Prompt Dialogs (Issue #144, PR #145)
+- [x] **Missing Settlement Bank Account Prompting**:
+  - Implemented proactive check in `_requestCashout()` verifying `_bankAccounts.isNotEmpty` before initiating cashout.
+  - Eliminated `StateError: Bad state: No element` crashes by presenting a modern, styled alert dialog prompting the venue owner to register a settlement bank account with a direct `"Add Bank Account"` action button.
+- [x] **Interactive Bank Account Registration Dialog**:
+  - Integrated a curated Nigerian bank selection dropdown with popular commercial and digital banks (Access, GTBank, Zenith, FirstBank, UBA, Kuda, OPay, PalmPay, Moniepoint, Stanbic, Sterling, Fidelity, FCMB, Wema, etc.) plus custom CBN bank code input fallback.
+  - Added strict 10-digit NUBAN account number validation with `FilteringTextInputFormatter.digitsOnly` and inline error prompt (`"Account number must be exactly 10 digits."`).
+  - Added account holder name presence check with inline feedback (`"Account holder name is required."`).
+  - Added friendly user dialog displaying actionable guidance upon Paystack bank registration rejection.
+- [x] **Cashout Amount & Password Authorization Validation**:
+  - Added inline validation in `_requestCashout()` dialog enforcing positive amount, minimum cashout floor (₦500), and maximum limit within available balance (`_availableNgn`).
+  - Added inline validation requiring owner password before sending cashout request.
+  - Handled submission failures and OTP confirmation states with descriptive alerts.
+- [x] **Automated Testing & Verification**:
+  - Created `test/wallet_validation_test.dart` asserting input validation prompts, 10-digit NUBAN constraints, and missing bank account dialog navigation.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 115 tests passed**.
+- [x] PR [#145](https://github.com/Icedmist/WavePass-Android/pull/145) merged to `main` (commit `2c35dd3`).
+

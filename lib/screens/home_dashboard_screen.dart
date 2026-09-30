@@ -10,6 +10,7 @@ import '../core/services/router_discovery_service.dart';
 import '../core/services/voucher_history_service.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/app_update_service.dart';
 import 'voucher_history_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -150,6 +151,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           _hideBalance = prefs.getBool('hide_balance_preference') ?? true;
         });
       }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          AppUpdateService.instance.checkAndPromptIfAvailable(context);
+        }
+      });
 
       var venue = VenueStateService.instance.currentVenue;
       venue ??= await VenueStateService.instance.refreshVenue();

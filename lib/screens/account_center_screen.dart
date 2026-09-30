@@ -11,6 +11,7 @@ import '../core/services/router_discovery_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/services/voucher_history_service.dart';
+import '../core/services/app_update_service.dart';
 import '../core/theme/app_theme.dart';
 
 class AccountCenterScreen extends StatefulWidget {
@@ -376,6 +377,25 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     await _signOutUser();
     if (mounted) {
       context.go(AppRouter.login);
+    }
+  }
+
+  bool _checkingForUpdates = false;
+
+  Future<void> _handleCheckForUpdates() async {
+    setState(() => _checkingForUpdates = true);
+    try {
+      final update = await AppUpdateService.instance.checkForUpdate(force: true);
+      if (!mounted) return;
+      if (update.hasUpdate) {
+        AppUpdateService.instance.showUpdateDialog(context, update);
+      } else {
+        _showToast('WavePass is up to date (v${AppUpdateService.currentVersion})');
+      }
+    } catch (e) {
+      if (mounted) _showToast('Could not check for updates: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _checkingForUpdates = false);
     }
   }
 
@@ -775,6 +795,52 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // APP VERSION & REMOTE UPDATE CHECK
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.cardBorder),
+                        ),
+                        child: const Icon(Icons.system_update_rounded, size: 18, color: AppColors.navy),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'WavePass Version',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            Text(
+                              'v${AppUpdateService.currentVersion}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _checkingForUpdates ? null : _handleCheckForUpdates,
+                        child: _checkingForUpdates
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.navy)),
                       ),
                     ],
                   ),

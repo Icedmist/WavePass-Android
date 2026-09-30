@@ -197,6 +197,15 @@ class VenueStateService {
 
     venueNotifier.value = Map<String, dynamic>.from(created);
     await refreshPlans();
+
+    // Proactively provision or link dedicated Paystack virtual account
+    if (vId.isNotEmpty && !vId.startsWith('local-')) {
+      WavePassApi.instance.ensureVirtualAccount(vId).catchError((e) {
+        debugPrint('[VenueStateService] ensureVirtualAccount on create error: $e');
+        return <String, dynamic>{};
+      });
+    }
+
     return created;
   }
 

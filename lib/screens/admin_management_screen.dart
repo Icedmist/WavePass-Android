@@ -10,6 +10,7 @@ import '../core/services/venue_state_service.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/router_discovery_service.dart';
+import '../core/services/app_update_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -534,6 +535,44 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     } catch (_) {}
     if (!mounted) return;
     context.go(AppRouter.login);
+  }
+
+  bool _checkingForUpdates = false;
+
+  Future<void> _handleCheckForUpdates() async {
+    if (_checkingForUpdates) return;
+    setState(() => _checkingForUpdates = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Checking for updates...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    try {
+      final update = await AppUpdateService.instance.checkForUpdate(force: true);
+      if (!mounted) return;
+      if (update.hasUpdate) {
+        AppUpdateService.instance.showUpdateDialog(context, update);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WavePass is up to date (v${AppUpdateService.currentVersion})'),
+            backgroundColor: AppColors.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not check for updates: $e'),
+            backgroundColor: AppColors.accentRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingForUpdates = false);
+    }
   }
 
   @override
@@ -1075,6 +1114,13 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
               subtitle: "Live CPU, memory load, and remote hardware reboot",
               icon: Icons.memory_rounded,
               onTap: () => context.push(AppRouter.routerDiagnostics),
+            ),
+            const SizedBox(height: 8),
+            _toolTile(
+              title: "Check for Updates",
+              subtitle: "WavePass v${AppUpdateService.currentVersion} • Tap to check remote releases",
+              icon: Icons.system_update_rounded,
+              onTap: _handleCheckForUpdates,
             ),
             const SizedBox(height: 24),
 

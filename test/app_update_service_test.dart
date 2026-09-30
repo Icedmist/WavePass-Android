@@ -109,5 +109,66 @@ void main() {
 
       expect(update.hasUpdate, isFalse);
     });
+
+    test('prioritizes backend API version endpoint when available', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path.endsWith('/api/v1/app/version')) {
+          return http.Response(
+            jsonEncode({
+              'version': '1.0.3',
+              'downloadUrl': 'https://api.nexawavepass.com/api/v1/app/download',
+              'releaseNotes': 'Backend server announced update.',
+            }),
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = AppUpdateService.instance;
+      service.mockClient = mockClient;
+
+      final update = await service.checkForUpdate(force: true);
+
+      expect(update.hasUpdate, isTrue);
+      expect(update.latestVersion, equals('1.0.3'));
+      expect(update.downloadUrl, equals('https://api.nexawavepass.com/api/v1/app/download'));
+      expect(update.releaseNotes, equals('Backend server announced update.'));
+    });
+
+    test('falls back to WavePass-App distribution repo if backend fails', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path.endsWith('/api/v1/app/version')) {
+          return http.Response('Internal error', 500);
+        }
+        if (request.url.path.contains('/WavePass-App/releases/latest')) {
+          return http.Response(
+            jsonEncode({
+              'tag_name': 'v1.0.4',
+              'body': 'Public distribution release.',
+              'assets': [
+                {
+                  'name': 'app-release.apk',
+                  'browser_download_url': 'https://github.com/Icedmist/WavePass-App/releases/download/v1.0.4/app-release.apk',
+                  'size': 26000000,
+                }
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = AppUpdateService.instance;
+      service.mockClient = mockClient;
+
+      final update = await service.checkForUpdate(force: true);
+
+      expect(update.hasUpdate, isTrue);
+      expect(update.latestVersion, equals('1.0.4'));
+      expect(update.downloadUrl, contains('WavePass-App'));
+      expect(update.releaseNotes, equals('Public distribution release.'));
+    });
   });
 }

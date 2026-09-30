@@ -82,7 +82,7 @@ jobs:
           name: wavepass-release-bundle
           path: build/app/outputs/bundle/release/app-release.aab
 
-      - name: Create or Update GitHub Release
+      - name: Create or Update GitHub Release (Source Repo)
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
@@ -92,3 +92,27 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             build/app/outputs/bundle/release/app-release.aab
           generate_release_notes: true
+
+      - name: Deploy Release to Public Distribution Repo (WavePass-App)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          TAG_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || steps.get_version.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "⚠️ GH_RELEASE_TOKEN secret not set, skipping public repo release"
+            exit 0
+          fi
+          echo "🚀 Deploying release to public distribution repo Icedmist/WavePass-App..."
+          gh release create "$TAG_NAME" \
+            --repo Icedmist/WavePass-App \
+            --title "WavePass $TAG_NAME" \
+            --notes "Official public release for WavePass Mobile Application ($TAG_NAME)." \
+            build/app/outputs/flutter-apk/app-release.apk \
+            build/app/outputs/bundle/release/app-release.aab || \
+          gh release upload "$TAG_NAME" \
+            --repo Icedmist/WavePass-App \
+            build/app/outputs/flutter-apk/app-release.apk \
+            build/app/outputs/bundle/release/app-release.aab \
+            --clobber
+          echo "✅ Release successfully deployed to Icedmist/WavePass-App"

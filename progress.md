@@ -912,3 +912,29 @@
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 121 tests passed**.
 - [x] PR [#155](https://github.com/Icedmist/WavePass-Android/pull/155) merged to `main` (commit `4719205`).
+
+### 63. Persistent Release Keystore Generation & CI Signing Configuration (Issue #156, PR #157)
+- [x] **Persistent Release Keystore Generation**:
+  - Generated official upload keystore `upload-keystore.jks` (RSA 2048-bit, 10,000 days validity until 2054) under alias `wavepass-upload`.
+  - Certificate Fingerprints:
+    - SHA-256: `B5:8A:87:8B:7D:83:6D:14:D0:DF:95:36:3C:04:B1:3D:D5:A4:20:D6:1A:A3:65:90:A2:32:78:2B:F4:93:4F:18`
+    - SHA-1: `28:A8:BF:5E:F3:84:EA:F7:B9:E1:70:E6:7D:B8:25:52:30:FB:B6:00`
+- [x] **GitHub Actions Secrets Provisioning**:
+  - Configured repository secrets on both `Icedmist/WavePass-Android` and `Icedmist/WavePass-App`:
+    - `ANDROID_KEYSTORE_BASE64` (Base64-encoded JKS binary)
+    - `KEYSTORE_PASSWORD`
+    - `KEY_ALIAS` (`wavepass-upload`)
+    - `KEY_PASSWORD`
+- [x] **Gradle Build Configuration (`android/app/build.gradle.kts`)**:
+  - Updated `android/app/build.gradle.kts` to robustly locate `storeFile` in either the subproject `app/` directory or `rootProject.file(...)`.
+  - Added release signing config pointing directly to `key.properties`.
+- [x] **Release CI Workflow Hardening (`.github/workflows/release.yml`)**:
+  - Made keystore configuration mandatory; workflow fails immediately if `ANDROID_KEYSTORE_BASE64` is missing rather than silently falling back to ephemeral debug keys.
+  - Automatically writes `android/key.properties` and decodes `android/app/upload-keystore.jks` before building.
+  - Added automated signature verification step in CI (`keytool -printcert -jarfile ...`).
+- [x] **Build & Signature Verification**:
+  - Locally verified release build with `./gradlew app:signingReport` and `apksigner verify --verbose --print-certs`.
+  - Verified APK Signature Scheme v2 valid, signed by `CN=WavePass, OU=Engineering, O=WavePass, L=Lagos, ST=Lagos, C=NG`.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 121 tests passed**.
+- [x] PR [#157](https://github.com/Icedmist/WavePass-Android/pull/157) merged to `main` (commit `3835a04`).

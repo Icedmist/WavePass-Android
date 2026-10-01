@@ -45,7 +45,13 @@ android {
             if (keyAliasVal != null && keyPasswordVal != null && storeFileVal != null && storePasswordVal != null) {
                 keyAlias = keyAliasVal
                 keyPassword = keyPasswordVal
-                storeFile = file(storeFileVal)
+                storeFile = if (file(storeFileVal).exists()) {
+                    file(storeFileVal)
+                } else if (rootProject.file(storeFileVal).exists()) {
+                    rootProject.file(storeFileVal)
+                } else {
+                    file(storeFileVal)
+                }
                 storePassword = storePasswordVal
             }
         }

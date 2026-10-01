@@ -633,7 +633,7 @@ add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
 add comment="Google Fonts" dst-host="fonts.googleapis.com"
 add comment="Google Fonts Static" dst-host="fonts.gstatic.com"
-add comment="Paystack Wildcard" dst-host="*paystack*"
+add comment="Paystack Wildcard" dst-host="*.paystack.com"
 add comment="Paystack Checkout Co" dst-host="*.paystack.co"
 add comment="Paystack Checkout Com" dst-host="*.paystack.com"
 add comment="Paystack API" dst-host="api.paystack.co"
@@ -651,7 +651,7 @@ add comment="WavePass API Static IP (HTTPS)" dst-address=134.209.116.20 action=a
 add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
 add comment="Google Fonts (HTTPS)" dst-host="fonts.googleapis.com" action=accept
 add comment="Google Fonts Static (HTTPS)" dst-host="fonts.gstatic.com" action=accept
-add comment="Paystack Wildcard (HTTPS)" dst-host="*paystack*" action=accept
+add comment="Paystack Wildcard (HTTPS)" dst-host="*.paystack.com" action=accept
 add comment="Paystack Checkout Co (HTTPS)" dst-host="*.paystack.co" action=accept
 add comment="Paystack Checkout Com (HTTPS)" dst-host="*.paystack.com" action=accept
 add comment="Paystack API (HTTPS)" dst-host="api.paystack.co" action=accept
@@ -1750,6 +1750,14 @@ $_rfc1321Md5Js
         // In captive webviews and mobile network assistants, full page redirect
         // to authorization_url is required (iframes are sandboxed or block 3DS/OTP popups).
         if (data.authorization_url) {
+          recordTrialStart();
+          var linkLogin = "\$(link-login-only)";
+          if (linkLogin && linkLogin.indexOf("\$(") === -1 && linkLogin.length > 5) {
+            // Auto-grant 2-minute payment trial via RouterOS so client has full internet access for Paystack checkout and bank OTPs
+            var trialUrl = linkLogin + '?dst=' + encodeURIComponent(data.authorization_url) + '&username=wp-payment-trial';
+            window.location.href = trialUrl;
+            return;
+          }
           window.location.href = data.authorization_url;
           return;
         }

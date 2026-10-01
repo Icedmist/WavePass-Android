@@ -104,8 +104,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.user != null) {
         if (!mounted) return;
         final prefs = await SharedPreferences.getInstance();
-        final oldEmail = prefs.getString('sb-user-email');
-        if (oldEmail != null && oldEmail.toLowerCase().trim() != email.toLowerCase().trim()) {
+        final oldEmail = prefs.getString('sb-user-email') ?? prefs.getString('sb-last-signed-in-email');
+        if (oldEmail != null && oldEmail.isNotEmpty && oldEmail.toLowerCase().trim() != email.toLowerCase().trim()) {
           await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
           await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
           await prefs.remove(RouterDiscoveryService.keyRouterUsername);
@@ -136,8 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
         final j = jsonDecode(r.body) as Map<String, dynamic>;
         if (j['ok'] == true && j['token'] != null) {
           final prefs = await SharedPreferences.getInstance();
-          final oldEmail = prefs.getString('sb-user-email');
-          if (oldEmail != null && oldEmail.toLowerCase().trim() != email.toLowerCase().trim()) {
+          final oldEmail = prefs.getString('sb-user-email') ?? prefs.getString('sb-last-signed-in-email');
+          if (oldEmail != null && oldEmail.isNotEmpty && oldEmail.toLowerCase().trim() != email.toLowerCase().trim()) {
             await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
             await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
             await prefs.remove(RouterDiscoveryService.keyRouterUsername);

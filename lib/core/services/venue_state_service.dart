@@ -333,10 +333,18 @@ class VenueStateService {
       final isSuperAdmin =
           currentEmail == SupabaseService.superAdminEmail;
       if (venue == null && allowFallbackToPrimary && (isSuperAdmin || currentEmail.isEmpty)) {
-        try {
-          final res = await WavePassApi.instance.getDefaultVenue();
-          if (res['id'] != null) venue = res;
-        } catch (_) {}
+        if (isSuperAdmin) {
+          try {
+            final flagshipRes = await WavePassApi.instance.getVenue('0e65c025-480a-4a42-8c49-68b6f0b27712');
+            if (flagshipRes['id'] != null) venue = flagshipRes;
+          } catch (_) {}
+        }
+        if (venue == null) {
+          try {
+            final res = await WavePassApi.instance.getDefaultVenue();
+            if (res['id'] != null) venue = res;
+          } catch (_) {}
+        }
       }
 
       // 5. Offline fallback: if network lookups failed but vid was known from disk cache,

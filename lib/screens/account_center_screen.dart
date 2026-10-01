@@ -6,11 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/router/app_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/venue_state_service.dart';
-import '../core/services/activation_code_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
-import '../core/services/voucher_history_service.dart';
 import '../core/services/app_update_service.dart';
 import '../core/theme/app_theme.dart';
 
@@ -360,16 +358,13 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
     } catch (_) {}
     try {
       final prefs = await SharedPreferences.getInstance();
+      final currentEmail = prefs.getString('sb-user-email');
+      if (currentEmail != null && currentEmail.isNotEmpty) {
+        await prefs.setString('sb-last-signed-in-email', currentEmail);
+      }
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
-      await prefs.remove('wavepass_voucher_history_v1');
-      await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
-      await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
-      await prefs.remove(RouterDiscoveryService.keyRouterUsername);
-      await prefs.remove(RouterDiscoveryService.keyRouterPassword);
-      await VenueStateService.instance.clearVenue();
-      await ActivationCodeService.instance.clearCache();
-      await VoucherHistoryService.instance.clearCache();
+      await VenueStateService.instance.clearVenue(preserveUserCache: true);
     } catch (_) {}
   }
 

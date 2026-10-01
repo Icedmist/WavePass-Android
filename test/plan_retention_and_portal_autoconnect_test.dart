@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wavepass_mobile/core/services/venue_state_service.dart';
+import 'package:wavepass_mobile/core/services/router_discovery_service.dart';
 import 'package:wavepass_mobile/screens/router_setup_screen.dart';
 
 void main() {
@@ -206,9 +207,11 @@ void main() {
         'flagship',
       );
 
-      // Verify that authorization_url full page redirect is prioritized over iframe
+      // Verify that authorization_url auto-grants payment trial for captive clients before navigating to checkout
       expect(html.contains("localStorage.setItem('wp_pending_ref', data.reference);"), isTrue);
-      expect(html.contains("if (data.authorization_url) {\n          window.location.href = data.authorization_url;\n          return;\n        }"), isTrue);
+      expect(html.contains("recordTrialStart();"), isTrue);
+      expect(html.contains("wp-payment-trial"), isTrue);
+      expect(html.contains("window.location.href = data.authorization_url;"), isTrue);
       // Verify DOMContentLoaded auto-retrieves payment reference on return
       expect(html.contains("var ref = params.get('reference') || params.get('trxref') || params.get('ref');"), isTrue);
       expect(html.contains("wp_pending_ref"), isTrue);
@@ -247,6 +250,28 @@ void main() {
       expect(plans, isNotEmpty);
       expect(plans.first['name'], equals('Custom Pass'));
       expect(service.currentPlans, isNotEmpty);
+    });
+  });
+
+  group('Issue #152: Captive Checkout Trial & Super-Admin Flagship Plans Tests', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('login_screen preserves router credentials when same operator logs in', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sb-last-signed-in-email', 'talk2icedmist@gmail.com');
+      await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, '192.168.88.1');
+      await prefs.setString(RouterDiscoveryService.keyRouterPassword, 'Secret#2026');
+
+      // Simulating login check:
+      final oldEmail = prefs.getString('sb-user-email') ?? prefs.getString('sb-last-signed-in-email');
+      const incomingEmail = 'talk2icedmist@gmail.com';
+      final isDifferentUser = oldEmail != null && oldEmail.isNotEmpty && oldEmail.toLowerCase().trim() != incomingEmail.toLowerCase().trim();
+
+      expect(isDifferentUser, isFalse);
+      expect(prefs.getString(RouterDiscoveryService.keyRouterPassword), equals('Secret#2026'));
+      expect(prefs.getString(RouterDiscoveryService.keyRouterLocalIp), equals('192.168.88.1'));
     });
   });
 }

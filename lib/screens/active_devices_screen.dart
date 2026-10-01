@@ -122,6 +122,31 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         );
       } catch (_) {}
 
+      // If localIp failed or returned empty, probe the device's current Wi-Fi gateway
+      if (hwUsers.isEmpty) {
+        try {
+          final deviceIp = await RouterDiscoveryService.getLocalDeviceIp();
+          if (deviceIp != null && deviceIp.isNotEmpty) {
+            final parts = deviceIp.split('.');
+            if (parts.length == 4) {
+              final detectedGateway = '${parts[0]}.${parts[1]}.${parts[2]}.1';
+              if (detectedGateway != localIp && !RouterDiscoveryService.isForbiddenIspGateway(detectedGateway)) {
+                final probeUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
+                  ip: detectedGateway,
+                  username: user,
+                  password: pass,
+                  endpoint: null,
+                );
+                if (probeUsers.isNotEmpty) {
+                  hwUsers = probeUsers;
+                  await prefs.setString(RouterDiscoveryService.keyRouterLocalIp, detectedGateway);
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       if (hwUsers.isEmpty && tunnel != null && tunnel.isNotEmpty) {
         try {
           hwUsers = await RouterDiscoveryService.fetchActiveHotspotUsers(
@@ -183,6 +208,11 @@ class _ActiveDevicesScreenState extends State<ActiveDevicesScreen> {
         final resolvedLimitDisplay = isTrial
             ? '2m Payment Trial'
             : (hwTotal > 0 ? '${_formatSecondsToReadable(hwTotal)} Limit' : (totalLimitSec > 0 ? '${_formatSecondsToReadable(totalLimitSec)} Limit' : 'Standard Pass'));
+
+        // If session expired in DB and is no longer present on router hardware, skip it
+        if (remainingSec <= 0 && matchHw == null) {
+          continue;
+        }
 
         final timeLeft = matchHw?['session-time-left'] != null && matchHw!['session-time-left'].toString().isNotEmpty
             ? matchHw['session-time-left'].toString()

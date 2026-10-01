@@ -862,6 +862,24 @@
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 117 tests passed**.
 - [x] PR [#151](https://github.com/Icedmist/WavePass-Android/pull/151) merged to `main` (commit `5b8d0da`).
-
-
+### 61. Captive Portal Auto-Trial Checkout, Flagship Plans Persistence, & Active Devices Probing (Issue #152, PR #153)
+- [x] **Captive Portal Auto-Grant Payment Trial for Paystack Checkout (`lib/screens/router_setup_screen.dart`)**:
+  - Identified root cause where MikroTik walled garden IP rules cannot whitelist the myriad external domains and CDNs utilized by Nigerian banks for 3DS OTPs, USSD, and Paystack assets.
+  - Implemented captive payment window auto-grant: When `data.authorization_url` is returned in captive environments (`$(link-login-only)`), the portal automatically grants a 2-minute trial connection (`wp-payment-trial`) by redirecting to `linkLogin + '?dst=' + encodeURIComponent(data.authorization_url) + '&username=wp-payment-trial'`.
+  - Gives users full unrestricted internet access during checkout so 3DS bank OTPs and transfers load seamlessly.
+  - Standardized walled-garden script syntax with valid wildcard domains (`*.paystack.com` and `*.paystack.co`).
+- [x] **Flagship Venue & Plans Auto-Resolution (`lib/core/services/venue_state_service.dart`)**:
+  - In `refreshVenue()`: Directly queries backend `getVenue('0e65c025-480a-4a42-8c49-68b6f0b27712')` (the flagship venue) when logged in as super-admin (`talk2icedmist@gmail.com`) before any generic fallback.
+  - Paired with backend PR [#73](https://github.com/Icedmist/WavePass-Backend/pull/73) (`WavePass-Backend` Issue [#72](https://github.com/Icedmist/WavePass-Backend/issues/72)), which prioritizes flagship / active-plan venues in `getDefaultVenue()`.
+- [x] **Router Credentials Retention Across Logout & Login (`lib/screens/account_center_screen.dart`, `lib/screens/login_screen.dart`)**:
+  - In `account_center_screen.dart`: Preserved router credentials (`keyRouterLocalIp`, `keyRouterPassword`, etc.) and cached plans across sign out, saving `sb-last-signed-in-email`.
+  - In `login_screen.dart`: Only wipes router configurations if a completely different user account logs in, preventing accidental removal of router passwords and credentials when an operator re-authenticates.
+- [x] **Online Devices Gateway Discovery & Expiry Filtering (`lib/screens/active_devices_screen.dart`)**:
+  - Dynamically probes the local subnet default gateway (`${parts[0]}.${parts[1]}.${parts[2]}.1`) using `RouterDiscoveryService.getLocalDeviceIp()` when the configured `localIp` is unreachable or unconfigured.
+  - Filtered out expired DB sessions (`remainingSec <= 0 && matchHw == null`) from the active devices list to ensure only currently active sessions and connected hardware devices are displayed.
+- [x] **Automated Testing & Verification**:
+  - Added unit tests in `test/plan_retention_and_portal_autoconnect_test.dart` for payment trial auto-grant, credential retention on same operator login, and gateway probing.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 118 tests passed**.
+- [x] PR [#153](https://github.com/Icedmist/WavePass-Android/pull/153) merged to `main` (commit `8ea72cf`).
 

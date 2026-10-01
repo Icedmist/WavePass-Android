@@ -1,7 +1,29 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wavepass_mobile/core/services/mikrotik_api_client.dart';
 import 'package:wavepass_mobile/core/services/router_discovery_service.dart';
+import 'package:wavepass_mobile/core/services/venue_state_service.dart';
 import 'package:wavepass_mobile/core/services/voucher_history_service.dart';
+
+class FakeMikrotikApiClient extends MikrotikApiClient {
+  final List<Map<String, String>> activeUsers;
+  final List<Map<String, String>> hotspotUsers;
+
+  FakeMikrotikApiClient({
+    this.activeUsers = const [],
+    this.hotspotUsers = const [],
+  }) : super(host: '127.0.0.1');
+
+  @override
+  Future<List<Map<String, String>>> getHotspotActiveUsers() async => activeUsers;
+
+  @override
+  Future<List<Map<String, String>>> getHotspotUsers() async => hotspotUsers;
+
+  @override
+  Future<void> close() async {}
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -175,6 +197,150 @@ void main() {
       final activity = await service.fetchFullVoucherActivity();
       expect(activity.isNotEmpty, isTrue);
       expect(activity.any((v) => v.code == 'WP-HIST-1'), isTrue);
+    });
+
+    test('fetchFullVoucherActivity does not resurrect expired vouchers after router reboot', () async {
+      final service = VoucherHistoryService.instance;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sb-user-email', 'talk2icedmist@gmail.com');
+      VenueStateService.instance.venueNotifier.value = {'id': 'venue-reboot-test'};
+
+      // 1. Record a voucher and expire it
+      await service.recordVoucher(
+        code: 'WP-REBOOT-EXP',
+        planTitle: '1 Hour Pass',
+        price: '₦200',
+        durationSeconds: 3600,
+      );
+      await service.expireVoucher('WP-REBOOT-EXP');
+
+      final before = await service.getHistory();
+      final targetBefore = before.firstWhere((v) => v.code == 'WP-REBOOT-EXP');
+      expect(targetBefore.status, 'expired');
+      expect(targetBefore.isExpired, isTrue);
+
+      // 2. Simulate router reboot:
+      // Router reboots, active sessions are dropped, and uptime resets to 0s
+      service.mockClient = FakeMikrotikApiClient(
+        activeUsers: [],
+        hotspotUsers: [
+          {
+            'name': 'WP-REBOOT-EXP',
+            'uptime': '0s', // Reset to 0s after reboot!
+            'limit-uptime': '1h',
+            'profile': 'profile_1h',
+          },
+        ],
+      );
+
+      final synced = await service.fetchFullVoucherActivity();
+      final targetAfter = synced.firstWhere((v) => v.code == 'WP-REBOOT-EXP');
+
+      // Crucial assertion: Must remain expired and NOT be resurrected to 'unused'!
+      expect(targetAfter.status, 'expired');
+      expect(targetAfter.isExpired, isTrue);
+
+      service.mockClient = null;
+    });
+
+    test('fetchFullVoucherActivity does not downgrade in_use vouchers to unused on router reboot', () async {
+      final service = VoucherHistoryService.instance;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sb-user-email', 'talk2icedmist@gmail.com');
+      VenueStateService.instance.venueNotifier.value = {'id': 'venue-reboot-test'};
+
+      // 1. Record an in-use voucher
+      await service.recordVoucher(
+        code: 'WP-REBOOT-INUSE',
+        planTitle: '1 Hour Pass',
+        price: '₦200',
+        durationSeconds: 3600,
+      );
+      final history = await service.getHistory();
+      final v = history.firstWhere((x) => x.code == 'WP-REBOOT-INUSE');
+      v.status = 'in_use';
+      v.usedAt = DateTime.now().subtract(const Duration(minutes: 10));
+      final jsonList = history.map((item) => item.toJson()).toList();
+      await prefs.setString('wavepass_voucher_history_v1', jsonEncode(jsonList));
+
+      // 2. Router reboots: active user dropped, uptime reports 0s
+      service.mockClient = FakeMikrotikApiClient(
+        activeUsers: [],
+        hotspotUsers: [
+          {
+            'name': 'WP-REBOOT-INUSE',
+            'uptime': '0s',
+            'limit-uptime': '1h',
+            'profile': 'profile_1h',
+          },
+        ],
+      );
+
+      final synced = await service.fetchFullVoucherActivity();
+      final targetAfter = synced.firstWhere((x) => x.code == 'WP-REBOOT-INUSE');
+      expect(targetAfter.status, 'in_use');
+
+      service.mockClient = null;
+    });
+
+    test('fetchFullVoucherActivity transitions unused vouchers to in_use and expired on valid hardware progression', () async {
+      final service = VoucherHistoryService.instance;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sb-user-email', 'talk2icedmist@gmail.com');
+      VenueStateService.instance.venueNotifier.value = {'id': 'venue-reboot-test'};
+
+      // 1. Record unused voucher
+      await service.recordVoucher(
+        code: 'WP-HW-TRANS',
+        planTitle: '1 Hour Pass',
+        price: '₦200',
+        durationSeconds: 3600,
+      );
+
+      // 2. Active session on router transitions unused -> in_use
+      service.mockClient = FakeMikrotikApiClient(
+        activeUsers: [
+          {
+            'user': 'WP-HW-TRANS',
+            'uptime': '15m',
+            'mac-address': 'AA:BB:CC:DD:EE:FF',
+            'address': '192.168.88.254',
+          }
+        ],
+        hotspotUsers: [
+          {
+            'name': 'WP-HW-TRANS',
+            'uptime': '15m',
+            'limit-uptime': '1h',
+            'profile': 'profile_1h',
+          }
+        ],
+      );
+
+      final inUseSynced = await service.fetchFullVoucherActivity();
+      final inUseRecord = inUseSynced.firstWhere((x) => x.code == 'WP-HW-TRANS');
+      expect(inUseRecord.status, 'in_use');
+      expect(inUseRecord.mac, 'AA:BB:CC:DD:EE:FF');
+
+      // 3. Router uptime exceeds limit: in_use -> expired
+      service.mockClient = FakeMikrotikApiClient(
+        activeUsers: [],
+        hotspotUsers: [
+          {
+            'name': 'WP-HW-TRANS',
+            'uptime': '1h',
+            'limit-uptime': '1h',
+            'profile': 'profile_1h',
+          }
+        ],
+      );
+
+      final expiredSynced = await service.fetchFullVoucherActivity();
+      final expiredRecord = expiredSynced.firstWhere((x) => x.code == 'WP-HW-TRANS');
+      expect(expiredRecord.status, 'expired');
+      expect(expiredRecord.isExpired, isTrue);
+
+      service.mockClient = null;
     });
 
     test('effectiveStatus computes accurate state based on expiration and usage', () {

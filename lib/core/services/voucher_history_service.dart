@@ -290,8 +290,12 @@ class VoucherHistoryService {
     }
   }
 
+  @visibleForTesting
+  MikrotikApiClient? mockClient;
+
   /// Connects to the venue router using local LAN first, falling back to tunnel endpoint.
   Future<MikrotikApiClient?> _getConnectedClient() async {
+    if (mockClient != null) return mockClient;
     try {
       final prefs = await SharedPreferences.getInstance();
       final localIp = prefs.getString(RouterDiscoveryService.keyRouterLocalIp) ?? '192.168.88.1';
@@ -374,7 +378,9 @@ class VoucherHistoryService {
     final venueId = currentVenue?['id']?.toString() ?? VenueStateService.instance.currentVenueId;
     final prefs = await SharedPreferences.getInstance();
     final currentEmail = (SupabaseService.instance.currentUser?.email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
-    final isSuperAdmin = currentEmail == SupabaseService.superAdminEmail || await SystemAdminService.instance.isSystemAdmin();
+    final isSuperAdmin = (currentEmail == SupabaseService.superAdminEmail)
+        ? true
+        : await SystemAdminService.instance.isSystemAdmin();
 
     // 1. Query Router Hardware via MikrotikApiClient only if venue is configured or superadmin
     if (currentVenue != null || isSuperAdmin) {
@@ -423,7 +429,14 @@ class VoucherHistoryService {
 
           if (consolidated.containsKey(key)) {
             final existing = consolidated[key]!;
-            existing.status = status;
+            // Do NOT resurrect already expired vouchers on router reboot
+            if (status == 'expired' || existing.isExpired) {
+              existing.status = 'expired';
+            } else if (existing.status != 'expired' && !existing.isExpired) {
+              if (status == 'in_use' || existing.status != 'in_use') {
+                existing.status = status;
+              }
+            }
             if (mac != null && mac.isNotEmpty && mac != '—') existing.mac = mac;
             if (ip != null && ip.isNotEmpty && ip != '—') existing.ip = ip;
             existing.uptime = activeUptime;
@@ -465,7 +478,7 @@ class VoucherHistoryService {
         if (venueId != null && venueId.isNotEmpty) {
           query = query.eq('venueId', venueId);
         }
-        final cloudVouchers = await query.order('issuedAt', ascending: false).limit(200);
+        final cloudVouchers = await query.order('issuedAt', ascending: false).limit(1000);
 
       for (final raw in cloudVouchers) {
         final vMap = Map<String, dynamic>.from(raw as Map);
@@ -605,8 +618,14 @@ class VoucherHistoryService {
       if (history.isEmpty) return;
 
       final currentVenue = VenueStateService.instance.currentVenue;
-      final isSuperAdmin = await SystemAdminService.instance.isSystemAdmin();
-      if (currentVenue == null && !isSuperAdmin) return;
+      if (currentVenue == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final currentEmail = (SupabaseService.instance.currentUser?.email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
+        final isSuperAdmin = (currentEmail == SupabaseService.superAdminEmail)
+            ? true
+            : await SystemAdminService.instance.isSystemAdmin();
+        if (!isSuperAdmin) return;
+      }
 
       // 1. Fetch active users & configured accounts on MikroTik (dual-route: local IP -> cloud tunnel)
       final client = await _getConnectedClient();

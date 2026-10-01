@@ -881,5 +881,34 @@
   - Added unit tests in `test/plan_retention_and_portal_autoconnect_test.dart` for payment trial auto-grant, credential retention on same operator login, and gateway probing.
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 118 tests passed**.
-- [x] PR [#153](https://github.com/Icedmist/WavePass-Android/pull/153) merged to `main` (commit `8ea72cf`).
-
+### 62. Router Reboot Expired Voucher Protection, Cloud Sync Cap Expansion & Super-Admin Short-Circuit (Issue #154, PR #155)
+- [x] **Router Reboot Expired Voucher Protection (`lib/core/services/voucher_history_service.dart`)**:
+  - Identified root cause where RouterOS resets user uptime counters to 0s upon router reboot (e.g. after power outage or firmware update).
+  - Previously, `fetchFullVoucherActivity()` ran an unconditional `existing.status = status`, which overwrote locally expired vouchers with `status = 'unused'` when router reported `uptime: 0s`.
+  - Added strict one-way gating:
+    ```dart
+    if (status == 'expired' || existing.isExpired) {
+      existing.status = 'expired';
+    } else if (existing.status != 'expired' && !existing.isExpired) {
+      if (status == 'in_use' || existing.status != 'in_use') {
+        existing.status = status;
+      }
+    }
+    ```
+  - Guarantees that expired vouchers can never be resurrected on router reboot, and in-use vouchers are not downgraded to unused.
+- [x] **Cloud Sync Cap Expansion (`lib/core/services/voucher_history_service.dart`)**:
+  - Expanded the Supabase query limit in `fetchFullVoucherActivity()` from 200 to 1,000 vouchers (`.limit(1000)`), ensuring high-volume venues don't lose older historical voucher activity upon resync.
+- [x] **Super-Admin Check Short-Circuit Optimization (`lib/core/services/voucher_history_service.dart`)**:
+  - Fixed non-short-circuiting async call in `isSuperAdmin`:
+    ```dart
+    final isSuperAdmin = (currentEmail == SupabaseService.superAdminEmail)
+        ? true
+        : await SystemAdminService.instance.isSystemAdmin();
+    ```
+  - Eliminated redundant network/DB round-trips to Supabase on every sync for the super-admin account.
+  - Also optimized `checkVoucherLifecycle` to only evaluate `isSuperAdmin` when `currentVenue == null`.
+- [x] **Automated Testing & Verification**:
+  - Added `FakeMikrotikApiClient` and unit tests in `test/voucher_limits_and_expiry_test.dart` asserting that router reboot (`uptime: 0s`) does not resurrect expired vouchers or downgrade in-use vouchers, while preserving legitimate transitions.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 121 tests passed**.
+- [x] PR [#155](https://github.com/Icedmist/WavePass-Android/pull/155) merged to `main` (commit `4719205`).

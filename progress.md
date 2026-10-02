@@ -965,3 +965,15 @@
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 121 tests passed**.
 - [x] PR [#159](https://github.com/Icedmist/WavePass-Android/pull/159) merged to `main` (commit `3b56354`).
+
+### 65. Captive Portal Venue Target Sanitization & Auto-Connect Query Precision (Issue #160, PR #161)
+- [x] **Venue Target Interpolation Sanitization (`lib/screens/router_setup_screen.dart`)**:
+  - Eliminated dangerous Dart string interpolation where nullable `venueId` or `slug` evaluated to the string literal `'null'` inside injected portal JavaScript.
+  - Defined `safeVenueId`, `safeSlug`, and `effectiveVenueTarget` in Dart prior to generating HTML, ensuring `effectiveVenueTarget` contains only a clean, non-null UUID or slug identifier.
+  - Updated `retrieveActivePass()`, `payWithPaystack()`, `fetchLiveVenuePlans()`, `DOMContentLoaded` auto-claim, and auto-reconnect routines to consistently utilize `effectiveVenueTarget`.
+  - Preserved exact query parameter formatting in `autoUrl` (`&mac=` and `&q=`) ensuring 100% compliance with captive portal auto-connect test specifications.
+- [x] **Automated Testing & Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test test/voucher_limits_and_expiry_test.dart test/plan_retention_and_portal_autoconnect_test.dart`: **All 26 tests passed**.
+  - Full test suite: **All 122 tests passed**.
+- [x] PR [#161](https://github.com/Icedmist/WavePass-Android/pull/161) squashed and merged to `main` (commit `51924d9`).

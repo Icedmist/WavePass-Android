@@ -938,3 +938,30 @@
   - `flutter analyze`: **0 warnings, 0 errors**.
   - `flutter test`: **All 121 tests passed**.
 - [x] PR [#157](https://github.com/Icedmist/WavePass-Android/pull/157) merged to `main` (commit `3835a04`).
+
+### 64. Dynamic Portal Venue Plans, Paystack Init Resilience, App Notifications, and Voucher Filtering & Search (Issue #158, PR #159)
+- [x] **Dynamic Venue Plans in Captive Portal (`lib/screens/router_setup_screen.dart`)**:
+  - Eliminated hardcoded fallback plans (`plan_1h`, `plan_24h`, `plan_7d`) in `_generateLoginHtml`.
+  - Injected client-side JavaScript (`fetchLiveVenuePlans()` and `renderDynamicPlans()`) into `login.html` to dynamically fetch live venue plans from `/api/v1/portal/plans?venueId=...` on portal load and hydrate `#plansContainer` with real backend plan UUIDs.
+  - Enhanced `_ensurePortalSuite()` to directly query `WavePassApi.instance.listPlans(venueId: venueIdStr)` and `SupabaseService.instance.getActivePlans(venueIdStr)` if plans are initially empty, updating `VenueStateService.plansNotifier`.
+  - Added `venueNotifier` and `plansNotifier` listeners in `_RouterSetupScreenState` to invalidate cached portal suites upon any plan update, and properly unregistered them in `dispose()`.
+- [x] **Paystack Initialization Resilience (`lib/screens/router_setup_screen.dart`)**:
+  - Fixed `login.html` pay buttons to use real plan IDs instead of predefined IDs that failed with 404 on the backend.
+  - Sanitized MAC addresses to enforce valid `AA:BB:CC:DD:EE:FF` format matching backend `InitPaymentDto`.
+  - Resolved `effectiveVenueId` to prevent sending the literal string `"null"`, which was triggering 500 foreign-key constraint violations on `Order.venueId` in Prisma.
+  - Added detailed error message extraction on failed payment initialization responses so guests receive clear explanations.
+- [x] **In-App & Device Notifications Fix (`lib/core/services/notification_service.dart`, `lib/screens/home_dashboard_screen.dart`)**:
+  - Fixed startup crash where calling `androidPlugin.requestNotificationsPermission()` during headless `main()` before `runApp()` threw an unhandled exception before `_barReady = true` was set, permanently disabling all device notifications. Permission requesting is now isolated strictly to `requestPermission()` when an Activity is attached.
+  - Secured notification ID against 32-bit integer overflow using `(DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF)`.
+  - Added `hideCurrentSnackBar()` and fallback to `showViaKey` when `ScaffoldMessenger.of(context)` fails.
+  - Added `AppNotifier.instance.startPaymentPolling(vid)` inside `_loadDashboard()` in `home_dashboard_screen.dart`, ensuring payment polling starts as soon as the venue ID is resolved asynchronously.
+- [x] **Voucher Filtering & Search (`lib/core/services/voucher_history_service.dart`, `lib/screens/voucher_history_sheet.dart`, `lib/screens/batch_vouchers_screen.dart`)**:
+  - Normalized `isExpired` and `effectiveStatus` with case-insensitivity (`.toLowerCase().trim()`) and recognized status synonyms (`ACTIVE`, `REDEEMED`, `IN_USE` -> `'in_use'`; `EXPIRED`, `CONSUMED`, `REVOKED` -> `'expired'`). Previously, uppercase database/cloud statuses failed string comparison, causing all vouchers to fall back to `'unused'` and breaking tab filtering.
+  - Changed default filter from `'unused'` to `'all'` in `VoucherHistorySheet` so vouchers aren't hidden by default.
+  - Added interactive search bar in `VoucherHistorySheet` searching across `code`, `password`, `planTitle`, `mac`, and `ip`.
+  - Expanded `BatchVouchersScreen` search filter to match `code`, `password`, `plan`, and `price`.
+- [x] **Automated Testing & Verification**:
+  - Added unit tests in `test/voucher_limits_and_expiry_test.dart` verifying case normalization and status synonyms (`ACTIVE`, `REDEEMED`, `CONSUMED`, `REVOKED`) for `effectiveStatus` and `isExpired`.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 121 tests passed**.
+- [x] PR [#159](https://github.com/Icedmist/WavePass-Android/pull/159) merged to `main` (commit `3b56354`).

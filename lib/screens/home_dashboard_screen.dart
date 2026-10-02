@@ -173,6 +173,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         vid = venue['id'] as String?;
         _venueId = vid;
         if (vid != null) {
+          AppNotifier.instance.startPaymentPolling(vid);
           try {
             final plans = await SupabaseService.instance.getActivePlans(vid);
             if (plans.isEmpty) {

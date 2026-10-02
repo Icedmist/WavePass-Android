@@ -100,8 +100,19 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
   @override
   void initState() {
     super.initState();
+    VenueStateService.instance.venueNotifier.addListener(_onVenueOrPlansChanged);
+    VenueStateService.instance.plansNotifier.addListener(_onVenueOrPlansChanged);
     _checkActivationGate();
     _loadSavedCredentials();
+  }
+
+  void _onVenueOrPlansChanged() {
+    if (mounted) {
+      setState(() {
+        _portalSuite = null;
+        _portalSuiteVenueId = null;
+      });
+    }
   }
 
   Future<void> _checkActivationGate() async {
@@ -192,6 +203,8 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
 
   @override
   void dispose() {
+    VenueStateService.instance.venueNotifier.removeListener(_onVenueOrPlansChanged);
+    VenueStateService.instance.plansNotifier.removeListener(_onVenueOrPlansChanged);
     _ipCtrl.dispose();
     _tunnelCtrl.dispose();
     _userCtrl.dispose();
@@ -874,50 +887,49 @@ set name="WavePass-Hotspot"
     String? logoUrl,
     String? venueId,
   ]) {
-    final safePlans = (plans != null && plans.isNotEmpty)
-        ? plans
-        : [
-            {'id': 'plan_1h', 'name': '1 Hour Quick Pass', 'priceNGN': 200, 'duration': '1h'},
-            {'id': 'plan_24h', 'name': '24 Hours Day Pass', 'priceNGN': 1000, 'duration': '24h'},
-            {'id': 'plan_7d', 'name': '7 Days Week Pass', 'priceNGN': 5000, 'duration': '7d'},
-          ];
-
     final plansBuffer = StringBuffer();
-    for (final p in safePlans) {
-      final pid = p['id']?.toString() ?? 'plan';
-      final pname = p['name']?.toString() ?? 'Internet Pass';
-      num? rawPrice;
-      if (p['priceNGN'] != null) {
-        rawPrice = num.tryParse(p['priceNGN'].toString());
-      } else if (p['price'] != null) {
-        rawPrice = num.tryParse(p['price'].toString());
-      } else if (p['amount'] != null) {
-        rawPrice = num.tryParse(p['amount'].toString());
-      } else if (p['priceMinor'] != null) {
-        final minor = num.tryParse(p['priceMinor'].toString());
-        if (minor != null) rawPrice = minor / 100;
+    if (plans != null && plans.isNotEmpty) {
+      for (final p in plans) {
+        final pid = p['id']?.toString() ?? 'plan';
+        final pname = p['name']?.toString() ?? 'Internet Pass';
+        num? rawPrice;
+        if (p['priceNGN'] != null) {
+          rawPrice = num.tryParse(p['priceNGN'].toString());
+        } else if (p['price'] != null) {
+          rawPrice = num.tryParse(p['price'].toString());
+        } else if (p['amount'] != null) {
+          rawPrice = num.tryParse(p['amount'].toString());
+        } else if (p['priceMinor'] != null) {
+          final minor = num.tryParse(p['priceMinor'].toString());
+          if (minor != null) rawPrice = minor / 100;
+        }
+        final priceInt = (rawPrice ?? 500).round();
+        final pprice = '₦$priceInt';
+
+        final pduration = p['duration']?.toString() ??
+            (p['durationMinutes'] != null
+                ? '${p['durationMinutes']}m'
+                : (p['durationSeconds'] != null
+                    ? '${((p['durationSeconds'] as num) / 3600).round()}h'
+                    : '1h'));
+
+        final payBtn =
+            '<button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack(\'$pid\', \'$pprice\')">Pay $pprice Online &rarr;</button>';
+
+        plansBuffer.writeln('''
+          <div class="plan-item">
+            <div class="plan-info">
+              <div class="plan-duration">$pduration Access</div>
+              <div class="plan-name">$pname</div>
+              <div class="plan-price">$pprice</div>
+            </div>
+            $payBtn
+          </div>''');
       }
-      final priceInt = (rawPrice ?? 500).round();
-      final pprice = '₦$priceInt';
-
-      final pduration = p['duration']?.toString() ??
-          (p['durationMinutes'] != null
-              ? '${p['durationMinutes']}m'
-              : (p['durationSeconds'] != null
-                  ? '${((p['durationSeconds'] as num) / 3600).round()}h'
-                  : '1h'));
-
-      final payBtn =
-          '<button type="button" id="btn_plan_$pid" class="btn-pay" onclick="payWithPaystack(\'$pid\', \'$pprice\')">Pay $pprice Online &rarr;</button>';
-
+    } else {
       plansBuffer.writeln('''
-        <div class="plan-item">
-          <div class="plan-info">
-            <div class="plan-duration">$pduration Access</div>
-            <div class="plan-name">$pname</div>
-            <div class="plan-price">$pprice</div>
-          </div>
-          $payBtn
+        <div id="noPlansNotice" style="text-align:center; padding:18px 12px; color:#A1A1AA; font-size:12px;">
+          Connecting to venue store...
         </div>''');
     }
 
@@ -1711,7 +1723,12 @@ $_rfc1321Md5Js
       }
       var email = document.getElementById('pay_email') ? document.getElementById('pay_email').value.trim() : '';
       var rawMac = "\$(mac)";
-      var mac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac : "02:00:00:00:00:01";
+      var mac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac.trim().toUpperCase() : "02:00:00:00:00:01";
+      mac = mac.replace(/[^0-9A-Fa-f:-]/g, '');
+      if (!/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\$/.test(mac)) {
+        mac = "02:00:00:00:00:01";
+      }
+
       var btn = document.getElementById('btn_plan_' + planId);
       var originalText = btn ? btn.innerText : 'Pay';
       if (btn) {
@@ -1719,13 +1736,15 @@ $_rfc1321Md5Js
         btn.disabled = true;
       }
 
-      var effectiveVenueId = '$venueId' || '$slug';
+      var effectiveVenueId = ('$venueId' && '$venueId' !== 'null' && '$venueId' !== 'undefined') ? '$venueId' : ('$slug' !== 'null' ? '$slug' : '');
       var initPayload = {
         mac: mac,
         planId: planId,
-        email: email || undefined,
-        venueId: effectiveVenueId
+        email: email || undefined
       };
+      if (effectiveVenueId) {
+        initPayload.venueId = effectiveVenueId;
+      }
 
       fetch('https://api.nexawavepass.com/api/v1/portal/init-payment', {
         method: 'POST',
@@ -1733,10 +1752,13 @@ $_rfc1321Md5Js
         body: JSON.stringify(initPayload)
       })
       .then(function(res) {
-        if (!res.ok) {
-          throw new Error('Server returned HTTP ' + res.status);
-        }
-        return res.json();
+        return res.json().then(function(data) {
+          if (!res.ok) {
+            var msg = (data && (data.message || data.error)) || ('Server returned HTTP ' + res.status);
+            throw new Error(msg);
+          }
+          return data;
+        });
       })
       .then(function(data) {
         // Save pending payment state so when guest returns, pass is auto-redeemed
@@ -1807,6 +1829,44 @@ $_rfc1321Md5Js
         alert('Payment Error: ' + (err.message || 'Could not connect to payment gateway. Please verify internet access or use a cash voucher.'));
       });
     }
+
+    function renderDynamicPlans(livePlans) {
+      var container = document.getElementById('plansContainer');
+      if (!container || !Array.isArray(livePlans) || livePlans.length === 0) return;
+      var html = '';
+      for (var i = 0; i < livePlans.length; i++) {
+        var p = livePlans[i];
+        var pid = p.id || ('plan_' + i);
+        var pname = p.name || 'Internet Pass';
+        var rawPrice = p.priceNGN != null ? p.priceNGN : (p.price != null ? p.price : (p.priceMinor ? p.priceMinor / 100 : 500));
+        var priceInt = Math.round(Number(rawPrice) || 500);
+        var pprice = '₦' + priceInt;
+        var pduration = p.duration || (p.durationMinutes ? p.durationMinutes + 'm' : (p.durationSeconds ? Math.round(p.durationSeconds / 3600) + 'h' : '1h'));
+        var payBtn = '<button type="button" id="btn_plan_' + pid + '" class="btn-pay" onclick="payWithPaystack(&quot;' + pid + '&quot;, &quot;' + pprice + '&quot;)">Pay ' + pprice + ' Online &rarr;</button>';
+        html += '<div class="plan-item"><div class="plan-info"><div class="plan-duration">' + pduration + ' Access</div><div class="plan-name">' + pname + '</div><div class="plan-price">' + pprice + '</div></div>' + payBtn + '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    function fetchLiveVenuePlans() {
+      var targetVenue = ('$venueId' && '$venueId' !== 'null' && '$venueId' !== 'undefined') ? '$venueId' : ('$slug' !== 'null' ? '$slug' : '');
+      if (!targetVenue) return;
+      fetch('https://api.nexawavepass.com/api/v1/portal/plans?venueId=' + encodeURIComponent(targetVenue))
+        .then(function(res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function(data) {
+          var list = Array.isArray(data) ? data : (data && data.plans ? data.plans : []);
+          if (list && list.length > 0) {
+            renderDynamicPlans(list);
+          }
+        })
+        .catch(function(e) {
+          console.log('Live plans fetch notice:', e);
+        });
+    }
+    fetchLiveVenuePlans();
 
     function executeLogin(username, password) {
       var u = (username || '').trim();
@@ -2394,6 +2454,24 @@ $_rfc1321Md5Js
         }
         plans = await VenueStateService.instance.refreshPlans();
       } catch (_) {}
+    }
+    if (plans.isEmpty && venueIdStr != null && venueIdStr.isNotEmpty) {
+      try {
+        final raw = await WavePassApi.instance.listPlans(venueId: venueIdStr);
+        if (raw.isNotEmpty) {
+          plans = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          VenueStateService.instance.plansNotifier.value = plans;
+        }
+      } catch (_) {}
+      if (plans.isEmpty) {
+        try {
+          final raw = await SupabaseService.instance.getActivePlans(venueIdStr);
+          if (raw.isNotEmpty) {
+            plans = raw.map((e) => Map<String, dynamic>.from(e)).toList();
+            VenueStateService.instance.plansNotifier.value = plans;
+          }
+        } catch (_) {}
+      }
     }
     final isPaystackConfigured = venue['paystack_configured'] != false;
     final venueId = venue['id']?.toString();

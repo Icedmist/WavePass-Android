@@ -165,9 +165,19 @@ class AppNotifier {
       bool showDeviceBar = true}) {
     final n = AppNotification(type: type, title: title, message: message);
     _add(n);
-    ScaffoldMessenger.of(context).showSnackBar(
-      _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
-    );
+    try {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
+      );
+    } catch (_) {
+      try {
+        _messengerKey?.currentState?.hideCurrentSnackBar();
+        _messengerKey?.currentState?.showSnackBar(
+          _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
+        );
+      } catch (_) {}
+    }
     if (showDeviceBar) {
       _showBar(title: title, message: message, type: type);
     }
@@ -185,6 +195,7 @@ class AppNotifier {
     final n = AppNotification(type: type, title: title, message: message);
     _add(n);
     try {
+      _messengerKey?.currentState?.hideCurrentSnackBar();
       _messengerKey?.currentState?.showSnackBar(
         _buildModal(type: type, title: title, message: message),
       );
@@ -207,15 +218,24 @@ class AppNotifier {
     bool showDeviceBar = true,
   }) {
     if (context != null && context.mounted) {
-      show(
-        context,
-        type: type,
-        title: title,
-        message: message,
-        actionLabel: actionLabel,
-        onAction: onAction,
-        showDeviceBar: showDeviceBar,
-      );
+      try {
+        show(
+          context,
+          type: type,
+          title: title,
+          message: message,
+          actionLabel: actionLabel,
+          onAction: onAction,
+          showDeviceBar: showDeviceBar,
+        );
+      } catch (_) {
+        showViaKey(
+          type: type,
+          title: title,
+          message: message,
+          showDeviceBar: showDeviceBar,
+        );
+      }
     } else {
       showViaKey(
         type: type,
@@ -243,7 +263,9 @@ class AppNotifier {
         final res = await androidPlugin.requestNotificationsPermission();
         return res ?? false;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error requesting notification permission: $e');
+    }
     return false;
   }
 
@@ -277,8 +299,6 @@ class AppNotifier {
         );
         await androidPlugin.createNotificationChannel(channelPayments);
         await androidPlugin.createNotificationChannel(channelAlerts);
-        // Explicitly request notification permissions on Android 13+ (POST_NOTIFICATIONS)
-        await androidPlugin.requestNotificationsPermission();
       }
       _barReady = true;
     } catch (e) {
@@ -405,8 +425,9 @@ class AppNotifier {
         ));
       }
 
+      final notifId = (DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF);
       await _bar.show(
-        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        notifId,
         title,
         message,
         NotificationDetails(

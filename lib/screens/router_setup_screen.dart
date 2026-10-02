@@ -887,6 +887,14 @@ set name="WavePass-Hotspot"
     String? logoUrl,
     String? venueId,
   ]) {
+    final safeVenueId = (venueId != null && venueId.trim().isNotEmpty && venueId.trim() != 'null')
+        ? venueId.trim()
+        : '';
+    final safeSlug = (slug.trim().isNotEmpty && slug.trim() != 'null')
+        ? slug.trim()
+        : '';
+    final effectiveVenueTarget = safeVenueId.isNotEmpty ? safeVenueId : safeSlug;
+
     final plansBuffer = StringBuffer();
     if (plans != null && plans.isNotEmpty) {
       for (final p in plans) {
@@ -1658,11 +1666,11 @@ $_rfc1321Md5Js
       var statusBox = document.getElementById('retrieveStatusBox');
       if (statusBox) statusBox.style.display = 'none';
 
-      var effectiveVenueId = '$venueId' || '$slug';
-      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(effectiveVenueId);
-      if (mac) url += '&mac=' + encodeURIComponent(mac);
+      var effectiveVenueId = '$effectiveVenueTarget';
+      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher' + (effectiveVenueId ? '?venueId=' + encodeURIComponent(effectiveVenueId) : '');
+      if (mac) url += (url.indexOf('?') === -1 ? '?' : '&') + 'mac=' + encodeURIComponent(mac);
       if (qInp) {
-        url += '&q=' + encodeURIComponent(qInp);
+        url += (url.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(qInp);
         if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
         if (qInp.indexOf('REF-') === 0 || qInp.indexOf('PAY-') === 0 || qInp.indexOf('WP-') === 0) url += '&reference=' + encodeURIComponent(qInp);
       }
@@ -1736,7 +1744,7 @@ $_rfc1321Md5Js
         btn.disabled = true;
       }
 
-      var effectiveVenueId = ('$venueId' && '$venueId' !== 'null' && '$venueId' !== 'undefined') ? '$venueId' : ('$slug' !== 'null' ? '$slug' : '');
+      var effectiveVenueId = '$effectiveVenueTarget';
       var initPayload = {
         mac: mac,
         planId: planId,
@@ -1849,9 +1857,9 @@ $_rfc1321Md5Js
     }
 
     function fetchLiveVenuePlans() {
-      var targetVenue = ('$venueId' && '$venueId' !== 'null' && '$venueId' !== 'undefined') ? '$venueId' : ('$slug' !== 'null' ? '$slug' : '');
-      if (!targetVenue) return;
-      fetch('https://api.nexawavepass.com/api/v1/portal/plans?venueId=' + encodeURIComponent(targetVenue))
+      var targetVenue = '$effectiveVenueTarget';
+      var plansUrl = 'https://api.nexawavepass.com/api/v1/portal/plans' + (targetVenue ? '?venueId=' + encodeURIComponent(targetVenue) : '');
+      fetch(plansUrl)
         .then(function(res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
@@ -1929,8 +1937,9 @@ $_rfc1321Md5Js
             sessionStorage.removeItem('wp_pending_ref');
             localStorage.removeItem('wp_pending_ref');
           } catch(e) {}
-          var effectiveVenueId = '$venueId' || '$slug';
-          fetch('https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?reference=' + encodeURIComponent(ref) + '&venueId=' + encodeURIComponent(effectiveVenueId))
+          var effectiveVenueId = '$effectiveVenueTarget';
+          var retrieveUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?reference=' + encodeURIComponent(ref) + (effectiveVenueId ? '&venueId=' + encodeURIComponent(effectiveVenueId) : '');
+          fetch(retrieveUrl)
             .then(function(vRes) { return vRes.json(); })
             .then(function(vData) {
               var vCode = (vData && (vData.voucherCode || vData.code || (vData.voucher && vData.voucher.code))) || '';
@@ -2029,7 +2038,7 @@ $_rfc1321Md5Js
           try { attempted = sessionStorage.getItem('wp-auto-attempt') === '1'; } catch(e){}
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
             try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
-            var autoVenueId = '$venueId' || '$slug';
+            var autoVenueId = '$effectiveVenueTarget';
             var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
             if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
             if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);

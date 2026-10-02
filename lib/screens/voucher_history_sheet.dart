@@ -24,13 +24,26 @@ class VoucherHistorySheet extends StatefulWidget {
 class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   List<VoucherRecord> _vouchers = [];
   bool _loading = true;
-  String _filter = 'unused'; // 'unused' (inactive available), 'in_use', 'all', 'expired'
+  String _filter = 'all'; // 'all', 'unused', 'in_use', 'expired'
   bool _isRefreshing = false;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() {
+      if (mounted) {
+        setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase());
+      }
+    });
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -84,7 +97,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
     if (mounted) {
       setState(() {
         _isPurging = false;
-        if (_filter == 'expired') _filter = 'unused';
+        if (_filter == 'expired') _filter = 'all';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -97,10 +110,25 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   }
 
   List<VoucherRecord> get _filteredVouchers {
-    if (_filter == 'all') {
-      return _vouchers;
+    var list = _vouchers;
+    if (_filter != 'all') {
+      list = list.where((v) => v.effectiveStatus == _filter).toList();
     }
-    return _vouchers.where((v) => v.effectiveStatus == _filter).toList();
+    if (_searchQuery.isNotEmpty) {
+      list = list.where((v) {
+        final code = v.code.toLowerCase();
+        final pass = (v.password ?? '').toLowerCase();
+        final plan = v.planTitle.toLowerCase();
+        final mac = (v.mac ?? '').toLowerCase();
+        final ip = (v.ip ?? '').toLowerCase();
+        return code.contains(_searchQuery) ||
+            pass.contains(_searchQuery) ||
+            plan.contains(_searchQuery) ||
+            mac.contains(_searchQuery) ||
+            ip.contains(_searchQuery);
+      }).toList();
+    }
+    return list;
   }
 
   String _formatTime(DateTime dt) {
@@ -234,6 +262,35 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
               ),
               const SizedBox(height: 12),
 
+              // Search Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Search by voucher code, pass, MAC or IP...',
+                    hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppColors.primary),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18, color: AppColors.textLight),
+                            onPressed: () => _searchCtrl.clear(),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: AppColors.containerBg,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 8),
+
               // Filter Chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -265,7 +322,9 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                 Icon(Icons.confirmation_number_outlined, size: 48, color: AppColors.cardBorder),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _filter == 'all' ? "No voucher activity found" : "No $_filter passes found",
+                                  _searchQuery.isNotEmpty
+                                      ? "No vouchers matching '$_searchQuery'"
+                                      : (_filter == 'all' ? "No voucher activity found" : "No $_filter passes found"),
                                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textLight),
                                 ),
                               ],

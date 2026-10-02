@@ -394,6 +394,52 @@ void main() {
       expect(shelfExpiredVoucher.effectiveStatus, 'expired');
     });
 
+    test('effectiveStatus and isExpired handle status synonyms and case normalization', () {
+      final now = DateTime.now();
+
+      final activeVoucher = VoucherRecord(
+        code: 'WP-UP-ACTIVE',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'ACTIVE',
+      );
+      expect(activeVoucher.effectiveStatus, 'in_use');
+
+      final redeemedVoucher = VoucherRecord(
+        code: 'WP-UP-REDEEMED',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'REDEEMED',
+      );
+      expect(redeemedVoucher.effectiveStatus, 'in_use');
+
+      final expiredSynonym = VoucherRecord(
+        code: 'WP-UP-CONSUMED',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'CONSUMED',
+      );
+      expect(expiredSynonym.isExpired, isTrue);
+      expect(expiredSynonym.effectiveStatus, 'expired');
+
+      final revokedSynonym = VoucherRecord(
+        code: 'WP-UP-REVOKED',
+        planTitle: '1 Hour',
+        price: '₦100',
+        durationSeconds: 3600,
+        createdAt: now,
+        status: 'REVOKED',
+      );
+      expect(revokedSynonym.isExpired, isTrue);
+      expect(revokedSynonym.effectiveStatus, 'expired');
+    });
+
     test('purgeExpiredVouchers purges vouchers whose effectiveStatus is expired', () async {
       final service = VoucherHistoryService.instance;
       final now = DateTime.now();

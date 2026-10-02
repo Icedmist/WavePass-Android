@@ -77,7 +77,8 @@ class VoucherRecord {
   }
 
   bool get isExpired {
-    if (status == 'expired') return true;
+    final s = status.toLowerCase().trim();
+    if (s == 'expired' || s == 'consumed' || s == 'revoked') return true;
     if (expiresAt != null && DateTime.now().isAfter(expiresAt!)) {
       return true;
     }
@@ -90,7 +91,8 @@ class VoucherRecord {
 
   String get effectiveStatus {
     if (isExpired) return 'expired';
-    if (status == 'in_use' || usedAt != null) return 'in_use';
+    final s = status.toLowerCase().trim();
+    if (s == 'in_use' || s == 'active' || s == 'redeemed' || usedAt != null) return 'in_use';
     return 'unused';
   }
 

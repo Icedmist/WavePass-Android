@@ -1128,7 +1128,12 @@ class _BatchVouchersScreenState extends State<BatchVouchersScreen> {
         : _generated.where((item) {
             final c = item['code']?.toString().toUpperCase() ?? '';
             final p = item['password']?.toString().toUpperCase() ?? '';
-            return c.contains(_searchFilter) || p.contains(_searchFilter);
+            final plan = item['plan']?.toString().toUpperCase() ?? '';
+            final price = item['price']?.toString().toUpperCase() ?? '';
+            return c.contains(_searchFilter) ||
+                p.contains(_searchFilter) ||
+                plan.contains(_searchFilter) ||
+                price.contains(_searchFilter);
           }).toList();
 
     return Scaffold(

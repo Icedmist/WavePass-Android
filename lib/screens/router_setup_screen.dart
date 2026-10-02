@@ -2039,9 +2039,9 @@ $_rfc1321Md5Js
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
             try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
             var autoVenueId = '$effectiveVenueTarget';
-            var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher' + (autoVenueId ? '?venueId=' + encodeURIComponent(autoVenueId) : '');
-            if (devMac) autoUrl += (autoUrl.indexOf('?') === -1 ? '?' : '&') + 'mac=' + encodeURIComponent(devMac);
-            if (savedV) autoUrl += (autoUrl.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(savedV);
+            var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
+            if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
+            if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
 
             var executed = false;
             function doFetch(attempt) {

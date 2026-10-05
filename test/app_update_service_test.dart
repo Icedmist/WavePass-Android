@@ -115,7 +115,7 @@ void main() {
         if (request.url.path.endsWith('/api/v1/app/version')) {
           return http.Response(
             jsonEncode({
-              'version': '1.0.3',
+              'version': '1.0.4',
               'downloadUrl': 'https://api.nexawavepass.com/api/v1/app/download',
               'releaseNotes': 'Backend server announced update.',
             }),
@@ -131,7 +131,7 @@ void main() {
       final update = await service.checkForUpdate(force: true);
 
       expect(update.hasUpdate, isTrue);
-      expect(update.latestVersion, equals('1.0.3'));
+      expect(update.latestVersion, equals('1.0.4'));
       expect(update.downloadUrl, equals('https://api.nexawavepass.com/api/v1/app/download'));
       expect(update.releaseNotes, equals('Backend server announced update.'));
     });

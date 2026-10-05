@@ -977,3 +977,27 @@
   - `flutter test test/voucher_limits_and_expiry_test.dart test/plan_retention_and_portal_autoconnect_test.dart`: **All 26 tests passed**.
   - Full test suite: **All 122 tests passed**.
 - [x] PR [#161](https://github.com/Icedmist/WavePass-Android/pull/161) squashed and merged to `main` (commit `51924d9`).
+
+### 66. In-App Update Resilience, Browser Fallbacks, Version Bump & GitHub Actions Storage Optimization (Issue #163, PR #164)
+- [x] **Immediate Storage Recovery**:
+  - Purged 49 obsolete workflow artifacts totaling 1.63 GB using GitHub API, instantly freeing up the user's exhausted GitHub Actions storage quota from 90% down to near 0%.
+  - Cleaned up 5 stale duplicate Flutter SDK caches totaling 3.6+ GB.
+- [x] **Workflow Storage & Compute Optimization (`.github/workflows/release.yml`, `.github/workflows/pages.yml`)**:
+  - Removed wasteful `actions/upload-artifact@v4` steps in `release.yml` that previously duplicated GitHub Releases and stored 110 MB per run with 90-day retention.
+  - Restricted `release.yml` to trigger on tag pushes (`tags: ['v*']`) and manual triggers (`workflow_dispatch`), preventing 15-minute release builds and artifact accumulation on every push to `main`.
+  - Removed failing `pages.yml` workflow which was repeatedly erroring on GitHub Pages deployment (status 404) and burning runner minutes.
+- [x] **In-App Update Hardening (`lib/core/services/app_update_service.dart`, `pubspec.yaml`)**:
+  - Bumped app version to `1.0.3+4` across `pubspec.yaml` and `AppUpdateService.currentVersion`, enabling existing `1.0.2+3` installs to detect new releases.
+  - Added direct dependency for `url_launcher: ^6.3.2`.
+  - Enhanced `downloadAndInstall()` to save APKs to `getExternalCacheDirectories()` (with fallback to `getTemporaryDirectory()`), ensuring PackageInstaller has read access across strict OEM Android distributions.
+  - Implemented `_openInBrowser()` using `url_launcher` on `widget.update.downloadUrl` and `widget.update.htmlUrl`.
+  - Upgraded `_AppUpdateDialogState` to include:
+    - Dedicated "Browser" action button alongside "Update Now".
+    - Direct browser icon button in dialog header.
+    - Soft error notice card with prominent "Download via Browser" button whenever PackageInstaller cannot be launched or "Install unknown apps" permission is not yet toggled by the user.
+  - Fixed `checkForUpdate()` fallback handling so that checking the source repo does not lock the app into a 4-hour cooldown when no update is found.
+- [x] **Automated Testing & Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 122 tests passed** (including unit tests in `test/app_update_service_test.dart` and widget tests in `test/update_ui_verification_test.dart`).
+- [x] PR [#164](https://github.com/Icedmist/WavePass-Android/pull/164) squashed and merged to `main` (commit `184ab4a`).
+

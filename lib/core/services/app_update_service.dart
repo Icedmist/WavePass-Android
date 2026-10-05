@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../constants/api_constants.dart';
 import '../theme/app_theme.dart';
 
@@ -35,7 +36,7 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
-  static const String currentVersion = '1.0.2+3';
+  static const String currentVersion = '1.0.3+4';
   static const String repoOwner = 'Icedmist';
   static const String distributionRepo = 'WavePass-App';
   static const String sourceRepo = 'WavePass-Android';
@@ -136,16 +137,17 @@ class AppUpdateService {
 
     // 3. Fallback to Source Repo (WavePass-Android)
     final sourceInfo = await _checkGitHubRelease(repoOwner, sourceRepo);
-    if (sourceInfo != null) {
+    if (sourceInfo != null && sourceInfo.hasUpdate) {
       await prefs.setInt(keyLastCheck, now);
       return sourceInfo;
     }
 
-    if (publicInfo != null) {
+    if (publicInfo != null && publicInfo.hasUpdate) {
       await prefs.setInt(keyLastCheck, now);
       return publicInfo;
     }
 
+    await prefs.setInt(keyLastCheck, now);
     return const AppUpdateInfo(
       hasUpdate: false,
       latestVersion: currentVersion,
@@ -217,8 +219,19 @@ class AppUpdateService {
       }
 
       final contentLength = response.contentLength ?? 0;
-      final tempDir = await getTemporaryDirectory();
-      final apkFile = File('${tempDir.path}/wavepass_release_update.apk');
+      Directory saveDir;
+      try {
+        final extDirs = await getExternalCacheDirectories();
+        if (extDirs != null && extDirs.isNotEmpty) {
+          saveDir = extDirs.first;
+        } else {
+          saveDir = await getTemporaryDirectory();
+        }
+      } catch (_) {
+        saveDir = await getTemporaryDirectory();
+      }
+
+      final apkFile = File('${saveDir.path}/wavepass_release_update.apk');
       if (await apkFile.exists()) {
         await apkFile.delete();
       }
@@ -250,7 +263,12 @@ class AppUpdateService {
         type: 'application/vnd.android.package-archive',
       );
 
-      return result.type == ResultType.done;
+      if (result.type != ResultType.done) {
+        onProgress(0.0, 'Installer failed: ${result.message}. You can enable "Install unknown apps" in Settings or download via browser.');
+        return false;
+      }
+
+      return true;
     } catch (e) {
       onProgress(0.0, 'Update error: $e');
       return false;
@@ -288,6 +306,16 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   String _statusText = '';
   String? _error;
 
+  Future<void> _openInBrowser() async {
+    final targetUrl = widget.update.downloadUrl ?? widget.update.htmlUrl;
+    if (targetUrl != null && targetUrl.isNotEmpty) {
+      final uri = Uri.parse(targetUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
   Future<void> _startUpdate() async {
     final url = widget.update.downloadUrl;
     if (url == null || url.isEmpty) {
@@ -316,7 +344,9 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     if (!success && mounted) {
       setState(() {
         _downloading = false;
-        _error = _statusText.contains('error') ? _statusText : 'Could not launch package installer.';
+        _error = _statusText.contains('error') || _statusText.contains('failed')
+            ? _statusText
+            : 'Could not launch package installer. Please allow "Install unknown apps" or download via browser.';
       });
     }
   }
@@ -347,6 +377,12 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
             ),
           ),
+          if (widget.update.htmlUrl != null || widget.update.downloadUrl != null)
+            IconButton(
+              icon: const Icon(Icons.open_in_browser_rounded, size: 20, color: AppColors.navy),
+              tooltip: 'Open in Browser',
+              onPressed: _openInBrowser,
+            ),
         ],
       ),
       content: SingleChildScrollView(
@@ -410,18 +446,70 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
             ],
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(fontSize: 11, color: AppColors.accentRed, fontWeight: FontWeight.w600)),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.accentRed.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.accentRed.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: AppColors.accentRed, size: 16),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Installation Notice',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentRed),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(_error!, style: const TextStyle(fontSize: 11, color: AppColors.primary, height: 1.3)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.download_rounded, size: 14),
+                        label: const Text('Download via Browser', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onPressed: _openInBrowser,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ),
       ),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
-        if (!_downloading)
+        if (!_downloading) ...[
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Later', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600)),
           ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.navy,
+              side: const BorderSide(color: AppColors.cardBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+            onPressed: _openInBrowser,
+            child: const Text('Browser', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+        ],
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,

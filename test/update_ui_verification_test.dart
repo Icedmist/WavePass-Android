@@ -23,14 +23,14 @@ void main() {
 
   testWidgets('Check for Updates component triggers update check and displays update dialog', (WidgetTester tester) async {
     final mockRelease = jsonEncode({
-      'tag_name': 'v1.0.3',
+      'tag_name': 'v2.0.0',
       'body': 'Brand new router diagnostics & offline recovery.',
-      'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v1.0.3',
+      'html_url': 'https://github.com/Icedmist/WavePass-Android/releases/tag/v2.0.0',
       'published_at': '2026-09-30T00:00:00Z',
       'assets': [
         {
           'name': 'app-release.apk',
-          'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.3/app-release.apk',
+          'browser_download_url': 'https://github.com/Icedmist/WavePass-Android/releases/download/v2.0.0/app-release.apk',
           'size': 25000000,
         }
       ],

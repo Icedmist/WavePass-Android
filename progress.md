@@ -1028,3 +1028,29 @@
   - `flutter test`: **All 122 tests passed**.
 - [x] PR [#167](https://github.com/Icedmist/WavePass-Android/pull/167) squashed and merged to `main` (commit `eacfa0f`).
 
+### 68. Release v1.0.4+5 & CI Cloud Storage Optimization (Commit aae77df, Tag v1.0.4)
+- [x] **Version Bump (`pubspec.yaml`)**:
+  - Bumped version from `1.0.3+4` to `1.0.4+5`.
+  - Pushed commit `aae77df` (`chore: bump version to 1.0.4+5`) to `main`.
+  - Tagged `v1.0.4` and pushed to remote origin.
+- [x] **Automated Build & Release Verification (`.github/workflows/release.yml`)**:
+  - Workflow run `37512686180` completed successfully in 7m48s.
+  - "Verify APK Signature" step verified release certificate:
+    - Owner/Issuer: `CN=WavePass, OU=WavePass, O=WavePass, L=Unknown, ST=Unknown, C=NG`
+    - Serial number: `e1c3d11b85437887`
+    - SHA256: `39:91:07:95:5F:EF:CE:FF:34:77:4D:4A:23:4E:99:A8:1C:12:4E:D4:B4:72:FB:A3:34:E3:69:89:1E:E7:09:A0`
+  - GitHub Releases deployed:
+    - Source repo: [Icedmist/WavePass-Android v1.0.4](https://github.com/Icedmist/WavePass-Android/releases/tag/v1.0.4)
+    - Public distribution repo: [Icedmist/WavePass-App v1.0.4](https://github.com/Icedmist/WavePass-App/releases/tag/v1.0.4)
+    - Download APK: `https://github.com/Icedmist/WavePass-Android/releases/download/v1.0.4/app-release.apk`
+- [x] **GitHub Cloud Storage Recovery**:
+  - Purged 5 stale Actions caches in `WavePass-Android` (~1.96 GB).
+  - Purged 77 build artifacts in `WavePass-Backend` (~1.48 MB).
+  - Purged 1 Actions cache in `Hausa-Learn` (~154 MB).
+- [x] **WavePass-Backend Droplet Deployment Verification**:
+  - Latest commit on `main`: `edea423` (successor to `79ea7fa`).
+  - GitHub Actions `Build, Push and Deploy` run `37463406442` succeeded.
+  - Droplet logs confirmed `git pull --ff-only origin main` updated `79ea7fa..edea423`, pulled new container image, applied database migrations, and health check passed (`status: ok`).
+  - Live production endpoint `https://api.nexawavepass.com/api/v1/health` confirmed running and healthy.
+
+

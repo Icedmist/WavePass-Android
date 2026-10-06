@@ -2447,15 +2447,16 @@ $_rfc1321Md5Js
   Future<Map<String, String>> _ensurePortalSuite() async {
     final venue = await _resolvePortalVenue() ?? {'slug': 'venue', 'name': 'WavePass Wi-Fi'};
     final venueKey = venue['id']?.toString() ?? venue['slug']?.toString() ?? 'venue';
-    // Invalidate cached suite when the active venue changes so plans never go stale.
-    if (_portalSuite != null && _portalSuiteVenueId == venueKey) return _portalSuite!;
+    var plans = VenueStateService.instance.currentPlans;
+    // Invalidate cached suite when active venue changes or when plans were not loaded yet
+    if (_portalSuite != null && _portalSuiteVenueId == venueKey && plans.isNotEmpty) return _portalSuite!;
     final slug = venue['slug']?.toString() ?? 'venue';
     final venueName = venue['name']?.toString() ?? 'WavePass Wi-Fi';
     // Always refresh plans for THIS venue so the guest login.html portal page
     // shows the operator's own pricing — never another venue's or a stale cache.
-    var plans = VenueStateService.instance.currentPlans;
     final activeId = VenueStateService.instance.currentVenueId;
     final venueIdStr = venue['id']?.toString();
+    final slugStr = venue['slug']?.toString();
     if (plans.isEmpty || (activeId != null && venueIdStr != null && activeId != venueIdStr)) {
       try {
         if (venueIdStr != null && activeId != venueIdStr) {
@@ -2464,15 +2465,16 @@ $_rfc1321Md5Js
         plans = await VenueStateService.instance.refreshPlans();
       } catch (_) {}
     }
-    if (plans.isEmpty && venueIdStr != null && venueIdStr.isNotEmpty) {
+    if (plans.isEmpty && ((venueIdStr != null && venueIdStr.isNotEmpty) || (slugStr != null && slugStr.isNotEmpty))) {
       try {
-        final raw = await WavePassApi.instance.listPlans(venueId: venueIdStr);
+        final queryTarget = (venueIdStr != null && venueIdStr.isNotEmpty) ? venueIdStr : slugStr!;
+        final raw = await WavePassApi.instance.listPlans(venueId: queryTarget);
         if (raw.isNotEmpty) {
           plans = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           VenueStateService.instance.plansNotifier.value = plans;
         }
       } catch (_) {}
-      if (plans.isEmpty) {
+      if (plans.isEmpty && venueIdStr != null && venueIdStr.isNotEmpty) {
         try {
           final raw = await SupabaseService.instance.getActivePlans(venueIdStr);
           if (raw.isNotEmpty) {
@@ -2507,7 +2509,7 @@ $_rfc1321Md5Js
       'status.html': _generateStatusHtml(venueName, slug),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
-    if (mounted) {
+    if (mounted && plans.isNotEmpty) {
       setState(() {
         _portalSuite = suite;
         _portalSuiteVenueId = venueKey;

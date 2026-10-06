@@ -139,10 +139,10 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
     return '${diff.inDays}d ago';
   }
 
-  Color _statusColor(String status) {
+  Color _statusColor(String status, {bool isOnline = false}) {
     switch (status) {
       case 'in_use':
-        return AppColors.accentGreen;
+        return isOnline ? AppColors.accentGreen : const Color(0xFFD97706);
       case 'expired':
         return AppColors.textLight;
       default:
@@ -150,10 +150,10 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
     }
   }
 
-  String _statusLabel(String status) {
+  String _statusLabel(String status, {bool isOnline = false}) {
     switch (status) {
       case 'in_use':
-        return 'IN USE (ACTIVE)';
+        return isOnline ? 'ONLINE (CONNECTED)' : 'IN USE (OFFLINE)';
       case 'expired':
         return 'EXPIRED';
       default:
@@ -163,7 +163,8 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final activeCount = _vouchers.where((v) => v.effectiveStatus == 'in_use').length;
+    final inUseCount = _vouchers.where((v) => v.effectiveStatus == 'in_use').length;
+    final onlineCount = _vouchers.where((v) => v.effectiveStatus == 'in_use' && v.isOnline).length;
     final unusedCount = _vouchers.where((v) => v.effectiveStatus == 'unused').length;
     final expiredCount = _vouchers.where((v) => v.effectiveStatus == 'expired').length;
 
@@ -212,7 +213,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                   color: AppColors.primary,
                                 ),
                               ),
-                              if (activeCount > 0) ...[
+                              if (onlineCount > 0) ...[
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -221,7 +222,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    "$activeCount ACTIVE",
+                                    "$onlineCount ONLINE",
                                     style: const TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w900,
@@ -234,7 +235,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "$unusedCount inactive (available) • $activeCount in use • $expiredCount expired",
+                            "$unusedCount available • $onlineCount online ($inUseCount in use) • $expiredCount expired",
                             style: const TextStyle(fontSize: 12, color: AppColors.textLight),
                           ),
                           const SizedBox(height: 6),
@@ -301,7 +302,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                     const SizedBox(width: 8),
                     _buildFilterChip('unused', 'Available ($unusedCount)'),
                     const SizedBox(width: 8),
-                    _buildFilterChip('in_use', 'In Use ($activeCount)'),
+                    _buildFilterChip('in_use', 'In Use ($inUseCount)'),
                     const SizedBox(width: 8),
                     _buildFilterChip('expired', 'Expired ($expiredCount)'),
                   ],
@@ -338,7 +339,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                             itemBuilder: (context, index) {
                               final item = _filteredVouchers[index];
                               final effectiveStatus = item.effectiveStatus;
-                              final statusColor = _statusColor(effectiveStatus);
+                              final statusColor = _statusColor(effectiveStatus, isOnline: item.isOnline);
                               final isDual = item.isDualCredential;
 
                               return Container(
@@ -348,7 +349,9 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                   borderRadius: BorderRadius.circular(18),
                                   border: Border.all(
                                     color: effectiveStatus == 'in_use'
-                                        ? AppColors.accentGreen.withValues(alpha: 0.3)
+                                        ? (item.isOnline
+                                            ? AppColors.accentGreen.withValues(alpha: 0.3)
+                                            : const Color(0xFFD97706).withValues(alpha: 0.3))
                                         : AppColors.cardBorder,
                                   ),
                                 ),
@@ -462,7 +465,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
-                                            _statusLabel(effectiveStatus),
+                                            _statusLabel(effectiveStatus, isOnline: item.isOnline),
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.w900,
@@ -561,28 +564,39 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: AppColors.accentGreen.withValues(alpha: 0.08),
+                                          color: (item.isOnline ? AppColors.accentGreen : const Color(0xFFD97706)).withValues(alpha: 0.08),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Column(
                                           children: [
                                             Row(
                                               children: [
-                                                const Icon(Icons.wifi_tethering_rounded, size: 14, color: AppColors.accentGreen),
+                                                Icon(
+                                                  item.isOnline ? Icons.wifi_tethering_rounded : Icons.wifi_off_rounded,
+                                                  size: 14,
+                                                  color: item.isOnline ? AppColors.accentGreen : const Color(0xFFD97706),
+                                                ),
                                                 const SizedBox(width: 6),
                                                 Expanded(
                                                   child: Text(
-                                                    "Active: MAC ${item.mac ?? 'Unknown'} • IP ${item.ip ?? '—'}",
-                                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accentGreen),
+                                                    item.isOnline
+                                                        ? "Connected: MAC ${item.mac ?? 'Unknown'} • IP ${item.ip ?? '—'}"
+                                                        : "Redeemed (Offline / Idle): Last MAC ${item.mac ?? '—'} • Last IP ${item.ip ?? '—'}",
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: item.isOnline ? AppColors.accentGreen : const Color(0xFFD97706),
+                                                    ),
                                                   ),
                                                 ),
-                                                TextButton(
-                                                  onPressed: () async {
-                                                    await VoucherHistoryService.instance.expireVoucher(item.code);
-                                                    _loadData();
-                                                  },
-                                                  child: const Text("Disconnect", style: TextStyle(fontSize: 10, color: AppColors.accentRed)),
-                                                ),
+                                                if (item.isOnline)
+                                                  TextButton(
+                                                    onPressed: () async {
+                                                      await VoucherHistoryService.instance.expireVoucher(item.code);
+                                                      _loadData();
+                                                    },
+                                                    child: const Text("Disconnect", style: TextStyle(fontSize: 10, color: AppColors.accentRed)),
+                                                  ),
                                               ],
                                             ),
                                             const SizedBox(height: 2),

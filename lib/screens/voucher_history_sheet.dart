@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,7 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
   bool _isRefreshing = false;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  Timer? _countdownTimer;
 
   @override
   void initState() {
@@ -38,10 +40,16 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
       }
     });
     _loadData();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -603,14 +611,30 @@ class _VoucherHistorySheetState extends State<VoucherHistorySheet> {
                                             Row(
                                               children: [
                                                 const SizedBox(width: 20),
-                                                Text(
-                                                  "Uptime: ${item.uptimeFormatted}  •  Data: ${item.dataTransferredFormatted}",
-                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary),
+                                                Expanded(
+                                                  child: Text(
+                                                    item.remainingTimeFormatted.isNotEmpty
+                                                        ? "Uptime: ${item.uptimeFormatted}  •  Data: ${item.dataTransferredFormatted}  •  ${item.remainingTimeFormatted} remaining"
+                                                        : "Uptime: ${item.uptimeFormatted}  •  Data: ${item.dataTransferredFormatted}",
+                                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary),
+                                                  ),
                                                 ),
                                               ],
                                             ),
                                           ],
                                         ),
+                                      ),
+                                    ] else if (effectiveStatus == 'unused' && item.remainingTime != null) ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.timer_outlined, size: 12, color: AppColors.textLight),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "Expires in: ${item.remainingTimeFormatted}",
+                                            style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+                                          ),
+                                        ],
                                       ),
                                     ] else if (effectiveStatus == 'expired') ...[
                                       const SizedBox(height: 6),

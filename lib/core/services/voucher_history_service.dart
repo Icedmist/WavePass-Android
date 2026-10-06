@@ -78,6 +78,27 @@ class VoucherRecord {
     return '${elapsed ~/ 3600}h ${(elapsed % 3600) ~/ 60}m';
   }
 
+  Duration? get remainingTime {
+    final s = status.toLowerCase().trim();
+    if ((s == 'in_use' || s == 'active' || s == 'redeemed') && usedAt != null) {
+      final rem = Duration(seconds: durationSeconds) - DateTime.now().difference(usedAt!);
+      return rem.isNegative ? Duration.zero : rem;
+    } else if (s == 'unused' && expiresAt != null) {
+      final rem = expiresAt!.difference(DateTime.now());
+      return rem.isNegative ? Duration.zero : rem;
+    }
+    return null;
+  }
+
+  String get remainingTimeFormatted {
+    final rem = remainingTime;
+    if (rem == null) return '';
+    final totalSec = rem.inSeconds;
+    if (totalSec < 60) return '${totalSec}s left';
+    if (totalSec < 3600) return '${totalSec ~/ 60}m ${totalSec % 60}s left';
+    return '${totalSec ~/ 3600}h ${(totalSec % 3600) ~/ 60}m left';
+  }
+
   bool get isExpired {
     final s = status.toLowerCase().trim();
     if (s == 'expired' || s == 'consumed' || s == 'revoked') return true;

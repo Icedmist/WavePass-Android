@@ -1053,4 +1053,24 @@
   - Droplet logs confirmed `git pull --ff-only origin main` updated `79ea7fa..edea423`, pulled new container image, applied database migrations, and health check passed (`status: ok`).
   - Live production endpoint `https://api.nexawavepass.com/api/v1/health` confirmed running and healthy.
 
+### 69. Voucher Live Expiry Countdown in Voucher History (Issue #169, PR #170)
+- [x] **Voucher Expiry Calculation (`lib/core/services/voucher_history_service.dart`)**:
+  - Added `Duration? get remainingTime` getter to `VoucherRecord`:
+    - For `in_use` / `active` / `redeemed` vouchers with `usedAt != null`: calculates remaining duration against `durationSeconds`, clamped to `Duration.zero`.
+    - For `unused` vouchers with shelf-life `expiresAt != null`: calculates difference against current time, clamped to `Duration.zero`.
+    - Returns `null` otherwise (e.g. expired or untracked).
+  - Added `String get remainingTimeFormatted` getter to `VoucherRecord`:
+    - Adheres to existing `uptimeFormatted` formatting conventions (`Xs left`, `Xm Ys left`, `Xh Ym left`).
+    - Returns `""` when `remainingTime` is null.
+- [x] **Live Countdown Surface & Periodic Re-render (`lib/screens/voucher_history_sheet.dart`)**:
+  - Surfaced live countdown in the active session metadata row (`in_use`): `"Uptime: ...  •  Data: ...  •  Xh Ym left remaining"`, with responsive `Expanded` constraints to prevent render overflow on compact mobile displays.
+  - Added shelf-life countdown row for `unused` vouchers with shelf-life expiry dates: `"Expires in: ${item.remainingTimeFormatted}"` accompanied by `Icons.timer_outlined`.
+  - Added 30-second periodic `Timer` in `_VoucherHistorySheetState` triggering `setState()` for live re-rendering while the sheet is open.
+  - Ensured timer cancellation in `dispose()`.
+- [x] **Automated Testing & Verification**:
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 122 tests passed**.
+- [x] PR [#170](https://github.com/Icedmist/WavePass-Android/pull/170) squashed and merged to `main` (commit `0edbd62`).
+
+
 

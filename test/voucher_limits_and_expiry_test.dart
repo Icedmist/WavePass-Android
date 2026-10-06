@@ -142,6 +142,7 @@ void main() {
         durationSeconds: 86400,
         createdAt: DateTime.now(),
         status: 'in_use',
+        isOnline: true,
         uptime: '02:30:00',
         bytesIn: 52428800, // 50 MB
         bytesOut: 104857600, // 100 MB
@@ -149,6 +150,7 @@ void main() {
       );
 
       expect(record.isDualCredential, isTrue);
+      expect(record.isOnline, isTrue);
       expect(record.effectivePassword, 'PIN-9876');
       expect(record.dataTransferredFormatted, '150.0 MB');
       expect(record.uptimeFormatted, '02:30:00');
@@ -156,12 +158,14 @@ void main() {
       final json = record.toJson();
       expect(json['code'], 'WP-USER100');
       expect(json['password'], 'PIN-9876');
+      expect(json['isOnline'], isTrue);
       expect(json['source'], 'batch');
 
       final restored = VoucherRecord.fromJson(json);
       expect(restored.code, 'WP-USER100');
       expect(restored.password, 'PIN-9876');
       expect(restored.isDualCredential, isTrue);
+      expect(restored.isOnline, isTrue);
       expect(restored.bytesIn, 52428800);
       expect(restored.bytesOut, 104857600);
       expect(restored.dataTransferredFormatted, '150.0 MB');

@@ -21,6 +21,7 @@ class VoucherRecord {
   String status; // 'unused', 'in_use', 'expired'
   bool sold;
   bool provisioned;
+  bool isOnline;
   String? directMode;
   DateTime? usedAt;
   String? mac;
@@ -41,6 +42,7 @@ class VoucherRecord {
     this.status = 'unused',
     this.sold = false,
     this.provisioned = true,
+    this.isOnline = false,
     this.directMode,
     this.usedAt,
     this.mac,
@@ -115,6 +117,7 @@ class VoucherRecord {
         'status': isExpired ? 'expired' : status,
         'sold': sold,
         'provisioned': provisioned,
+        'isOnline': isOnline,
         'directMode': directMode,
         'usedAt': usedAt?.toIso8601String(),
         'mac': mac,
@@ -144,6 +147,7 @@ class VoucherRecord {
       status: isStale ? 'expired' : rawStatus,
       sold: json['sold'] == true,
       provisioned: json['provisioned'] == null ? true : json['provisioned'] == true,
+      isOnline: json['isOnline'] == true,
       directMode: json['directMode']?.toString(),
       usedAt: json['usedAt'] != null ? DateTime.tryParse(json['usedAt'].toString()) : null,
       mac: json['mac']?.toString(),
@@ -431,6 +435,7 @@ class VoucherHistoryService {
 
           if (consolidated.containsKey(key)) {
             final existing = consolidated[key]!;
+            existing.isOnline = isActive;
             // Do NOT resurrect already expired vouchers on router reboot
             if (status == 'expired' || existing.isExpired) {
               existing.status = 'expired';
@@ -456,6 +461,7 @@ class VoucherHistoryService {
               durationSeconds: limitSec > 0 ? limitSec : 3600,
               createdAt: DateTime.now().subtract(Duration(seconds: uptimeSec)),
               status: status,
+              isOnline: isActive,
               mac: mac,
               ip: ip,
               uptime: activeUptime,
@@ -510,6 +516,7 @@ class VoucherHistoryService {
         if (sessions.isNotEmpty) {
           latestSession = sessions.first;
         }
+        final isSessionActive = latestSession?['status']?.toString().toUpperCase() == 'ACTIVE';
 
         final usedAtDt = DateTime.tryParse(vMap['redeemedAt']?.toString() ?? '') ??
             (latestSession != null ? DateTime.tryParse(latestSession['startedAt']?.toString() ?? '') : null);
@@ -521,8 +528,12 @@ class VoucherHistoryService {
           if (cloudExpiresAt != null) existing.expiresAt ??= cloudExpiresAt;
           if (existing.isExpired || status == 'expired') {
             existing.status = 'expired';
+            existing.isOnline = false;
           } else if (status == 'in_use') {
             existing.status = 'in_use';
+          }
+          if (isSessionActive && existing.status != 'expired') {
+            existing.isOnline = true;
           }
           if (usedAtDt != null) existing.usedAt ??= usedAtDt;
           if (sessionMac != null && sessionMac.isNotEmpty && sessionMac != '—') {
@@ -544,6 +555,7 @@ class VoucherHistoryService {
             createdAt: DateTime.tryParse(vMap['issuedAt']?.toString() ?? '') ?? DateTime.now(),
             expiresAt: cloudExpiresAt,
             status: isPastExpiry ? 'expired' : status,
+            isOnline: isSessionActive && !isPastExpiry,
             usedAt: usedAtDt,
             mac: sessionMac,
             ip: sessionIp,
@@ -647,6 +659,22 @@ class VoucherHistoryService {
 
       // 2. Cross-reference active users with history (accurately backdating usedAt)
       if (routerConnected) {
+        final activeCodeMap = <String, Map<String, String>>{};
+        for (final active in activeUsers) {
+          final u = active['user']?.toString().toUpperCase();
+          if (u != null && u.isNotEmpty) {
+            activeCodeMap[u] = active;
+          }
+        }
+
+        for (final record in history) {
+          final isCurrentlyOnline = activeCodeMap.containsKey(record.code.toUpperCase()) && record.status != 'expired';
+          if (record.isOnline != isCurrentlyOnline) {
+            record.isOnline = isCurrentlyOnline;
+            stateChanged = true;
+          }
+        }
+
         for (final active in activeUsers) {
           final activeCode = active['user']?.toString().toUpperCase();
           final mac = active['mac-address']?.toString() ?? '—';
@@ -766,6 +794,7 @@ class VoucherHistoryService {
 
           if (shouldExpire) {
             record.status = 'expired';
+            record.isOnline = false;
             stateChanged = true;
 
             // Notify owner of expiration
@@ -813,6 +842,7 @@ class VoucherHistoryService {
               for (final record in history) {
                 if (record.code.toUpperCase() == uName.toUpperCase() && record.status != 'expired') {
                   record.status = 'expired';
+                  record.isOnline = false;
                   stateChanged = true;
                   AppNotifier.instance.notify(
                     type: NotifyType.warning,
@@ -883,6 +913,7 @@ class VoucherHistoryService {
     for (final v in history) {
       if (v.code.toUpperCase() == code.toUpperCase()) {
         v.status = 'expired';
+        v.isOnline = false;
         mac = v.mac;
         break;
       }

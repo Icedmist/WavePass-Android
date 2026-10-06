@@ -1001,3 +1001,30 @@
   - `flutter test`: **All 122 tests passed** (including unit tests in `test/app_update_service_test.dart` and widget tests in `test/update_ui_verification_test.dart`).
 - [x] PR [#164](https://github.com/Icedmist/WavePass-Android/pull/164) squashed and merged to `main` (commit `184ab4a`).
 
+### 67. Voucher Real-Time Online Status Tracking, Portal Suite Caching Fix, and Test Coverage (Issue #166, PR #167)
+- [x] **Real-Time Voucher Online Status (`lib/core/services/voucher_history_service.dart`)**:
+  - Added `bool isOnline` field with default `false` to `VoucherRecord` along with JSON serialization and deserialization.
+  - In `fetchFullVoucherActivity`:
+    - Updated MikroTik hardware sync (`/ip/hotspot/active`) to record live connection state (`isOnline: isActive`).
+    - Updated Supabase cloud vouchers and sessions sync to mark `isOnline: true` when `latestSession['status'] == 'ACTIVE'`.
+  - In `checkVoucherLifecycle`:
+    - Cross-referenced live MikroTik active users against cached voucher history, updating `record.isOnline` dynamically and setting `stateChanged = true`.
+    - Automatically reset `record.isOnline = false` when vouchers expire naturally or when uptime limit is reached.
+  - In `expireVoucher`: reset `v.isOnline = false` upon manual expiration.
+- [x] **Voucher History UI Enhancements (`lib/screens/voucher_history_sheet.dart`)**:
+  - Updated `_statusColor` and `_statusLabel` to accept `bool isOnline`:
+    - Active connected: `ONLINE (CONNECTED)` with green badge (`#10B981`) and Wi-Fi tethering icon.
+    - Redeemed idle/offline: `IN USE (OFFLINE)` with amber badge (`#D97706`) and Wi-Fi off icon.
+    - Available: `INACTIVE (AVAILABLE)` with primary purple/blue.
+    - Expired: `EXPIRED` with muted text color.
+  - Updated header counter to display active online count alongside in-use total.
+  - Updated voucher card border and status banner to reflect active vs offline state with last known MAC and IP addresses.
+- [x] **Portal Suite Caching Fix (`lib/screens/router_setup_screen.dart`)**:
+  - Prevented premature caching of `_portalSuite` when venue pricing plans have not finished loading from network (`plans.isNotEmpty`).
+  - Added fallback query using venue slug when venue ID is resolving, preventing the captive portal from showing a perpetual "Connecting to venue store..." notice.
+- [x] **Automated Testing & Verification**:
+  - Added unit tests in `test/voucher_limits_and_expiry_test.dart` verifying `isOnline` serialization, deserialization, and status assertions.
+  - `flutter analyze`: **0 warnings, 0 errors**.
+  - `flutter test`: **All 122 tests passed**.
+- [x] PR [#167](https://github.com/Icedmist/WavePass-Android/pull/167) squashed and merged to `main` (commit `eacfa0f`).
+

@@ -2,8 +2,24 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wavepass_mobile/core/services/app_update_service.dart';
+
+Future<void> _initVersion({
+  String version = '1.0.4',
+  String buildNumber = '5',
+}) async {
+  PackageInfo.setMockInitialValues(
+    appName: 'wavepass_mobile',
+    packageName: 'com.nexawave.wavepass',
+    version: version,
+    buildNumber: buildNumber,
+    buildSignature: '',
+  );
+  await AppUpdateService.instance.debugResetForTest();
+  await AppUpdateService.instance.init();
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -34,9 +50,17 @@ void main() {
     });
   });
 
+  group('AppUpdateService.init PackageInfo caching', () {
+    test('caches version+buildNumber from PackageInfo', () async {
+      await _initVersion(version: '2.3.4', buildNumber: '9');
+      expect(AppUpdateService.instance.currentVersion, equals('2.3.4+9'));
+    });
+  });
+
   group('AppUpdateService.checkForUpdate API handling', () {
-    setUp(() {
+    setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      await _initVersion();
     });
 
     test('parses newer release and extracts apk download url', () async {
@@ -76,11 +100,12 @@ void main() {
       expect(update.downloadUrl, equals('https://github.com/Icedmist/WavePass-Android/releases/download/v2.0.0/app-release.apk'));
       expect(update.releaseNotes, contains('Paystack wallet'));
       expect(update.assetSizeBytes, equals(25000000));
+      expect(update.currentVersion, equals(service.currentVersion));
     });
 
     test('returns hasUpdate false when release matches current version', () async {
       final mockResponse = jsonEncode({
-        'tag_name': 'v${AppUpdateService.currentVersion}',
+        'tag_name': 'v${AppUpdateService.instance.currentVersion}',
         'body': 'Current release',
         'assets': [],
       });
@@ -125,6 +150,9 @@ void main() {
         return http.Response('Not found', 404);
       });
 
+      // Current app is 1.0.3+4 so backend 1.0.4 is newer
+      await _initVersion(version: '1.0.3', buildNumber: '4');
+
       final service = AppUpdateService.instance;
       service.mockClient = mockClient;
 
@@ -159,6 +187,8 @@ void main() {
         }
         return http.Response('Not found', 404);
       });
+
+      await _initVersion(version: '1.0.3', buildNumber: '4');
 
       final service = AppUpdateService.instance;
       service.mockClient = mockClient;

@@ -829,7 +829,7 @@
   - Added `add comment="WavePass API Static IP (HTTPS)" dst-address=134.209.116.20 action=accept` to `/ip hotspot walled-garden ip` rules, preventing HTTPS pre-auth drops when clients use DNS-over-HTTPS (DoH).
 - [x] **Dual-Repository Automated Release Publishing (`.github/workflows/release.yml`)**:
   - Updated release triggers to publish compiled APK and AppBundle assets to both `Icedmist/WavePass-Android` and `Icedmist/WavePass-App` on push to `main` as well as tagged releases and manual dispatch.
-  - Bumped version to `1.0.2+3` across `pubspec.yaml` and `lib/core/services/app_update_service.dart`.
+  - Bumped version to `1.0.2+3` in `pubspec.yaml` only (app self-reports version via PackageInfo at runtime).
   - Pushed git tag `v1.0.2+3` to establish the new release.
 - [x] **Automated Testing & Verification**:
   - `flutter analyze`: **0 warnings, 0 errors**.
@@ -987,7 +987,7 @@
   - Restricted `release.yml` to trigger on tag pushes (`tags: ['v*']`) and manual triggers (`workflow_dispatch`), preventing 15-minute release builds and artifact accumulation on every push to `main`.
   - Removed failing `pages.yml` workflow which was repeatedly erroring on GitHub Pages deployment (status 404) and burning runner minutes.
 - [x] **In-App Update Hardening (`lib/core/services/app_update_service.dart`, `pubspec.yaml`)**:
-  - Bumped app version to `1.0.3+4` across `pubspec.yaml` and `AppUpdateService.currentVersion`, enabling existing `1.0.2+3` installs to detect new releases.
+  - Bumped app version to `1.0.3+4` in `pubspec.yaml` (sole source of truth; in-app version is now read at runtime via PackageInfo — do not hand-edit a hardcoded constant), enabling existing `1.0.2+3` installs to detect new releases.
   - Added direct dependency for `url_launcher: ^6.3.2`.
   - Enhanced `downloadAndInstall()` to save APKs to `getExternalCacheDirectories()` (with fallback to `getTemporaryDirectory()`), ensuring PackageInstaller has read access across strict OEM Android distributions.
   - Implemented `_openInBrowser()` using `url_launcher` on `widget.update.downloadUrl` and `widget.update.htmlUrl`.

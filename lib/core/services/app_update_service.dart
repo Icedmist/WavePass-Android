@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,13 +37,21 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
-  static const String currentVersion = '1.0.3+4';
+  /// Last-resort placeholder matching pubspec.yaml until [init] completes.
+  static const String _fallbackVersion = '1.0.4+5';
+
   static const String repoOwner = 'Icedmist';
   static const String distributionRepo = 'WavePass-App';
   static const String sourceRepo = 'WavePass-Android';
   static const String backendVersionEndpoint = '${ApiConstants.cloudBaseUrl}/api/v1/app/version';
   static const String keyLastCheck = 'wavepass_last_update_check_ms';
   static const int checkCooldownHours = 4;
+
+  String _currentVersion = _fallbackVersion;
+  bool _initialized = false;
+
+  /// Cached `"version+buildNumber"` from the real build (via [PackageInfo]).
+  String get currentVersion => _currentVersion;
 
   http.Client? _client;
 
@@ -51,6 +60,27 @@ class AppUpdateService {
 
   http.Client get _httpClient => _client ?? http.Client();
 
+  /// Loads and caches the app version from the platform package metadata.
+  /// Call once early in app startup (before any UI that displays the version).
+  Future<void> init() async {
+    if (_initialized) return;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _currentVersion = '${info.version}+${info.buildNumber}';
+      _initialized = true;
+    } catch (_) {
+      // Keep [_fallbackVersion] until a later successful init.
+    }
+  }
+
+  @visibleForTesting
+  Future<void> debugResetForTest({String? version}) async {
+    _initialized = false;
+    _currentVersion = version ?? _fallbackVersion;
+    if (version != null) {
+      _initialized = true;
+    }
+  }
   /// Compares two semver strings (supports optional 'v' prefix and build suffix e.g. 1.0.1+2).
   /// Returns true if [latestStr] is strictly greater than [currentStr].
   static bool isNewerVersion(String latestStr, String currentStr) {
@@ -92,7 +122,7 @@ class AppUpdateService {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     if (!force && (now - lastCheck) < (checkCooldownHours * 3600 * 1000)) {
-      return const AppUpdateInfo(
+      return AppUpdateInfo(
         hasUpdate: false,
         latestVersion: currentVersion,
         currentVersion: currentVersion,
@@ -148,7 +178,7 @@ class AppUpdateService {
     }
 
     await prefs.setInt(keyLastCheck, now);
-    return const AppUpdateInfo(
+    return AppUpdateInfo(
       hasUpdate: false,
       latestVersion: currentVersion,
       currentVersion: currentVersion,

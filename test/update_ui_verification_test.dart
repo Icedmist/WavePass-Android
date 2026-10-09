@@ -3,14 +3,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wavepass_mobile/core/services/app_update_service.dart';
+
+Future<void> _initMockVersion() async {
+  PackageInfo.setMockInitialValues(
+    appName: 'wavepass_mobile',
+    packageName: 'com.nexawave.wavepass',
+    version: '1.0.4',
+    buildNumber: '5',
+    buildSignature: '',
+  );
+  await AppUpdateService.instance.debugResetForTest();
+  await AppUpdateService.instance.init();
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await _initMockVersion();
   });
 
   Widget createTestWidget({required Widget child}) {
@@ -80,8 +94,9 @@ void main() {
   });
 
   testWidgets('Check for Updates component reports up to date when no newer version exists', (WidgetTester tester) async {
+    final current = AppUpdateService.instance.currentVersion;
     final mockRelease = jsonEncode({
-      'tag_name': 'v${AppUpdateService.currentVersion}',
+      'tag_name': 'v$current',
       'body': 'Current release notes.',
       'assets': [],
     });
@@ -102,7 +117,7 @@ void main() {
                 if (!update.hasUpdate) {
                   upToDateCalled = true;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('WavePass is up to date (v${AppUpdateService.currentVersion})')),
+                    SnackBar(content: Text('WavePass is up to date (v${AppUpdateService.instance.currentVersion})')),
                   );
                 }
               },
@@ -118,7 +133,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(upToDateCalled, isTrue);
-    expect(find.text('WavePass is up to date (v${AppUpdateService.currentVersion})'), findsOneWidget);
+    expect(find.text('WavePass is up to date (v$current)'), findsOneWidget);
     expect(find.text('Update Available'), findsNothing);
   });
 }

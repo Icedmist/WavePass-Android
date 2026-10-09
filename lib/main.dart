@@ -4,6 +4,7 @@ import 'core/theme/app_theme.dart';
 import 'core/services/supabase_service.dart';
 import 'core/services/venue_state_service.dart';
 import 'core/services/activation_code_service.dart';
+import 'core/services/app_update_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/router_discovery_service.dart';
 import 'core/services/voucher_history_service.dart';
@@ -34,6 +35,12 @@ void main() async {
     await RouterDiscoveryService.sanitizeCachedRouterTarget();
   } catch (e) {
     debugPrint('Router target sanitize on startup: $e');
+  }
+
+  try {
+    await AppUpdateService.instance.init();
+  } catch (e) {
+    debugPrint('AppUpdateService version init: $e');
   }
 
   try {

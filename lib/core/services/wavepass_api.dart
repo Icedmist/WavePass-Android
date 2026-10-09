@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import 'supabase_service.dart';
 
@@ -17,21 +18,49 @@ class WavePassApi {
         'Accept': 'application/json',
       };
 
+  /// Auth headers for venue-scoped backend calls (e.g. virtual-account
+  /// provisioning, which is guarded by VenueAuthGuard). Prefers the backend
+  /// admin JWT; falls back to the caller's Supabase session access token —
+  /// the guard accepts either and resolves venue ownership from it.
+  Future<Map<String, String>> _authHeaders() async {
+    final headers = _jsonHeaders;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final adminToken = prefs.getString('admin_token');
+      if (adminToken != null && adminToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $adminToken';
+        return headers;
+      }
+    } catch (_) {}
+    try {
+      if (SupabaseService.isInitialized) {
+        final accessToken = SupabaseService.instance.client.auth.currentSession?.accessToken;
+        if (accessToken != null && accessToken.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $accessToken';
+        }
+      }
+    } catch (_) {}
+    return headers;
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     final res = await http
         .post(Uri.parse('$_base$path'),
-            headers: _jsonHeaders, body: jsonEncode(body))
+            headers: await _authHeaders(), body: jsonEncode(body))
         .timeout(_timeout);
     return _decode(res);
   }
 
   Future<Map<String, dynamic>> _get(String path) async {
-    final res = await http.get(Uri.parse('$_base$path'), headers: _jsonHeaders).timeout(_timeout);
+    final res = await http.get(Uri.parse('$_base$path'), headers: await _authHeaders()).timeout(_timeout);
     return _decode(res);
   }
 
   Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> body) async {
-    final res = await http.patch(Uri.parse('$_base$path'), headers: _jsonHeaders, body: jsonEncode(body)).timeout(_timeout);
+    final res = await http
+        .patch(Uri.parse('$_base$path'),
+            headers: await _authHeaders(), body: jsonEncode(body))
+        .timeout(_timeout);
     return _decode(res);
   }
 

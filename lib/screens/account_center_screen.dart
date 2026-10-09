@@ -10,6 +10,7 @@ import '../core/services/router_discovery_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/services/app_update_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/theme/app_theme.dart';
 
 class AccountCenterScreen extends StatefulWidget {
@@ -365,6 +366,8 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
       await VenueStateService.instance.clearVenue(preserveUserCache: true);
+      await prefs.remove('wavepass_voucher_history_v1');
+      await VoucherHistoryService.instance.clearCache();
     } catch (_) {}
   }
 
@@ -385,7 +388,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       if (update.hasUpdate) {
         AppUpdateService.instance.showUpdateDialog(context, update);
       } else {
-        _showToast('WavePass is up to date (v${AppUpdateService.currentVersion})');
+        _showToast('WavePass is up to date (v${AppUpdateService.instance.currentVersion})');
       }
     } catch (e) {
       if (mounted) _showToast('Could not check for updates: $e', isError: true);
@@ -828,7 +831,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
                               ),
                               Text(
-                                'v${AppUpdateService.currentVersion}',
+                                'v${AppUpdateService.instance.currentVersion}',
                                 style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                               ),
                             ],

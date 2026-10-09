@@ -887,10 +887,10 @@ set name="WavePass-Hotspot"
     String? logoUrl,
     String? venueId,
   ]) {
-    final safeVenueId = (venueId != null && venueId.trim().isNotEmpty && venueId.trim() != 'null')
+    final safeVenueId = (venueId != null && venueId.trim().isNotEmpty && venueId.trim() != 'null' && venueId.trim() != 'undefined')
         ? venueId.trim()
         : '';
-    final safeSlug = (slug.trim().isNotEmpty && slug.trim() != 'null')
+    final safeSlug = (slug.trim().isNotEmpty && slug.trim() != 'null' && slug.trim() != 'undefined')
         ? slug.trim()
         : '';
     final effectiveVenueTarget = safeVenueId.isNotEmpty ? safeVenueId : safeSlug;
@@ -2039,12 +2039,17 @@ $_rfc1321Md5Js
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
             try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
             var autoVenueId = '$effectiveVenueTarget';
-            var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
-            if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
-            if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
+            // Sanity-check the provisioned venue target before the cloud
+            // lookup: an empty/'null'/'undefined' value would leave the call
+            // venue-unscoped and could return another venue's voucher.
+            var autoVenueValid = autoVenueId && autoVenueId !== 'null' && autoVenueId !== 'undefined';
+            if (autoVenueValid) {
+              var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
+              if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
+              if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
 
-            var executed = false;
-            function doFetch(attempt) {
+              var executed = false;
+              function doFetch(attempt) {
               var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
               var timer = controller ? setTimeout(function() { controller.abort(); }, 4500) : null;
               var fetchOpts = controller ? { signal: controller.signal } : {};
@@ -2095,6 +2100,15 @@ $_rfc1321Md5Js
                 });
             }
             doFetch(1);
+            } else {
+              // No trustworthy venue target — fall back to the locally saved
+              // voucher/credentials instead of a venue-unscoped cloud lookup.
+              if (savedV) {
+                executeLogin(savedV, savedV);
+              } else if (savedU && savedP) {
+                executeLogin(savedU, savedP);
+              }
+            }
           }
         }
       } catch (e) {}

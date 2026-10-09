@@ -10,6 +10,7 @@ import '../core/services/venue_state_service.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/services/wavepass_api.dart';
 import '../core/services/router_discovery_service.dart';
+import '../core/services/voucher_history_service.dart';
 import '../core/services/app_update_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
@@ -362,18 +363,12 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             _uploadedLogoUrl = url;
             _logoCtrl.text = url;
           });
-        } catch (_) {
-          try {
-            await SupabaseService.instance.client.storage.from('venue-logos').uploadBinary(fileName, bytes);
-            final url = SupabaseService.instance.client.storage.from('venue-logos').getPublicUrl(fileName);
-            setState(() {
-              _uploadedLogoUrl = url;
-              _logoCtrl.text = url;
-            });
-          } catch (e) {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
-          }
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Logo upload failed: $e'),
+            backgroundColor: AppColors.accentRed,
+          ));
         }
       } finally {
         if (mounted) setState(() => _uploadingLogo = false);
@@ -536,10 +531,16 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     } catch (_) {}
     try {
       final prefs = await SharedPreferences.getInstance();
+      final currentEmail = prefs.getString('sb-user-email');
+      if (currentEmail != null && currentEmail.isNotEmpty) {
+        await prefs.setString('sb-last-signed-in-email', currentEmail);
+      }
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
       await VenueStateService.instance.clearVenue();
       await ActivationCodeService.instance.clearCache();
+      await prefs.remove('wavepass_voucher_history_v1');
+      await VoucherHistoryService.instance.clearCache();
     } catch (_) {}
     if (!mounted) return;
     context.go(AppRouter.login);
@@ -564,7 +565,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('WavePass is up to date (v${AppUpdateService.currentVersion})'),
+            content: Text('WavePass is up to date (v${AppUpdateService.instance.currentVersion})'),
             backgroundColor: AppColors.accentGreen,
           ),
         );
@@ -1126,7 +1127,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             const SizedBox(height: 8),
             _toolTile(
               title: "Check for Updates",
-              subtitle: "WavePass v${AppUpdateService.currentVersion} • Tap to check remote releases",
+              subtitle: "WavePass v${AppUpdateService.instance.currentVersion} • Tap to check remote releases",
               icon: Icons.system_update_rounded,
               onTap: _handleCheckForUpdates,
             ),

@@ -1074,3 +1074,12 @@
 
 
 
+
+
+### 70. Paystack Mobile Wallet & Cashouts Lockdown (Issue #173, PR #174)
+- [x] **Wallet Screen Lockdown (`lib/screens/wallet_screen.dart`)**:
+  - Set `_isPaystackLocked = true`.
+  - Displays the Paystack locked maintenance card informing operators: *"Automated Paystack wallet cashouts and online card checkout are currently locked under scheduled upgrade. Cash voucher pass sales, counter redemptions, direct bank transfers, and router hardware operations remain fully operational."*
+  - Guards `_requestCashout()` and `_registerBank()` to block API submissions while maintenance mode is active.
+- [x] **Verification**: Verified syntactical accuracy and state guarding in `wallet_screen.dart`.
+- [x] PR [#174](https://github.com/Icedmist/WavePass-Android/pull/174) squashed and merged to `main` (commit `8ecb7c4`).

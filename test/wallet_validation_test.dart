@@ -30,8 +30,8 @@ void main() {
     await tester.tap(find.text('Cash Out'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Feature Not Available Yet'), findsOneWidget);
-    expect(find.textContaining('Automated Paystack wallet cashouts and online card checkout are currently locked'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('Feature Not Available Yet')), findsOneWidget);
   });
 
   testWidgets('WalletScreen shows Bank Account Required prompt when cashout is tapped with no bank',

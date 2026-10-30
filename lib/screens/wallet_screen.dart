@@ -425,7 +425,9 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
               SizedBox(width: 8),
-              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
           content: const Text(
@@ -770,7 +772,9 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
               SizedBox(width: 8),
-              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
           content: const Text(

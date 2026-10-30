@@ -340,10 +340,12 @@ class VoucherHistoryService {
         'sold': sold,
         if (sold) 'soldAt': DateTime.now().toIso8601String(),
         'source': source ?? 'pos',
-        if (directMode case final mode?) 'directMode': mode,
+        // ignore: use_null_aware_elements
+        if (directMode != null) 'directMode': directMode,
         'status': 'GENERATED',
         'issuedAt': DateTime.now().toIso8601String(),
-        if (expiresAt case final exp?) 'expiresAt': exp.toIso8601String(),
+        // ignore: use_null_aware_elements
+        if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
       }, onConflict: 'codeHash');
     } catch (e) {
       debugPrint('[VoucherHistoryService] Cloud voucher sync note: $e');

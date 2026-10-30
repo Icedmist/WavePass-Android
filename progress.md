@@ -1138,3 +1138,25 @@
   - PR [#184](https://github.com/Icedmist/WavePass-Android/pull/184) squashed and merged to `main` (commit `a394625`).
 - [x] **Remote OTA Release Trigger**:
   - Triggered GitHub Actions release workflow `release.yml` (`Build and Release Android`, run `40988538878`) on `main` to build and publish `app-release.apk` for release `v1.0.4+6` so user can download the update remotely.
+
+### 74. Resolve Customized Portal Storage, Base64 Bloat, and Store Direct Supabase Fallback (Issue #187, PR #188)
+- [x] **Supabase Storage Bucket & RLS Policy Configuration**:
+  - Marked `storage.buckets.venue_logos` as public (`public: true`).
+  - Added permissive RLS policies on `storage.objects` (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) for `bucket_id = 'venue_logos'` allowing authenticated, anon, and public roles to upload venue logos and captive portal backgrounds.
+- [x] **Base64 Bloat Elimination & Cloud Migration**:
+  - Created automatic migration `_migrateBase64ToStorage` in `lib/screens/router_setup_screen.dart` that detects legacy base64 data URIs in storage or preferences and automatically uploads them to `venue_logos`, replacing massive strings with ultra-fast public CDN URLs.
+  - Sanitized existing `UserAppState` row for operator (`umarisah0006@gmail.com`), reducing base64 payload from over 800KB down to direct CDN URLs.
+  - Added size safety check in `_generateLoginHtml`: If `bgImageUrl` or `logoUrl` exceeds 50KB or contains raw base64 data, falls back to optimized preset URLs to ensure `login.html` stays small (<25KB) and does not exhaust MikroTik router flash storage.
+- [x] **Captive Portal Store Direct Supabase Fallback**:
+  - Enhanced client-side `fetchLiveVenuePlans()` inside `login.html`: If `api.nexawavepass.com/api/v1/portal/plans` times out or fails (e.g. backend offline or ISP walled garden), automatically falls back within 3 seconds to direct Supabase REST endpoint (`https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Plan?venueId=eq.<id>&active=eq.true`) using the anon key.
+  - Replaced infinite `"Connecting to venue store..."` spinner with an informative notice and a 1-tap `"Connect with Voucher ->"` action when no online plans are available.
+  - Updated `_ensurePortalSuite()` in `router_setup_screen.dart` to query active plans from Supabase directly instead of waiting on unreachable backend endpoints.
+- [x] **Cloud State Sync & Router Resilience**:
+  - Corrected invalid fallback `templateId: 'classic-glass'` to `'onyx'` in `UserAppStateService.dart` and `syncFromCloud()`.
+  - Added cloud persistence in `_setPresetLogo()` and `_resetLogo()`.
+  - Added `images.unsplash.com` and `*.unsplash.com` to MikroTik walled garden configuration.
+  - Increased FTP `STOR` socket timeout from 5s to 12s in `router_discovery_service.dart` to support slower router flash write speeds.
+- [x] **Verification**:
+  - `flutter analyze`: 0 errors, 0 warnings.
+  - `flutter test`: All 124 tests passed.
+  - PR [#188](https://github.com/Icedmist/WavePass-Android/pull/188) squashed and merged to `main` (commit `eeec720`).

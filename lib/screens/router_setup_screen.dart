@@ -148,14 +148,29 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
           _passCtrl.text = savedPass;
           _showCustomSettings = true;
         }
-        if (savedTemplate != null && savedTemplate.isNotEmpty) _selectedPortalTemplate = savedTemplate;
-        if (savedBg != null && savedBg.isNotEmpty) _customPortalBgUrl = savedBg;
+        if (savedTemplate != null && savedTemplate.isNotEmpty && savedTemplate != 'classic-glass') {
+          _selectedPortalTemplate = savedTemplate;
+        } else {
+          _selectedPortalTemplate = 'onyx';
+        }
+        if (savedBg != null && savedBg.isNotEmpty) {
+          _customPortalBgUrl = savedBg;
+          if (savedBg.startsWith('data:image/')) {
+            _migrateBase64ToStorage(savedBg, isBg: true);
+          }
+        }
         if (savedLogo != null && savedLogo.isNotEmpty) {
           _customPortalLogoUrl = savedLogo;
+          if (savedLogo.startsWith('data:image/')) {
+            _migrateBase64ToStorage(savedLogo, isBg: false);
+          }
         } else {
           final venueLogo = VenueStateService.instance.currentLogoUrl;
           if (venueLogo != null && venueLogo.isNotEmpty) {
             _customPortalLogoUrl = venueLogo;
+            if (venueLogo.startsWith('data:image/')) {
+              _migrateBase64ToStorage(venueLogo, isBg: false);
+            }
           }
         }
       });
@@ -653,6 +668,8 @@ add comment="WavePass API" dst-host="api.nexawavepass.com"
 add comment="WavePass Portal" dst-host="*.nexawavepass.com"
 add comment="Google Fonts" dst-host="fonts.googleapis.com"
 add comment="Google Fonts Static" dst-host="fonts.gstatic.com"
+add comment="Unsplash CDN" dst-host="images.unsplash.com"
+add comment="Unsplash Wildcard" dst-host="*.unsplash.com"
 add comment="Paystack Wildcard" dst-host="*.paystack.com"
 add comment="Paystack Checkout Co" dst-host="*.paystack.co"
 add comment="Paystack Checkout Com" dst-host="*.paystack.com"
@@ -671,6 +688,8 @@ add comment="WavePass API Static IP (HTTPS)" dst-address=134.209.116.20 action=a
 add comment="WavePass Portal (HTTPS)" dst-host="*.nexawavepass.com" action=accept
 add comment="Google Fonts (HTTPS)" dst-host="fonts.googleapis.com" action=accept
 add comment="Google Fonts Static (HTTPS)" dst-host="fonts.gstatic.com" action=accept
+add comment="Unsplash CDN (HTTPS)" dst-host="images.unsplash.com" action=accept
+add comment="Unsplash Wildcard (HTTPS)" dst-host="*.unsplash.com" action=accept
 add comment="Paystack Wildcard (HTTPS)" dst-host="*.paystack.com" action=accept
 add comment="Paystack Checkout Co (HTTPS)" dst-host="*.paystack.co" action=accept
 add comment="Paystack Checkout Com (HTTPS)" dst-host="*.paystack.com" action=accept
@@ -948,11 +967,17 @@ set name="WavePass-Hotspot"
         </div>''');
     }
 
-    final effectiveBg = (bgImageUrl != null && bgImageUrl.isNotEmpty)
+    final effectiveBg = (bgImageUrl != null &&
+            bgImageUrl.isNotEmpty &&
+            (!bgImageUrl.startsWith('data:image/') || bgImageUrl.length < 50000))
         ? bgImageUrl
         : 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop';
     const defaultLogo = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTExODI3Ii8+PHBhdGggZD0iTTI1IDY1IEwyMCAzNSBMMzggNDggTDUwIDI1IEw2MiA0OCBMODAgMzUgTDc1IDY1IFoiIGZpbGw9IiNGNTlFMEIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjIyIiByPSI0IiBmaWxsPSIjRkRFNjhBIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIzMiIgcj0iNCIgZmlsbD0iI0ZERTY4QSIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iMzIiIHI9IjQiIGZpbGw9IiNGREU2OEEiLz48cmVjdCB4PSIyNSIgeT0iNjgiIHdpZHRoPSI1MCIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjRjU5RTBCIi8+PC9zdmc+';
-    final effectiveLogo = (logoUrl != null && logoUrl.isNotEmpty) ? logoUrl : defaultLogo;
+    final effectiveLogo = (logoUrl != null &&
+            logoUrl.isNotEmpty &&
+            (!logoUrl.startsWith('data:image/') || logoUrl.length < 50000))
+        ? logoUrl
+        : defaultLogo;
     final venueInitials = venueName
         .split(' ')
         .where((w) => w.isNotEmpty)
@@ -1865,20 +1890,71 @@ $_rfc1321Md5Js
 
     function fetchLiveVenuePlans() {
       var targetVenue = '$effectiveVenueTarget';
+
+      function renderPlansOrNotice(list) {
+        if (Array.isArray(list) && list.length > 0) {
+          renderDynamicPlans(list);
+        } else {
+          var notice = document.getElementById('noPlansNotice');
+          if (notice) {
+            notice.innerHTML = '<div style="margin-bottom:8px;">⚠️ Online store is temporarily unavailable.</div>' +
+              '<button type="button" class="btn-submit" style="padding:8px 12px; font-size:12px; margin-top:4px;" onclick="switchTab(&quot;voucher&quot;)">Connect with Voucher &rarr;</button>';
+          }
+        }
+      }
+
+      function fetchFromSupabase() {
+        var sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Plan?select=*&active=eq.true' +
+          (targetVenue ? '&venueId=eq.' + encodeURIComponent(targetVenue) : '');
+        fetch(sbUrl, {
+          headers: {
+            'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+            'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR'
+          }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(dbList) {
+          renderPlansOrNotice(dbList);
+        })
+        .catch(function(err) {
+          console.log('Supabase plans fetch error:', err);
+          renderPlansOrNotice([]);
+        });
+      }
+
       var plansUrl = 'https://api.nexawavepass.com/api/v1/portal/plans' + (targetVenue ? '?venueId=' + encodeURIComponent(targetVenue) : '');
+      var didRespond = false;
+      var timer = setTimeout(function() {
+        if (!didRespond) {
+          didRespond = true;
+          fetchFromSupabase();
+        }
+      }, 3000);
+
       fetch(plansUrl)
         .then(function(res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
         })
         .then(function(data) {
-          var list = Array.isArray(data) ? data : (data && data.plans ? data.plans : []);
-          if (list && list.length > 0) {
-            renderDynamicPlans(list);
+          if (!didRespond) {
+            didRespond = true;
+            clearTimeout(timer);
+            var list = Array.isArray(data) ? data : (data && data.plans ? data.plans : []);
+            if (list && list.length > 0) {
+              renderDynamicPlans(list);
+            } else {
+              fetchFromSupabase();
+            }
           }
         })
         .catch(function(e) {
-          console.log('Live plans fetch notice:', e);
+          if (!didRespond) {
+            didRespond = true;
+            clearTimeout(timer);
+            console.log('Live plans fetch notice, falling back to Supabase:', e);
+            fetchFromSupabase();
+          }
         });
     }
     fetchLiveVenuePlans();
@@ -2499,24 +2575,35 @@ $_rfc1321Md5Js
         plans = await VenueStateService.instance.refreshPlans();
       } catch (_) {}
     }
+    if (plans.isEmpty && venueIdStr != null && venueIdStr.isNotEmpty) {
+      try {
+        final raw = await SupabaseService.instance.getActivePlans(venueIdStr);
+        if (raw.isNotEmpty) {
+          plans = raw.map((e) => Map<String, dynamic>.from(e)).toList();
+          VenueStateService.instance.plansNotifier.value = plans;
+        } else {
+          final res = await SupabaseService.instance.client
+              .from('Plan')
+              .select('*')
+              .eq('venueId', venueIdStr)
+              .limit(10);
+          final allRaw = List<Map<String, dynamic>>.from(res);
+          if (allRaw.isNotEmpty) {
+            plans = allRaw;
+            VenueStateService.instance.plansNotifier.value = plans;
+          }
+        }
+      } catch (_) {}
+    }
     if (plans.isEmpty && ((venueIdStr != null && venueIdStr.isNotEmpty) || (slugStr != null && slugStr.isNotEmpty))) {
       try {
         final queryTarget = (venueIdStr != null && venueIdStr.isNotEmpty) ? venueIdStr : slugStr!;
-        final raw = await WavePassApi.instance.listPlans(venueId: queryTarget);
+        final raw = await WavePassApi.instance.listPlans(venueId: queryTarget).timeout(const Duration(seconds: 3));
         if (raw.isNotEmpty) {
           plans = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           VenueStateService.instance.plansNotifier.value = plans;
         }
       } catch (_) {}
-      if (plans.isEmpty && venueIdStr != null && venueIdStr.isNotEmpty) {
-        try {
-          final raw = await SupabaseService.instance.getActivePlans(venueIdStr);
-          if (raw.isNotEmpty) {
-            plans = raw.map((e) => Map<String, dynamic>.from(e)).toList();
-            VenueStateService.instance.plansNotifier.value = plans;
-          }
-        } catch (_) {}
-      }
     }
     final isPaystackConfigured = venue['paystack_configured'] != false;
     final venueId = venue['id']?.toString();
@@ -3415,6 +3502,34 @@ $_rfc1321Md5Js
     );
   }
 
+  Future<void> _migrateBase64ToStorage(String dataUri, {required bool isBg}) async {
+    try {
+      final comma = dataUri.indexOf(',');
+      if (comma == -1) return;
+      final rawBase64 = dataUri.substring(comma + 1);
+      final bytes = base64Decode(rawBase64);
+      final ext = isBg ? 'jpg' : 'png';
+      final fileName = '${isBg ? 'portal-bg' : 'venue-logo'}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
+      final pub = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
+      if (pub.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        if (isBg) {
+          await prefs.setString('wavepass_portal_bg_url', pub);
+          UserAppStateService.instance.savePortalBranding(bgUrl: pub);
+          if (mounted) setState(() => _customPortalBgUrl = pub);
+        } else {
+          await prefs.setString('wavepass_portal_logo_url', pub);
+          await prefs.setString(VenueStateService.keyVenueLogo, pub);
+          UserAppStateService.instance.savePortalBranding(logoUrl: pub);
+          if (mounted) setState(() => _customPortalLogoUrl = pub);
+        }
+      }
+    } catch (e) {
+      debugPrint('[PortalStorage] Base64 migration error: $e');
+    }
+  }
+
   Future<void> _pickAndSetPortalBg() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80);
@@ -3433,13 +3548,18 @@ $_rfc1321Md5Js
         final base64Str = base64Encode(bytes);
         final dataUri = 'data:image/jpeg;base64,$base64Str';
 
-        String effectiveUrl = dataUri;
+        String effectiveUrl = '';
         try {
           final fileName = 'portal-bg-${DateTime.now().millisecondsSinceEpoch}.jpg';
           await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
           final pub = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
           if (pub.isNotEmpty) effectiveUrl = pub;
-        } catch (_) {}
+        } catch (uploadErr) {
+          debugPrint('[PortalStorage] Supabase bg upload error: $uploadErr');
+        }
+        if (effectiveUrl.isEmpty) {
+          effectiveUrl = dataUri;
+        }
 
         setState(() {
           _customPortalBgUrl = effectiveUrl;
@@ -3491,13 +3611,18 @@ $_rfc1321Md5Js
         final base64Str = base64Encode(bytes);
         final dataUri = 'data:image/png;base64,$base64Str';
 
-        String effectiveUrl = dataUri;
+        String effectiveUrl = '';
         try {
           final fileName = 'venue-logo-${DateTime.now().millisecondsSinceEpoch}.png';
           await SupabaseService.instance.client.storage.from('venue_logos').uploadBinary(fileName, bytes);
           final pub = SupabaseService.instance.client.storage.from('venue_logos').getPublicUrl(fileName);
           if (pub.isNotEmpty) effectiveUrl = pub;
-        } catch (_) {}
+        } catch (uploadErr) {
+          debugPrint('[PortalStorage] Supabase logo upload error: $uploadErr');
+        }
+        if (effectiveUrl.isEmpty) {
+          effectiveUrl = dataUri;
+        }
 
         setState(() {
           _customPortalLogoUrl = effectiveUrl;
@@ -3561,6 +3686,8 @@ $_rfc1321Md5Js
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wavepass_portal_logo_url', logoData);
+    await prefs.setString(VenueStateService.keyVenueLogo, logoData);
+    UserAppStateService.instance.savePortalBranding(logoUrl: logoData);
     await _ensurePortalSuite();
   }
 
@@ -3572,6 +3699,7 @@ $_rfc1321Md5Js
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('wavepass_portal_logo_url');
+    UserAppStateService.instance.savePortalBranding(logoUrl: defaultVenueLogo ?? '');
     await _ensurePortalSuite();
   }
 

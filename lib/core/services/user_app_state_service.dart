@@ -78,12 +78,13 @@ class UserAppStateService {
         final bg = branding['bgUrl']?.toString();
         final logo = branding['logoUrl']?.toString();
         final template = branding['templateId']?.toString();
+        final effectiveTemplate = (template == null || template.isEmpty || template == 'classic-glass') ? 'onyx' : template;
         if (bg != null && bg.isNotEmpty) await prefs.setString('wavepass_portal_bg_url', bg);
         if (logo != null && logo.isNotEmpty) {
           await prefs.setString('wavepass_portal_logo_url', logo);
           await prefs.setString(VenueStateService.keyVenueLogo, logo);
         }
-        if (template != null && template.isNotEmpty) await prefs.setString('wavepass_portal_template', template);
+        await prefs.setString('wavepass_portal_template', effectiveTemplate);
       }
 
       // 4. Thermal printer configuration rehydration
@@ -145,10 +146,13 @@ class UserAppStateService {
         'tunnelEndpoint': prefs.getString(RouterDiscoveryService.keyRouterTunnelEndpoint) ?? '',
       };
 
+      final savedTemplate = prefs.getString('wavepass_portal_template');
+      final effectiveTemplate = (savedTemplate == null || savedTemplate.isEmpty || savedTemplate == 'classic-glass') ? 'onyx' : savedTemplate;
+
       final portalBranding = {
         'bgUrl': prefs.getString('wavepass_portal_bg_url') ?? '',
         'logoUrl': prefs.getString('wavepass_portal_logo_url') ?? prefs.getString(VenueStateService.keyVenueLogo) ?? '',
-        'templateId': prefs.getString('wavepass_portal_template') ?? 'classic-glass',
+        'templateId': effectiveTemplate,
       };
 
       final printerConfig = {

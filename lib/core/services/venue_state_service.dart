@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
 import 'wavepass_api.dart';
+import 'user_app_state_service.dart';
 
 /// Centralized, reactive state store for venue identity and plans.
 /// Ensures consistent data sharing across Home, Sell, Admin, Batch Vouchers,
@@ -198,6 +199,7 @@ class VenueStateService {
       await prefs.setString('$keyUserVenuePrefix$currentEmail', vId);
     }
     await prefs.setString(keyLastKnownVenueId, vId);
+    UserAppStateService.instance.saveActiveVenue(vId);
 
     venueNotifier.value = Map<String, dynamic>.from(created);
     await refreshPlans();
@@ -534,6 +536,7 @@ class VenueStateService {
     if (vid != null) {
       await prefs.setString(keyVenueId, vid);
       await prefs.setString(keyLegacyVenueId, vid);
+      UserAppStateService.instance.saveActiveVenue(vid);
     }
     if (name != null) {
       await prefs.setString(keyVenueName, name);

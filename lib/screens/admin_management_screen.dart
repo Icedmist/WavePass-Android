@@ -539,8 +539,6 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       await prefs.remove('admin_token');
       await VenueStateService.instance.clearVenue();
       await ActivationCodeService.instance.clearCache();
-      await prefs.remove('wavepass_voucher_history_v1');
-      await VoucherHistoryService.instance.clearCache();
     } catch (_) {}
     if (!mounted) return;
     context.go(AppRouter.login);

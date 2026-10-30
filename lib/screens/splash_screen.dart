@@ -6,6 +6,7 @@ import '../core/theme/app_theme.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/session_service.dart';
 import '../core/services/activation_code_service.dart';
+import '../core/services/user_app_state_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,6 +50,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           return;
         }
         await ActivationCodeService.instance.warmCache();
+        await UserAppStateService.instance.syncFromCloud();
         if (!mounted) return;
         context.go(AppRouter.dashboard);
         return;

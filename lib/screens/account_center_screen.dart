@@ -11,6 +11,7 @@ import '../core/services/wavepass_api.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/services/app_update_service.dart';
 import '../core/services/voucher_history_service.dart';
+import '../core/services/notification_service.dart';
 import '../core/theme/app_theme.dart';
 
 class AccountCenterScreen extends StatefulWidget {
@@ -355,6 +356,9 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
 
   Future<void> _signOutUser() async {
     try {
+      AppNotifier.instance.stopPaymentPolling();
+      VoucherHistoryService.instance.stopMonitoring();
+      VoucherHistoryService.instance.stopPeriodicSync();
       await SupabaseService.instance.signOut();
     } catch (_) {}
     try {
@@ -366,8 +370,6 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
       await VenueStateService.instance.clearVenue(preserveUserCache: true);
-      await prefs.remove('wavepass_voucher_history_v1');
-      await VoucherHistoryService.instance.clearCache();
     } catch (_) {}
   }
 

@@ -9,6 +9,7 @@ import 'supabase_service.dart';
 import 'system_admin_service.dart';
 import 'venue_state_service.dart';
 import 'wavepass_api.dart';
+import '../utils/sha256_util.dart';
 
 class VoucherRecord {
   final String code;
@@ -281,8 +282,71 @@ class VoucherHistoryService {
       }
 
       await _saveHistory(history);
+
+      // Asynchronously ensure voucher is persisted into Supabase database
+      _persistVoucherToCloud(
+        code: code,
+        password: password,
+        planTitle: planTitle,
+        durationSeconds: durationSeconds,
+        expiresAt: expiresAt,
+        directMode: directMode,
+        source: source,
+        sold: sold,
+      );
     } catch (e) {
       debugPrint('Error recording voucher history: $e');
+    }
+  }
+
+  Future<void> _persistVoucherToCloud({
+    required String code,
+    String? password,
+    required String planTitle,
+    required int durationSeconds,
+    DateTime? expiresAt,
+    String? directMode,
+    String? source,
+    bool sold = false,
+  }) async {
+    try {
+      if (!SupabaseService.isInitialized) return;
+      final vid = VenueStateService.instance.currentVenueId;
+      if (vid == null || vid.isEmpty) return;
+
+      // Find or match plan
+      String? pId;
+      final plans = VenueStateService.instance.plansNotifier.value;
+      for (final p in plans) {
+        if ((p['name']?.toString().toLowerCase() == planTitle.toLowerCase()) ||
+            (p['title']?.toString().toLowerCase() == planTitle.toLowerCase()) ||
+            ((p['durationSeconds'] as num?)?.toInt() == durationSeconds)) {
+          pId = p['id']?.toString();
+          break;
+        }
+      }
+      pId ??= (plans.isNotEmpty ? plans.first['id']?.toString() : null);
+      if (pId == null || pId.isEmpty) return;
+
+      final norm = code.trim().toUpperCase().replaceAll(' ', '');
+      final codeHash = Sha256Util.hash(norm);
+
+      await SupabaseService.instance.client.from('Voucher').upsert({
+        'venueId': vid,
+        'planId': pId,
+        'codeHash': codeHash,
+        'displayCodeEnc': norm,
+        'password': password ?? norm,
+        'sold': sold,
+        if (sold) 'soldAt': DateTime.now().toIso8601String(),
+        'source': source ?? 'pos',
+        if (directMode != null) 'directMode': directMode,
+        'status': 'GENERATED',
+        'issuedAt': DateTime.now().toIso8601String(),
+        if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
+      }, onConflict: 'codeHash');
+    } catch (e) {
+      debugPrint('[VoucherHistoryService] Cloud voucher sync note: $e');
     }
   }
   /// Patches the provisioned flag in place (retry flows) without resetting
@@ -310,6 +374,18 @@ class VoucherHistoryService {
       if (idx < 0) return false;
       history[idx].sold = sold;
       await _saveHistory(history);
+
+      // Persist sold state to Supabase
+      if (SupabaseService.isInitialized) {
+        final vid = VenueStateService.instance.currentVenueId;
+        final norm = code.trim().toUpperCase().replaceAll(' ', '');
+        if (vid != null) {
+          SupabaseService.instance.client.from('Voucher').update({
+            'sold': sold,
+            'soldAt': sold ? DateTime.now().toIso8601String() : null,
+          }).eq('venueId', vid).eq('displayCodeEnc', norm).catchError((_) => {});
+        }
+      }
       return true;
     } catch (e) {
       debugPrint('Error marking voucher sold: $e');
@@ -377,14 +453,30 @@ class VoucherHistoryService {
     return null;
   }
 
-  /// Retrieves all recorded vouchers from local cache
-  Future<List<VoucherRecord>> getHistory() async {
+  Future<List<VoucherRecord>> _getLocalHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_keyHistory);
-      if (raw == null || raw.isEmpty) return [];
+      if (raw == null || raw.isEmpty || raw == '[]') return [];
       final List decoded = jsonDecode(raw);
       return decoded.map((item) => VoucherRecord.fromJson(Map<String, dynamic>.from(item))).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Retrieves all recorded vouchers from local cache, rehydrating from cloud if empty.
+  Future<List<VoucherRecord>> getHistory() async {
+    try {
+      final local = await _getLocalHistory();
+      if (local.isNotEmpty) return local;
+
+      // Rehydrate from cloud if local cache is empty (app reinstall or fresh login)
+      if (SupabaseService.isInitialized) {
+        final cloud = await fetchFullVoucherActivity();
+        if (cloud.isNotEmpty) return cloud;
+      }
+      return [];
     } catch (e) {
       debugPrint('Error loading voucher history: $e');
       return [];
@@ -396,7 +488,7 @@ class VoucherHistoryService {
   /// 2. Live router hardware user accounts & active sessions
   /// 3. Supabase cloud vouchers and session records
   Future<List<VoucherRecord>> fetchFullVoucherActivity([BuildContext? context]) async {
-    final localList = await getHistory();
+    final localList = await _getLocalHistory();
     final Map<String, VoucherRecord> consolidated = {
       for (final v in localList) v.code.toUpperCase(): v,
     };
@@ -940,6 +1032,18 @@ class VoucherHistoryService {
       }
     }
     await _saveHistory(history);
+
+    // Sync expiry state to Supabase
+    if (SupabaseService.isInitialized) {
+      final vid = VenueStateService.instance.currentVenueId;
+      final norm = code.trim().toUpperCase().replaceAll(' ', '');
+      if (vid != null) {
+        SupabaseService.instance.client.from('Voucher').update({
+          'status': 'EXPIRED',
+          'consumedAt': DateTime.now().toIso8601String(),
+        }).eq('venueId', vid).eq('displayCodeEnc', norm).catchError((_) => {});
+      }
+    }
 
     try {
       final client = await _getConnectedClient();

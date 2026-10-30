@@ -11,6 +11,7 @@ import '../core/services/voucher_history_service.dart';
 import '../core/services/system_admin_service.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/services/app_update_service.dart';
+import '../core/services/user_app_state_service.dart';
 import 'voucher_history_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -54,8 +55,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
   @override
   void dispose() {
-    VoucherHistoryService.instance.stopMonitoring();
-    AppNotifier.instance.stopPaymentPolling();
     VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
     super.dispose();
   }
@@ -64,6 +63,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _hideBalance = !_hideBalance);
     await prefs.setBool('hide_balance_preference', _hideBalance);
+    UserAppStateService.instance.savePreferences(hideBalance: _hideBalance);
   }
 
   void _onVenueChanged() {

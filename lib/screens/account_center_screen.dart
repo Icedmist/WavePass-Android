@@ -747,7 +747,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
 
                 // SECTION 4: QUICK HUBS & LEGAL
                 _section('VENUE HUBS', [
-                  _row(context, 'Venue Wallet & Payouts', Icons.account_balance_wallet_rounded, () => context.push(AppRouter.wallet)),
+                  _row(context, 'Venue Wallet & Payouts', Icons.account_balance_wallet_rounded, () => context.push(AppRouter.wallet), isLocked: true),
                   _row(context, 'Notifications', Icons.notifications_rounded, () => context.push(AppRouter.notifications)),
                   _row(context, 'How to Use & Onboarding Guide', Icons.help_outline_rounded, () => context.push(AppRouter.howToUse)),
                 ]),
@@ -921,7 +921,14 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
         ],
       );
 
-  Widget _row(BuildContext c, String label, IconData icon, VoidCallback onTap) => InkWell(
+  Widget _row(
+    BuildContext c,
+    String label,
+    IconData icon,
+    VoidCallback onTap, {
+    bool isLocked = false,
+  }) =>
+      InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
@@ -939,7 +946,40 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary), overflow: TextOverflow.ellipsis),
+                    ),
+                    if (isLocked) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_rounded, size: 10, color: Color(0xFFB45309)),
+                            SizedBox(width: 3),
+                            Text(
+                              'LOCKED',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFB45309),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textLight),
             ],

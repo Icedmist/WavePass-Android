@@ -691,15 +691,22 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                               color: AppColors.primary.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              _hideBalance
-                                  ? "Wallet: ₦•••"
-                                  : "Wallet: ₦${_availableBalanceNgn.toStringAsFixed(0)} (Paystack)",
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.primary,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.lock_rounded, size: 10, color: AppColors.primary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _hideBalance
+                                      ? "Wallet: ₦••• (Locked)"
+                                      : "Wallet: ₦${_availableBalanceNgn.toStringAsFixed(0)} (Locked)",
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                         else
@@ -983,8 +990,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 // ACTION 5: VENUE WALLET & CASHOUTS
                 _buildActionCard(
                   title: "Venue Wallet",
-                  subtitle: "Virtual account & cashouts",
+                  subtitle: "Virtual account & cashouts (Locked)",
                   icon: Icons.account_balance_wallet,
+                  isLocked: true,
                   onTap: () => context.go(AppRouter.wallet),
                 ),
 
@@ -1100,6 +1108,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
+    bool isLocked = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -1122,14 +1131,44 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.containerBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.containerBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: AppColors.primary, size: 20),
+                ),
+                if (isLocked)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_rounded, size: 10, color: Color(0xFFB45309)),
+                        SizedBox(width: 3),
+                        Text(
+                          'LOCKED',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFB45309),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1657,13 +1696,20 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                           color: AppColors.accentGreen.withValues(alpha: 0.12),
                                           borderRadius: BorderRadius.circular(6),
                                         ),
-                                        child: Text(
-                                          "Wallet: ₦${_formatNgn(widget.availableBalanceNgn.toInt())}",
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: AppColors.accentGreen,
-                                          ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.lock_rounded, size: 9, color: AppColors.accentGreen),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              "Wallet: ₦${_formatNgn(widget.availableBalanceNgn.toInt())} (Locked)",
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.accentGreen,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                   ],
@@ -1706,6 +1752,8 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
+                                                const SizedBox(width: 4),
+                                                const Icon(Icons.lock_rounded, size: 10, color: Color(0xFFB45309)),
                                               ],
                                             ),
                                             const SizedBox(height: 6),
@@ -1719,7 +1767,7 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              "$_paystackCount sales • In Wallet",
+                                              "$_paystackCount sales • In Wallet (Locked)",
                                               style: const TextStyle(
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.w600,
@@ -1975,14 +2023,23 @@ class _SalesBreakdownSheetState extends State<_SalesBreakdownSheet> {
                                                       : Colors.amber.withValues(alpha: 0.18),
                                                   borderRadius: BorderRadius.circular(5),
                                                 ),
-                                                child: Text(
-                                                  isOnline ? "PAYSTACK" : "COUNTER CASH",
-                                                  style: TextStyle(
-                                                    fontSize: 8.5,
-                                                    fontWeight: FontWeight.w900,
-                                                    color: isOnline ? AppColors.accentGreen : Colors.amber.shade900,
-                                                    letterSpacing: 0.3,
-                                                  ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (isOnline) ...[
+                                                      const Icon(Icons.lock_rounded, size: 8.5, color: AppColors.accentGreen),
+                                                      const SizedBox(width: 3),
+                                                    ],
+                                                    Text(
+                                                      isOnline ? "PAYSTACK (LOCKED)" : "COUNTER CASH",
+                                                      style: TextStyle(
+                                                        fontSize: 8.5,
+                                                        fontWeight: FontWeight.w900,
+                                                        color: isOnline ? AppColors.accentGreen : Colors.amber.shade900,
+                                                        letterSpacing: 0.3,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ],

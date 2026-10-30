@@ -340,9 +340,11 @@ class VoucherHistoryService {
         'sold': sold,
         if (sold) 'soldAt': DateTime.now().toIso8601String(),
         'source': source ?? 'pos',
+        // ignore: use_null_aware_elements
         if (directMode != null) 'directMode': directMode,
         'status': 'GENERATED',
         'issuedAt': DateTime.now().toIso8601String(),
+        // ignore: use_null_aware_elements
         if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
       }, onConflict: 'codeHash');
     } catch (e) {

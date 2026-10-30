@@ -46,10 +46,12 @@ class WalletScreen extends StatefulWidget {
     super.key,
     this.venueId = 'default',
     this.admin = false,
+    this.isPaystackLocked = true,
   });
 
   final String venueId;
   final bool admin;
+  final bool isPaystackLocked;
 
   @override
   State<WalletScreen> createState() => _WalletScreenState();
@@ -70,7 +72,7 @@ class _WalletScreenState extends State<WalletScreen> {
   int _selectedHistoryTab = 0; // 0: All, 1: Paystack Store Sales, 2: Cashouts
   String? _vaError;
   bool _refreshingVa = false;
-  final bool _isPaystackLocked = true;
+  bool get _isPaystackLocked => widget.isPaystackLocked;
 
   // New bank account form
   final _nameCtrl = TextEditingController();
@@ -423,7 +425,9 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
               SizedBox(width: 8),
-              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
           content: const Text(
@@ -768,7 +772,9 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Icon(Icons.lock_outline_rounded, color: Color(0xFFB45309)),
               SizedBox(width: 8),
-              Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text('Feature Not Available Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
           content: const Text(

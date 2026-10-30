@@ -256,7 +256,13 @@ class _WalletScreenState extends State<WalletScreen> {
     String title;
     String message;
     IconData icon;
-    if (_vaError != null) {
+    if (_isPaystackLocked) {
+      badge = 'LOCKED';
+      badgeColor = const Color(0xFFD97706);
+      title = 'DIRECT BANK TRANSFER (DVA - LOCKED)';
+      message = 'Automated dedicated virtual account provisioning and Paystack checkouts are currently locked. Venue cash passes and counter sales remain active.';
+      icon = Icons.lock_clock_outlined;
+    } else if (_vaError != null) {
       badge = 'LOAD FAILED';
       badgeColor = AppColors.accentRed;
       title = 'DIRECT BANK TRANSFER (DVA)';
@@ -1157,10 +1163,20 @@ class _WalletScreenState extends State<WalletScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                child: Text(
-                                  'DEDICATED ACCOUNT • ${VenueStateService.instance.currentVenueName.toUpperCase()}',
-                                  style: const TextStyle(fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.bold, color: Colors.white70),
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  children: [
+                                    if (_isPaystackLocked) ...[
+                                      const Icon(Icons.lock_rounded, size: 12, color: Colors.white70),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        'DEDICATED ACCOUNT${_isPaystackLocked ? ' (LOCKED)' : ''} • ${VenueStateService.instance.currentVenueName.toUpperCase()}',
+                                        style: const TextStyle(fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.bold, color: Colors.white70),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               if (_virtualAccount?['bankName'] != null) ...[
@@ -1208,13 +1224,28 @@ class _WalletScreenState extends State<WalletScreen> {
                             color: AppColors.primary.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text(
-                            'PAYSTACK STORE TRANSACTIONS • READY FOR CASHOUT',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textLight,
-                              letterSpacing: 0.5,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isPaystackLocked) ...[
+                                  const Icon(Icons.lock_rounded, size: 10, color: AppColors.textLight),
+                                  const SizedBox(width: 4),
+                                ],
+                                Text(
+                                  _isPaystackLocked
+                                      ? 'PAYSTACK STORE TRANSACTIONS (LOCKED)'
+                                      : 'PAYSTACK STORE TRANSACTIONS • READY FOR CASHOUT',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textLight,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1233,7 +1264,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _buildMiniStat('Paystack Sales', _hideBalance ? '₦ •••' : '₦${_earnedNgn.toStringAsFixed(2)}'),
+                            _buildMiniStat('Paystack Sales', _hideBalance ? '₦ •••' : '₦${_earnedNgn.toStringAsFixed(2)}', isLocked: _isPaystackLocked),
                             _buildMiniStat('Pending Payouts', _hideBalance ? '₦ •••' : '₦${_lockedNgn.toStringAsFixed(2)}'),
                             _buildMiniStat('Already Paid', _hideBalance ? '₦ •••' : '₦${_cashedOutNgn.toStringAsFixed(2)}'),
                           ],
@@ -1243,18 +1274,23 @@ class _WalletScreenState extends State<WalletScreen> {
                           SizedBox(
                             width: (MediaQuery.of(context).size.width - 52) / 2,
                             child: FilledButton.icon(
+                              style: _isPaystackLocked
+                                  ? FilledButton.styleFrom(backgroundColor: const Color(0xFF6B7280))
+                                  : null,
                               onPressed: _submitting ? null : _registerBank,
-                              icon: const Icon(Icons.account_balance, size: 18),
-                              label: const FittedBox(child: Text('Add Bank')),
+                              icon: Icon(_isPaystackLocked ? Icons.lock_rounded : Icons.account_balance, size: 18),
+                              label: FittedBox(child: Text(_isPaystackLocked ? 'Add Bank (Locked)' : 'Add Bank')),
                             ),
                           ),
                           SizedBox(
                             width: (MediaQuery.of(context).size.width - 52) / 2,
                             child: FilledButton.icon(
-                              style: FilledButton.styleFrom(backgroundColor: AppColors.accentGreen),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _isPaystackLocked ? const Color(0xFF6B7280) : AppColors.accentGreen,
+                              ),
                               onPressed: _submitting ? null : _requestCashout,
-                              icon: const Icon(Icons.currency_exchange, size: 18),
-                              label: const FittedBox(child: Text('Cash Out')),
+                              icon: Icon(_isPaystackLocked ? Icons.lock_rounded : Icons.currency_exchange, size: 18),
+                              label: FittedBox(child: Text(_isPaystackLocked ? 'Cash Out (Locked)' : 'Cash Out')),
                             ),
                           ),
                         ]),
@@ -1291,9 +1327,10 @@ class _WalletScreenState extends State<WalletScreen> {
                                 style: TextStyle(fontSize: 12, color: AppColors.textLight),
                               ),
                             ),
-                            TextButton(
+                            TextButton.icon(
                               onPressed: _registerBank,
-                              child: const Text('Add Bank', style: TextStyle(fontSize: 12)),
+                              icon: _isPaystackLocked ? const Icon(Icons.lock_rounded, size: 13) : const SizedBox.shrink(),
+                              label: Text(_isPaystackLocked ? 'Add Bank (Locked)' : 'Add Bank', style: const TextStyle(fontSize: 12)),
                             ),
                           ],
                         ),
@@ -1381,8 +1418,8 @@ class _WalletScreenState extends State<WalletScreen> {
                     child: Row(
                       children: [
                         _buildFilterTab(0, 'All'),
-                        _buildFilterTab(1, 'Paystack Sales (${_storePayments.length})'),
-                        _buildFilterTab(2, 'Cashouts (${_cashouts.length})'),
+                        _buildFilterTab(1, 'Paystack Sales (${_storePayments.length})', isLocked: _isPaystackLocked),
+                        _buildFilterTab(2, 'Cashouts (${_cashouts.length})', isLocked: _isPaystackLocked),
                       ],
                     ),
                   ),
@@ -1390,14 +1427,24 @@ class _WalletScreenState extends State<WalletScreen> {
 
                   if (_selectedHistoryTab == 0 || _selectedHistoryTab == 1) ...[
                     if (_storePayments.isNotEmpty) ...[
-                      const Text(
-                        'PAYSTACK STORE PAYMENTS (INFLOW)',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.accentGreen,
-                          letterSpacing: 0.6,
-                        ),
+                      Row(
+                        children: [
+                          if (_isPaystackLocked) ...[
+                            const Icon(Icons.lock_rounded, size: 10, color: AppColors.accentGreen),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            _isPaystackLocked
+                                ? 'PAYSTACK STORE PAYMENTS (LOCKED)'
+                                : 'PAYSTACK STORE PAYMENTS (INFLOW)',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.accentGreen,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       ..._storePayments.map((p) {
@@ -1453,7 +1500,16 @@ class _WalletScreenState extends State<WalletScreen> {
                                             color: AppColors.primary.withValues(alpha: 0.08),
                                             borderRadius: BorderRadius.circular(4),
                                           ),
-                                          child: const Text('Paystack', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (_isPaystackLocked) ...[
+                                                const Icon(Icons.lock_rounded, size: 9, color: AppColors.primary),
+                                                const SizedBox(width: 3),
+                                              ],
+                                              Text(_isPaystackLocked ? 'Paystack (Locked)' : 'Paystack', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                                            ],
+                                          ),
                                         ),
                                         const SizedBox(width: 6),
                                         if (mac.isNotEmpty) ...[
@@ -1599,7 +1655,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Widget _buildFilterTab(int index, String label) {
+  Widget _buildFilterTab(int index, String label, {bool isLocked = false}) {
     final active = _selectedHistoryTab == index;
     return Expanded(
       child: GestureDetector(
@@ -1611,16 +1667,32 @@ class _WalletScreenState extends State<WalletScreen> {
             borderRadius: BorderRadius.circular(10),
             boxShadow: active ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))] : null,
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-              color: active ? AppColors.primary : AppColors.textLight,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isLocked) ...[
+                Icon(
+                  Icons.lock_rounded,
+                  size: 11,
+                  color: active ? AppColors.primary : AppColors.textLight,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    color: active ? AppColors.primary : AppColors.textLight,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1641,18 +1713,27 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
-  Widget _buildMiniStat(String label, String value) {
+  Widget _buildMiniStat(String label, String value, {bool isLocked = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textLight,
-            letterSpacing: 0.5,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLocked) ...[
+              const Icon(Icons.lock_rounded, size: 9, color: AppColors.textLight),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textLight,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 3),
         Text(

@@ -25,9 +25,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Venue Wallet'), findsOneWidget);
-    expect(find.text('Cash Out'), findsOneWidget);
+    expect(find.text('Cash Out (Locked)'), findsOneWidget);
 
-    await tester.tap(find.text('Cash Out'));
+    await tester.tap(find.text('Cash Out (Locked)'));
     await tester.pumpAndSettle();
 
     expect(find.byType(AlertDialog), findsOneWidget);

@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
+import '../core/services/user_app_state_service.dart';
 
 class PrinterSettingsScreen extends StatefulWidget {
   const PrinterSettingsScreen({super.key});
@@ -78,6 +79,10 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     await prefs.setString('wavepass_selected_printer_url', printer.url);
     await prefs.setString('wavepass_selected_printer_name', printer.name);
     setState(() => _selectedPrinter = printer);
+    UserAppStateService.instance.savePrinterConfig(
+      printerUrl: printer.url,
+      printerName: printer.name,
+    );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -93,12 +98,14 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('wavepass_auto_print_receipts', val);
     if (mounted) setState(() => _autoPrint = val);
+    UserAppStateService.instance.savePrinterConfig(autoPrint: val);
   }
 
   Future<void> _setPaperWidth(int width) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('wavepass_printer_paper_width', width);
     if (mounted) setState(() => _paperWidthMm = width);
+    UserAppStateService.instance.savePrinterConfig(paperWidth: width);
   }
 
   Future<void> _handleTestPrint() async {

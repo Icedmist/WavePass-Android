@@ -7,6 +7,7 @@ import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'wavepass_api.dart';
 import 'mikrotik_api_client.dart';
+import 'user_app_state_service.dart';
 
 class DiscoveredRouter {
   final String ip;
@@ -1518,7 +1519,7 @@ class RouterDiscoveryService {
       };
     }
 
-    // Unconditionally persist router credentials and endpoints locally
+    // Unconditionally persist router credentials and endpoints locally and in cloud
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(keyRouterLocalIp, hostOnly);
@@ -1527,6 +1528,12 @@ class RouterDiscoveryService {
       if (tunnelEndpoint != null && tunnelEndpoint.isNotEmpty) {
         await prefs.setString(keyRouterTunnelEndpoint, tunnelEndpoint);
       }
+      UserAppStateService.instance.saveRouterConfig(
+        localIp: hostOnly,
+        username: username,
+        password: password,
+        tunnelEndpoint: tunnelEndpoint,
+      );
     } catch (_) {}
 
     // If explicit Port 8728 or API scheme, configure via native RouterOS API directly
@@ -2326,14 +2333,17 @@ class RouterDiscoveryService {
       }
     }
 
-    // 3. Always save locally to SharedPreferences so all app screens and background services immediately use the new password!
+    // 3. Always save locally to SharedPreferences and sync to cloud
     await prefs.setString(keyRouterPassword, newPassword);
     await prefs.setString(keyRouterUsername, effectiveUser);
-    if (!isForbiddenIspGateway(effectiveIp)) {
-      await prefs.setString(keyRouterLocalIp, effectiveIp);
-    } else {
-      await prefs.setString(keyRouterLocalIp, '192.168.88.1');
-    }
+    final finalIp = !isForbiddenIspGateway(effectiveIp) ? effectiveIp : '192.168.88.1';
+    await prefs.setString(keyRouterLocalIp, finalIp);
+    UserAppStateService.instance.saveRouterConfig(
+      localIp: finalIp,
+      username: effectiveUser,
+      password: newPassword,
+      tunnelEndpoint: effectiveEndpoint,
+    );
 
     return {
       'ok': true,

@@ -13,6 +13,7 @@ import '../core/services/router_discovery_service.dart';
 import '../core/services/activation_code_service.dart';
 import '../core/services/session_service.dart';
 import '../core/services/biometric_auth_service.dart';
+import '../core/services/user_app_state_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -116,6 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         await prefs.remove('admin_token');
         await prefs.setString('sb-user-email', email);
+        await UserAppStateService.instance.syncFromCloud(targetEmail: email);
         await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
         await VenueStateService.instance.refreshPlans();
         await VoucherHistoryService.instance.fetchFullVoucherActivity();
@@ -148,6 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
           await prefs.setString('admin_token', j['token']);
           await prefs.setString('sb-user-email', email);
+          await UserAppStateService.instance.syncFromCloud(targetEmail: email);
           await VenueStateService.instance.refreshVenue(allowFallbackToPrimary: true);
           await VenueStateService.instance.refreshPlans();
           await VoucherHistoryService.instance.fetchFullVoucherActivity();

@@ -516,12 +516,16 @@ class AppNotifier {
 
         if (typeRaw == 'PAYMENT' || isApproval || typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
           if (showModal) {
-            showViaKey(
-              type: isApproval ? NotifyType.warning : type,
-              title: title,
-              message: message,
-              showDeviceBar: false,
-            );
+            try {
+              _messengerKey?.currentState?.hideCurrentSnackBar();
+              _messengerKey?.currentState?.showSnackBar(
+                SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: (isApproval ? NotifyType.warning : type).color,
+                  content: Text('$title: $message', style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              );
+            } catch (_) {}
           }
           if (showBar) {
             await _showBar(

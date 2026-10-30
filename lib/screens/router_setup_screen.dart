@@ -15,6 +15,7 @@ import '../core/services/venue_state_service.dart';
 import '../core/services/router_discovery_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/services/user_app_state_service.dart';
 
 class RouterSetupScreen extends StatefulWidget {
   const RouterSetupScreen({super.key});
@@ -172,6 +173,12 @@ class _RouterSetupScreenState extends State<RouterSetupScreen> {
     await prefs.setString(RouterDiscoveryService.keyRouterTunnelEndpoint, _tunnelCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterUsername, _userCtrl.text.trim());
     await prefs.setString(RouterDiscoveryService.keyRouterPassword, _passCtrl.text.trim());
+    UserAppStateService.instance.saveRouterConfig(
+      localIp: targetIp,
+      username: _userCtrl.text.trim(),
+      password: _passCtrl.text.trim(),
+      tunnelEndpoint: _tunnelCtrl.text.trim(),
+    );
   }
 
   /// Strict venue resolution for portal/script generation.
@@ -722,7 +729,7 @@ remove [find comment~"WavePass Anti-Tethering"]
 # --------------------------------------------------------
 /system script
 remove [find name="wavepass-cleanup"]
-add name="wavepass-cleanup" source=":foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \\\$a session-time-left]; :if ([:len \\\$stl] > 0 && \\\$stl = 0s) do={ /ip hotspot active remove \\\$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \\\$u limit-uptime]; :local upt [/ip hotspot user get \\\$u uptime]; :if ([:len \\\$lup] > 0 && \\\$lup != 0s && \$upt >= \\\$lup) do={ :local un [/ip hotspot user get \\\$u name]; /ip hotspot active remove [find user=\\\$un]; /ip hotspot user remove \\\$u; /ip hotspot cookie remove [find user=\\\$un]; /ip hotspot ip-binding remove [find comment~(\\"WP:\\" . \\\$un)]; /system scheduler remove [find name=(\\"exp_\\" . \\\$un)]; } }; :foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \\\$c user]; :if ([:len [/ip hotspot user find name=\\\$cu]] = 0) do={ /ip hotspot cookie remove \\\$c; } }; :foreach b in=[/ip hotspot ip-binding find type=bypassed] do={ :local bc [/ip hotspot ip-binding get \\\$b comment]; :if ([:len \\\$bc] > 3) do={ :local bu [:pick \\\$bc 3 [:len \\\$bc]]; :if ([:len [/ip hotspot user find name=\\\$bu]] = 0) do={ /ip hotspot ip-binding remove \\\$b; } } }; /ip hotspot user remove [find comment~\\"expired\\"]" comment="WavePass user limit enforcer"
+add name="wavepass-cleanup" source=":foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \\\$a session-time-left]; :if ([:len \\\$stl] > 0 && \\\$stl = 0s) do={ /ip hotspot active remove \\\$a; } }; :foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \\\$u limit-uptime]; :local upt [/ip hotspot user get \\\$u uptime]; :if ([:len \\\$lup] > 0 && \\\$lup != 0s && \\\$upt >= \\\$lup) do={ :local un [/ip hotspot user get \\\$u name]; /ip hotspot active remove [find user=\\\$un]; /ip hotspot user remove \\\$u; /ip hotspot cookie remove [find user=\\\$un]; /ip hotspot ip-binding remove [find comment~(\\"WP:\\" . \\\$un)]; /system scheduler remove [find name=(\\"exp_\\" . \\\$un)]; } }; :foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \\\$c user]; :if ([:len [/ip hotspot user find name=\\\$cu]] = 0) do={ /ip hotspot cookie remove \\\$c; } }; :foreach b in=[/ip hotspot ip-binding find type=bypassed] do={ :local bc [/ip hotspot ip-binding get \\\$b comment]; :if ([:len \\\$bc] > 3) do={ :local bu [:pick \\\$bc 3 [:len \\\$bc]]; :if ([:len [/ip hotspot user find name=\\\$bu]] = 0) do={ /ip hotspot ip-binding remove \\\$b; } } }; /ip hotspot user remove [find comment~\\"expired\\"]" comment="WavePass user limit enforcer"
 
 /system scheduler
 remove [find name="wavepass-cleanup"]
@@ -2034,10 +2041,18 @@ $_rfc1321Md5Js
             return;
           }
 
-          var attempted = false;
-          try { attempted = sessionStorage.getItem('wp-auto-attempt') === '1'; } catch(e){}
+          var now = Date.now();
+          var lastAttempt = 0;
+          try {
+            var rawAttempt = sessionStorage.getItem('wp-auto-attempt');
+            if (rawAttempt) {
+              lastAttempt = parseInt(rawAttempt, 10) || 0;
+            }
+          } catch(e){}
+          // Auto-rejoin with 20-second cooldown avoids lock deadlock across Android/iOS captive webviews
+          var attempted = lastAttempt > 0 && (now - lastAttempt < 20000);
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
-            try { sessionStorage.setItem('wp-auto-attempt', '1'); } catch(e){}
+            try { sessionStorage.setItem('wp-auto-attempt', now.toString()); } catch(e){}
             var autoVenueId = '$effectiveVenueTarget';
             // Sanity-check the provisioned venue target before the cloud
             // lookup: an empty/'null'/'undefined' value would leave the call
@@ -2066,13 +2081,18 @@ $_rfc1321Md5Js
                     } catch(e){}
                     executeLogin(data.voucherCode, data.voucherCode);
                   } else if (data && !data.found) {
-                    // Explicit cloud verification: voucher has expired or is invalid.
-                    try {
-                      localStorage.removeItem('wp-active-voucher');
-                      sessionStorage.removeItem('wp-active-voucher');
-                    } catch(e){}
-                    var sBox = document.getElementById('savedVoucherBox');
-                    if (sBox) sBox.style.display = 'none';
+                    // Cloud retrieve-voucher query did not find by MAC:
+                    // Do NOT immediately wipe localStorage('wp-active-voucher')!
+                    // Fall back to saved local voucher or credentials so randomized MACs can still auto-connect
+                    if (!executed) {
+                      if (savedV) {
+                        executed = true;
+                        executeLogin(savedV, savedV);
+                      } else if (savedU && savedP) {
+                        executed = true;
+                        executeLogin(savedU, savedP);
+                      }
+                    }
                   }
                 })
                 .catch(function(err) {
@@ -3428,6 +3448,7 @@ $_rfc1321Md5Js
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('wavepass_portal_bg_url', effectiveUrl);
+        UserAppStateService.instance.savePortalBranding(bgUrl: effectiveUrl);
         await _ensurePortalSuite();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3486,6 +3507,7 @@ $_rfc1321Md5Js
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('wavepass_portal_logo_url', effectiveUrl);
         await prefs.setString(VenueStateService.keyVenueLogo, effectiveUrl);
+        UserAppStateService.instance.savePortalBranding(logoUrl: effectiveUrl);
         await _ensurePortalSuite();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3517,6 +3539,7 @@ $_rfc1321Md5Js
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wavepass_portal_bg_url', url);
+    UserAppStateService.instance.savePortalBranding(bgUrl: url);
     await _ensurePortalSuite();
   }
 
@@ -3527,6 +3550,7 @@ $_rfc1321Md5Js
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('wavepass_portal_bg_url');
+    UserAppStateService.instance.savePortalBranding(bgUrl: '');
     await _ensurePortalSuite();
   }
 
@@ -3710,6 +3734,7 @@ $_rfc1321Md5Js
                     });
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString('wavepass_portal_template', t['id']!);
+                    UserAppStateService.instance.savePortalBranding(templateId: t['id']!);
                     await _ensurePortalSuite();
                   }
                 },

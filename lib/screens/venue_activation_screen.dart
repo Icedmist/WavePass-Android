@@ -204,7 +204,6 @@ class _VenueActivationScreenState extends State<VenueActivationScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('sb-user-email');
       await prefs.remove('admin_token');
-      await prefs.remove('wavepass_voucher_history_v1');
       await prefs.remove(RouterDiscoveryService.keyRouterLocalIp);
       await prefs.remove(RouterDiscoveryService.keyRouterTunnelEndpoint);
       await prefs.remove(RouterDiscoveryService.keyRouterUsername);

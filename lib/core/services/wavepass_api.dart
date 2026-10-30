@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
+import '../utils/sha256_util.dart';
 import 'supabase_service.dart';
 
 /// Lightweight HTTP client for the WavePass NestJS backend (single-key
@@ -156,14 +158,59 @@ class WavePassApi {
     required String venueId,
     required String planId,
     required List<String> codes,
-  }) {
-    return _post('/api/v1/vouchers/batches', {
-      'venueId': venueId,
-      'planId': planId,
-      'quantity': codes.length,
-      if (codes.length == 1) 'customCode': codes.first,
-      if (codes.length > 1) 'customCodes': codes,
-    });
+    List<String>? passwords,
+    bool sold = false,
+    String? source,
+    String? directMode,
+  }) async {
+    try {
+      final res = await _post('/api/v1/vouchers/batches', {
+        'venueId': venueId,
+        'planId': planId,
+        'quantity': codes.length,
+        if (codes.length == 1) 'customCode': codes.first,
+        if (codes.length > 1) 'customCodes': codes,
+      });
+      if (res['created'] != null && (res['created'] as num) > 0) {
+        return res;
+      }
+    } catch (e) {
+      debugPrint('[WavePassApi] backend uploadVoucherBatch note: $e, trying Supabase direct');
+    }
+
+    // Direct Supabase fallback: ensures vouchers are always persisted in cloud database
+    if (SupabaseService.isInitialized) {
+      try {
+        final rows = <Map<String, dynamic>>[];
+        for (int i = 0; i < codes.length; i++) {
+          final c = codes[i];
+          final p = (passwords != null && i < passwords.length) ? passwords[i] : c;
+          final norm = c.trim().toUpperCase().replaceAll(' ', '');
+          final codeHash = Sha256Util.hash(norm);
+          rows.add({
+            'venueId': venueId,
+            'planId': planId,
+            'codeHash': codeHash,
+            'displayCodeEnc': norm,
+            'password': p,
+            'sold': sold,
+            'soldAt': sold ? DateTime.now().toIso8601String() : null,
+            'source': source ?? 'pos',
+            'directMode': directMode,
+            'status': 'GENERATED',
+            'issuedAt': DateTime.now().toIso8601String(),
+          });
+        }
+        await SupabaseService.instance.client.from('Voucher').upsert(rows, onConflict: 'codeHash');
+        return {
+          'created': rows.length,
+          'vouchers': rows.map((r) => {'code': r['displayCodeEnc']}).toList(),
+        };
+      } catch (e) {
+        debugPrint('[WavePassApi] Supabase direct voucher insert error: $e');
+      }
+    }
+    return {'created': 0, 'vouchers': []};
   }
 
   /// Non-consuming cloud existence check for a single code.
@@ -288,10 +335,11 @@ class WavePassApi {
 
   // ── Notifications (venue-owner payment bar) ──────────────────────────
   Future<List<dynamic>> listNotifications(String venueId, {bool unreadOnly = false}) async {
+    final headers = await _authHeaders();
     final res = await http
         .get(
           Uri.parse('$_base/api/v1/notifications?venueId=${Uri.encodeComponent(venueId)}${unreadOnly ? '&unreadOnly=true' : ''}'),
-          headers: _jsonHeaders,
+          headers: headers,
         )
         .timeout(_timeout);
     if (res.statusCode == 200) {

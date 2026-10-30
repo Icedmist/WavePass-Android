@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/venue_state_service.dart';
 import '../core/services/wavepass_api.dart';
+import '../core/services/user_app_state_service.dart';
 import '../core/widgets/shimmer.dart';
 
 class _NigerianBankChoice {
@@ -102,6 +103,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _hideBalance = !_hideBalance);
     await prefs.setBool('hide_balance_preference', _hideBalance);
+    UserAppStateService.instance.savePreferences(hideBalance: _hideBalance);
   }
 
   Future<void> _load() async {

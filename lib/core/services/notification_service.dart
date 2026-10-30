@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import 'wavepass_api.dart';
+import 'supabase_service.dart';
 
 enum NotifyType { success, error, warning, info }
 
@@ -64,6 +66,7 @@ class AppNotifier {
   bool get isRefreshingPayments => _isRefreshingPayments;
   final Set<String> _seenRemoteIds = {};
   GlobalKey<ScaffoldMessengerState>? _messengerKey;
+  RealtimeChannel? _realtimeChannel;
 
   /// Bound once from main.dart so background pollers can render the exact
   /// same in-app modal as foreground callers without a BuildContext.
@@ -169,6 +172,17 @@ class AppNotifier {
       n.read = true;
     }
     feed.value = List.from(feed.value);
+    if (SupabaseService.isInitialized && _pollVenueId != null) {
+      try {
+        SupabaseService.instance.client
+            .from('Notification')
+            .update({'read': true})
+            .eq('venueId', _pollVenueId!);
+      } catch (_) {}
+    }
+    if (_pollVenueId != null) {
+      WavePassApi.instance.markAllNotificationsRead(_pollVenueId!).catchError((_) => <String, dynamic>{});
+    }
   }
 
   void show(BuildContext context,
@@ -357,6 +371,15 @@ class AppNotifier {
           }
           feed.value = List.from(feed.value);
 
+          if (SupabaseService.isInitialized) {
+            try {
+              SupabaseService.instance.client
+                  .from('Notification')
+                  .update({'read': true})
+                  .eq('reference', payload);
+            } catch (_) {}
+          }
+
           showViaKey(
             type: NotifyType.success,
             title: '✅ Access Granted',
@@ -395,6 +418,15 @@ class AppNotifier {
 
       n.read = true;
       feed.value = List.from(feed.value);
+
+      if (SupabaseService.isInitialized && n.id.isNotEmpty) {
+        try {
+          SupabaseService.instance.client
+              .from('Notification')
+              .update({'read': true})
+              .eq('id', n.id);
+        } catch (_) {}
+      }
 
       await _showBar(
         title: '✅ Wi-Fi Access Approved',
@@ -465,6 +497,34 @@ class AppNotifier {
     }
   }
 
+  void _subscribeRealtime(String venueId) {
+    if (!SupabaseService.isInitialized) return;
+    try {
+      _realtimeChannel?.unsubscribe();
+      _realtimeChannel = SupabaseService.instance.client
+          .channel('public:Notification:$venueId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'Notification',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'venueId',
+              value: venueId,
+            ),
+            callback: (payload) {
+              final newRecord = payload.newRecord;
+              if (newRecord.isNotEmpty) {
+                _processNotificationRecord(newRecord, venueId, showBar: true, showModal: true);
+              }
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('[AppNotifier] Realtime subscription error: $e');
+    }
+  }
+
   /// Polls GET /notifications for the active venue. New alerts land in the
   /// in-app feed (Notifications tab) and — except on the silent first fill —
   /// render the identical in-app modal plus the Android notification bar.
@@ -472,6 +532,7 @@ class AppNotifier {
     if (_pollVenueId == venueId && _pollTimer?.isActive == true) return;
     stopPaymentPolling();
     _pollVenueId = venueId;
+    _subscribeRealtime(venueId);
     _pollTimer = Timer.periodic(interval, (_) => refreshPayments(venueId, showBar: true, showModal: true));
     refreshPayments(venueId, showBar: false, showModal: false);
   }
@@ -479,81 +540,114 @@ class AppNotifier {
   void stopPaymentPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
+    try {
+      _realtimeChannel?.unsubscribe();
+    } catch (_) {}
+    _realtimeChannel = null;
     _pollVenueId = null;
     _isRefreshingPayments = false;
+  }
+
+  void _processNotificationRecord(Map<String, dynamic> r, String venueId, {required bool showBar, required bool showModal}) {
+    final id = r['id']?.toString();
+    if (id == null || _seenRemoteIds.contains(id)) return;
+    final typeRaw = (r['type']?.toString() ?? 'PAYMENT').toUpperCase();
+    final type = typeRaw == 'VOUCHER' ? NotifyType.info : NotifyType.success;
+    final title = r['title']?.toString() ?? 'Payment received';
+    final message = r['body']?.toString() ?? '';
+    final ref = r['reference']?.toString();
+    final isApproval = ref != null && ref.startsWith('TRANSFER_APPROVAL:');
+    String? orderId;
+    String? mac;
+    String? planId;
+    if (isApproval) {
+      final parts = ref.split(':');
+      if (parts.length >= 4) {
+        orderId = parts[1];
+        mac = parts[2];
+        planId = parts[3];
+      }
+    }
+
+    DateTime? at;
+    try {
+      if (r['createdAt'] != null) at = DateTime.parse(r['createdAt'].toString());
+    } catch (_) {}
+
+    push(
+      type: isApproval ? NotifyType.warning : type,
+      title: title,
+      message: message,
+      remoteId: id,
+      at: at,
+      reference: ref,
+      orderId: orderId,
+      mac: mac,
+      planId: planId,
+      venueId: venueId,
+      isApproval: isApproval,
+    );
+
+    if (typeRaw == 'PAYMENT' || isApproval || typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
+      if (showModal) {
+        try {
+          _messengerKey?.currentState?.hideCurrentSnackBar();
+          _messengerKey?.currentState?.showSnackBar(
+            _buildModal(
+              type: isApproval ? NotifyType.warning : type,
+              title: title,
+              message: message,
+            ),
+          );
+        } catch (_) {}
+      }
+      if (showBar) {
+        _showBar(
+          title: title,
+          message: message,
+          type: isApproval ? NotifyType.warning : type,
+          payload: isApproval ? ref : null,
+          isApproval: isApproval,
+        );
+      }
+    }
   }
 
   Future<void> refreshPayments(String venueId, {bool showBar = true, bool showModal = true}) async {
     if (_isRefreshingPayments) return;
     _isRefreshingPayments = true;
     try {
-      final rows = await WavePassApi.instance.listNotifications(venueId);
-      for (final r in rows) {
-        if (r is! Map) continue;
-        final id = r['id']?.toString();
-        if (id == null || _seenRemoteIds.contains(id)) continue;
-        final typeRaw = (r['type']?.toString() ?? 'PAYMENT').toUpperCase();
-        final type = typeRaw == 'VOUCHER' ? NotifyType.info : NotifyType.success;
-        final title = r['title']?.toString() ?? 'Payment received';
-        final message = r['body']?.toString() ?? '';
-        final ref = r['reference']?.toString();
-        final isApproval = ref != null && ref.startsWith('TRANSFER_APPROVAL:');
-        String? orderId;
-        String? mac;
-        String? planId;
-        if (isApproval) {
-          final parts = ref.split(':');
-          if (parts.length >= 4) {
-            orderId = parts[1];
-            mac = parts[2];
-            planId = parts[3];
-          }
-        }
-
-        DateTime? at;
+      List<dynamic> rows = [];
+      // 1. Direct Supabase query (instant, resilient, unblocked)
+      if (SupabaseService.isInitialized) {
         try {
-          if (r['createdAt'] != null) at = DateTime.parse(r['createdAt'].toString());
-        } catch (_) {}
-
-        push(
-          type: isApproval ? NotifyType.warning : type,
-          title: title,
-          message: message,
-          remoteId: id,
-          at: at,
-          reference: ref,
-          orderId: orderId,
-          mac: mac,
-          planId: planId,
-          venueId: venueId,
-          isApproval: isApproval,
-        );
-
-        if (typeRaw == 'PAYMENT' || isApproval || typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
-          if (showModal) {
-            try {
-              _messengerKey?.currentState?.hideCurrentSnackBar();
-              _messengerKey?.currentState?.showSnackBar(
-                _buildModal(
-                  type: isApproval ? NotifyType.warning : type,
-                  title: title,
-                  message: message,
-                ),
-              );
-            } catch (_) {}
+          final res = await SupabaseService.instance.client
+              .from('Notification')
+              .select('*')
+              .eq('venueId', venueId)
+              .order('createdAt', ascending: false)
+              .limit(50);
+          if (res.isNotEmpty) {
+            rows = res;
           }
-          if (showBar) {
-            await _showBar(
-              title: title,
-              message: message,
-              type: isApproval ? NotifyType.warning : type,
-              payload: isApproval ? ref : null,
-              isApproval: isApproval,
-            );
-          }
+        } catch (sbErr) {
+          debugPrint('[AppNotifier] Supabase notification fetch error: $sbErr');
         }
       }
-    } catch (_) {
+
+      // 2. Fallback to WavePass backend API if Supabase returned nothing or is uninitialized
+      if (rows.isEmpty) {
+        try {
+          rows = await WavePassApi.instance.listNotifications(venueId).timeout(const Duration(seconds: 4));
+        } catch (_) {}
+      }
+
+      for (final r in rows) {
+        if (r is! Map) continue;
+        _processNotificationRecord(Map<String, dynamic>.from(r), venueId, showBar: showBar, showModal: showModal);
+      }
+    } catch (e) {
+      debugPrint('[AppNotifier] refreshPayments error: $e');
     } finally {
       _isRefreshingPayments = false;
     }

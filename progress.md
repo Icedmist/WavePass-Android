@@ -1083,3 +1083,22 @@
   - Guards `_requestCashout()` and `_registerBank()` to block API submissions while maintenance mode is active.
 - [x] **Verification**: Verified syntactical accuracy and state guarding in `wallet_screen.dart`.
 - [x] PR [#174](https://github.com/Icedmist/WavePass-Android/pull/174) squashed and merged to `main` (commit `8ecb7c4`).
+
+### 71. Cloud State Persistence, Captive Auto-Rejoin, and Notification Polling (Issue #177, PR #178)
+- [x] **Captive Portal Auto-Rejoin Resiliency (`lib/screens/router_setup_screen.dart`)**:
+  - Replaced fragile `sessionStorage` binary lock with a 20-second timestamp cooldown in `login.html`, preventing auto-rejoin deadlocks when mobile captive webview popups close before reaching `status.html`.
+  - Prevented premature purging of `wp-active-voucher` from `localStorage` on cloud MAC query misses, enabling fallback voucher reconnect for randomized MACs and spotty connections.
+  - Fixed RouterOS cleanup script escaping syntax error (`\\\$upt` vs `\$upt`).
+- [x] **Notification Polling Lifecycle & Unread De-duplication (`notification_service.dart`, `wavepass_api.dart`, `home_dashboard_screen.dart`)**:
+  - Attached authenticated JWT / Supabase bearer headers to `WavePassApi.listNotifications`.
+  - Removed destructive `stopPaymentPolling()` from `HomeDashboardScreen.dispose()`, keeping polling active across tab navigation for the duration of the authenticated session.
+  - Eliminated duplicate notification creations in `feed` by displaying in-app floating SnackBars directly without inserting phantom duplicate `AppNotification` records.
+- [x] **Database Cloud State Synchronization & Anti-Data Loss (`UserAppState`, `Voucher`, `Venue`, `Plan`)**:
+  - Provisioned `UserAppState` PostgreSQL table in Supabase with RLS policies and grants for anon, authenticated, and service roles.
+  - Created `lib/core/services/user_app_state_service.dart` to persist active venue, router pairing credentials, captive portal customizations, thermal printer settings, and user preferences directly to the cloud.
+  - Integrated `Sha256Util` (`lib/core/utils/sha256_util.dart`) pure Dart SHA-256 implementation matching standard Node.js crypto specifications without external dependencies.
+  - Updated `VoucherHistoryService` to write newly generated and sold vouchers directly to Supabase's `Voucher` table with SHA-256 code hashes.
+  - Enhanced `VoucherHistoryService.getHistory()` to automatically rehydrate the operator's full voucher activity from Supabase upon fresh app install, device switch, or re-login.
+  - Removed destructive voucher cache wiping on standard user sign-out across all screens.
+- [x] PR [#178](https://github.com/Icedmist/WavePass-Android/pull/178) squashed and merged to `main` (commit `450d3b2`).
+- [x] Backend Prisma schema synchronized via Issue [#86](https://github.com/Icedmist/WavePass-Backend/issues/86) and PR [#87](https://github.com/Icedmist/WavePass-Backend/pull/87) (commit `17284ac`).

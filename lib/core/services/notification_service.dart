@@ -6,6 +6,21 @@ import 'wavepass_api.dart';
 
 enum NotifyType { success, error, warning, info }
 
+extension NotifyTypeExtension on NotifyType {
+  Color get color {
+    switch (this) {
+      case NotifyType.success:
+        return AppColors.accentGreen;
+      case NotifyType.error:
+        return AppColors.accentRed;
+      case NotifyType.warning:
+        return const Color(0xFFD97706);
+      case NotifyType.info:
+        return AppColors.primary;
+    }
+  }
+}
+
 class AppNotification {
   AppNotification({
     required this.type,
@@ -519,10 +534,10 @@ class AppNotifier {
             try {
               _messengerKey?.currentState?.hideCurrentSnackBar();
               _messengerKey?.currentState?.showSnackBar(
-                SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  backgroundColor: (isApproval ? NotifyType.warning : type).color,
-                  content: Text('$title: $message', style: const TextStyle(fontWeight: FontWeight.w700)),
+                _buildModal(
+                  type: isApproval ? NotifyType.warning : type,
+                  title: title,
+                  message: message,
                 ),
               );
             } catch (_) {}

@@ -1102,3 +1102,39 @@
   - Removed destructive voucher cache wiping on standard user sign-out across all screens.
 - [x] PR [#178](https://github.com/Icedmist/WavePass-Android/pull/178) squashed and merged to `main` (commit `450d3b2`).
 - [x] Backend Prisma schema synchronized via Issue [#86](https://github.com/Icedmist/WavePass-Backend/issues/86) and PR [#87](https://github.com/Icedmist/WavePass-Backend/pull/87) (commit `17284ac`).
+
+### 72. CI Static Analyzer Repair & Automated Release Build (Issue #181, PR #182)
+- [x] **Static Analyzer Fixes**:
+  - Implemented `NotifyTypeExtension` defining `.color` getter on `NotifyType` in `notification_service.dart`.
+  - Removed unused import `voucher_history_service.dart` from `admin_management_screen.dart`.
+  - Handled `use_null_aware_elements` lint rule in `voucher_history_service.dart`.
+  - Added `VoucherHistoryService.instance.stopMonitoring()` in `HomeDashboardScreen.dispose()`, eliminating lingering periodic timers in widget tests.
+  - Made `isPaystackLocked` configurable on `WalletScreen` (default `true`) and wrapped alert dialog title in `Expanded` to prevent flex overflow.
+- [x] **Verification**: All 124 tests pass, and `flutter analyze` reports 0 issues.
+- [x] PR [#182](https://github.com/Icedmist/WavePass-Android/pull/182) squashed and merged to `main` (commit `26c18bf`).
+- [x] Automated release build workflow `release.yml` triggered for `v1.0.4+5`.
+
+### 73. Lock All Paystack Features with Visible Lock Icons, Bump Version to 1.0.4+6 & Remote OTA Release (Issue #183, PR #184)
+- [x] **UI Paystack Feature Lockdown**:
+  - **Wallet Screen (`wallet_screen.dart`)**:
+    - Added lock icons and explicit `'(Locked)'` labels to 'Cash Out' and 'Add Bank' action buttons with dimmed/disabled styling.
+    - Updated dedicated virtual account (DVA) card header to show lock icon and `(LOCKED)` status.
+    - Added lock icon and `(Locked)` tags to 'Paystack Sales' segmented filter tab and Paystack inflow transaction rows.
+    - Added lock icon to the 'Paystack Sales' mini stat.
+    - Wrapped balance status tag in `FittedBox` to prevent `RenderFlex` layout overflows on narrow mobile screen widths.
+    - Payout destination 'Add Bank' action button shows lock icon and `Add Bank (Locked)`.
+  - **Home Dashboard Screen (`home_dashboard_screen.dart`)**:
+    - Updated 'Venue Wallet' quick action card (`_buildActionCard`) to display an amber `LOCKED` badge with a lock icon and subtitle `Virtual account & cashouts (Locked)`.
+    - Updated top balance summary tag to display lock icon with `Wallet: ₦... (Locked)`.
+    - Added lock icon and `(Locked)` tags to Paystack Store cards and online transaction rows in `_SalesAnalyticsSheet`.
+  - **Account Center Screen (`account_center_screen.dart`)**:
+    - Updated Section 4 'Venue Wallet & Payouts' quick hub navigation row to display an explicit amber `LOCKED` badge with a lock icon.
+- [x] **Version Bump & OTA Update Service**:
+  - Bumped version in `pubspec.yaml` from `1.0.4+5` to `1.0.4+6`.
+  - Updated `_fallbackVersion` in `lib/core/services/app_update_service.dart` to `'1.0.4+6'`.
+- [x] **Verification & PR**:
+  - Updated `test/wallet_validation_test.dart` to assert on locked button labels.
+  - Ran `flutter analyze` (0 issues found) and full `flutter test` test suite (all 124 tests passed).
+  - PR [#184](https://github.com/Icedmist/WavePass-Android/pull/184) squashed and merged to `main` (commit `a394625`).
+- [x] **Remote OTA Release Trigger**:
+  - Triggered GitHub Actions release workflow `release.yml` (`Build and Release Android`, run `40988538878`) on `main` to build and publish `app-release.apk` for release `v1.0.4+6` so user can download the update remotely.

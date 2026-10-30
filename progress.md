@@ -1160,3 +1160,24 @@
   - `flutter analyze`: 0 errors, 0 warnings.
   - `flutter test`: All 124 tests passed.
   - PR [#188](https://github.com/Icedmist/WavePass-Android/pull/188) squashed and merged to `main` (commit `eeec720`).
+
+### 75. Notification Service Resilience, Direct Supabase Fallback & Realtime Streaming, Version Bump to 1.0.4+7 (Issue #189, PR #190)
+- [x] **Root Cause Diagnosis**:
+  - Identified that `WavePassApi.instance.listNotifications()` relied exclusively on `api.nexawavepass.com/api/v1/notifications`, which is completely offline / timing out.
+  - Supabase `Notification` table had `rowsecurity: true` enabled with zero RLS policies, blocking all queries using the anon key (`sb_publishable_...`).
+- [x] **Supabase Database RLS & Realtime Configuration**:
+  - Configured 4 permissive RLS policies on `Notification` (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) for `anon`, `authenticated`, and `service_role` roles.
+  - Added `Notification` table to `supabase_realtime` publication (`ALTER PUBLICATION supabase_realtime ADD TABLE "Notification";`).
+- [x] **Notification Service Architecture (`notification_service.dart`)**:
+  - Implemented `_subscribeRealtime(String venueId)` subscribing to `PostgresChangeEvent.insert` on the `Notification` table for instant device bar & in-app modal alerts upon remote payment / voucher approval.
+  - Added direct Supabase REST query in `refreshPayments` ordered by `createdAt DESC limit 50` before falling back to `WavePassApi.instance.listNotifications` with a short 4-second timeout.
+  - Updated `markAllRead()`, `_handleNotificationAction()`, and `approveTransfer()` to persist `read: true` updates directly to Supabase's `Notification` table.
+- [x] **Version Bump & App Update Service**:
+  - Updated `version: 1.0.4+7` in `pubspec.yaml`.
+  - Updated `_fallbackVersion = '1.0.4+7'` in `lib/core/services/app_update_service.dart`.
+- [x] **Verification & Release**:
+  - `flutter analyze`: 0 errors, 0 warnings.
+  - `flutter test`: All 124 tests passed.
+  - PR [#190](https://github.com/Icedmist/WavePass-Android/pull/190) squashed and merged to `main` (commit `da6b3ce`).
+  - Triggered GitHub Actions release workflow `release.yml` (run `41135815031`) for version `v1.0.4+7`.
+

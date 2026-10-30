@@ -56,6 +56,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   @override
   void dispose() {
     VenueStateService.instance.venueNotifier.removeListener(_onVenueChanged);
+    VoucherHistoryService.instance.stopMonitoring();
     super.dispose();
   }
 

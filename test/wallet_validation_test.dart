@@ -10,6 +10,30 @@ void main() {
     });
   });
 
+  testWidgets('WalletScreen shows Feature Not Available Yet dialog when cashout is tapped while Paystack is locked',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: WalletScreen(venueId: 'test-venue-locked'),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Venue Wallet'), findsOneWidget);
+    expect(find.text('Cash Out'), findsOneWidget);
+
+    await tester.tap(find.text('Cash Out'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Feature Not Available Yet'), findsOneWidget);
+    expect(find.textContaining('Automated Paystack wallet cashouts and online card checkout are currently locked'), findsOneWidget);
+  });
+
   testWidgets('WalletScreen shows Bank Account Required prompt when cashout is tapped with no bank',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -18,7 +42,7 @@ void main() {
 
     await tester.pumpWidget(
       const MaterialApp(
-        home: WalletScreen(venueId: 'test-venue-no-bank'),
+        home: WalletScreen(venueId: 'test-venue-no-bank', isPaystackLocked: false),
       ),
     );
 
@@ -56,7 +80,7 @@ void main() {
 
     await tester.pumpWidget(
       const MaterialApp(
-        home: WalletScreen(venueId: 'test-venue-validation'),
+        home: WalletScreen(venueId: 'test-venue-validation', isPaystackLocked: false),
       ),
     );
 

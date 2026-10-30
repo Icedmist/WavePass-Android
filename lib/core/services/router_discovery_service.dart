@@ -2367,14 +2367,14 @@ class RouterDiscoveryService {
       ctrl = await Socket.connect(host, 21, timeout: const Duration(seconds: 4));
       final stream = ctrl.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).asBroadcastStream();
 
-      Future<String> waitForCodes(List<String> codePrefixes) {
+      Future<String> waitForCodes(List<String> codePrefixes, [Duration timeout = const Duration(seconds: 5)]) {
         final c = Completer<String>();
         final sub = stream.listen((line) {
           if (codePrefixes.any((prefix) => line.startsWith(prefix))) {
             if (!c.isCompleted) c.complete(line);
           }
         });
-        return c.future.timeout(const Duration(seconds: 5), onTimeout: () {
+        return c.future.timeout(timeout, onTimeout: () {
           sub.cancel();
           throw TimeoutException('Timed out waiting for FTP codes $codePrefixes');
         }).whenComplete(() => sub.cancel());
@@ -2424,7 +2424,7 @@ class RouterDiscoveryService {
       await data.flush();
       await data.close();
 
-      await waitForCodes(['226', '250']);
+      await waitForCodes(['226', '250'], const Duration(seconds: 12));
 
       try {
         ctrl.write('QUIT\r\n');

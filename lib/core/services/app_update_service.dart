@@ -38,7 +38,7 @@ class AppUpdateService {
   static final AppUpdateService instance = AppUpdateService._();
 
   /// Last-resort placeholder matching pubspec.yaml until [init] completes.
-  static const String _fallbackVersion = '1.0.4+6';
+  static const String _fallbackVersion = '1.0.4+7';
 
   static const String repoOwner = 'Icedmist';
   static const String distributionRepo = 'WavePass-App';

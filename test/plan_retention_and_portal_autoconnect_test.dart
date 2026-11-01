@@ -274,4 +274,33 @@ void main() {
       expect(prefs.getString(RouterDiscoveryService.keyRouterLocalIp), equals('192.168.88.1'));
     });
   });
+
+  group('Issue #193: Resilient Portal Auto-Rejoin & Supabase Direct Query Tests', () {
+    test('generateLoginHtml performs instant local auto-rejoin when saved voucher exists', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Apex Lounge',
+        'apex-lounge',
+        [],
+        true,
+        false,
+        null,
+        'onyx',
+        null,
+        null,
+        '0e65c025-480a-4a42-8c49-68b6f0b27712',
+      );
+
+      // Verify instant local auto-login happens without hanging on external cloud timeout
+      expect(html.contains('executeLogin(savedV, savedV);'), isTrue);
+      expect(html.contains('executeLogin(savedU, savedP);'), isTrue);
+
+      // Verify direct Supabase REST query fallback for MAC-only ephemeral browsers
+      expect(html.contains('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?venueId=eq.'), isTrue);
+      expect(html.contains('&redeemedMac=ilike.'), isTrue);
+
+      // Verify dead voucher cleanup on uptime limit or expiration error
+      expect(html.contains("localStorage.removeItem('wp-active-voucher');"), isTrue);
+      expect(html.contains("sessionStorage.removeItem('wp-active-voucher');"), isTrue);
+    });
+  });
 }

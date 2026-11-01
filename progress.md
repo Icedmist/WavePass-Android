@@ -1181,3 +1181,29 @@
   - PR [#190](https://github.com/Icedmist/WavePass-Android/pull/190) squashed and merged to `main` (commit `da6b3ce`).
   - Triggered GitHub Actions release workflow `release.yml` (run `41135815031`) for version `v1.0.4+7`.
 
+### 76. Resolve Captive Portal Auto-Rejoin Deadlock, Direct Supabase REST Fallback, Cloud Notification Persistence, and Release v1.0.4+8 (Issue #193, PR #194)
+- [x] **Captive Portal Instant Local Auto-Rejoin (`router_setup_screen.dart`)**:
+  - Eliminated the 10-second timeout hang on dead `api.nexawavepass.com/api/v1/portal/retrieve-voucher` when the device already holds a valid voucher (`savedV`) or credentials (`savedU && savedP`) in `localStorage`.
+  - Client now immediately executes `executeLogin(savedV, savedV)` on page load, achieving instant auto-reconnect without network latency.
+  - Added terminal error detection for RouterOS error messages: If the error contains `uptime limit`, `expired`, `user not found`, or `invalid`, `localStorage.removeItem('wp-active-voucher')` is purged so devices aren't locked in dead login loops.
+- [x] **Direct Supabase REST Voucher Lookup by MAC**:
+  - For ephemeral captive webviews or wiped storage where `savedV` is null but `devMac` is known: portal queries Supabase REST directly (`https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?venueId=eq.<id>&redeemedMac=ilike.<mac>&status=in.(ACTIVE,REDEEMED)`) through MikroTik's walled garden before falling back to `api.nexawavepass.com`.
+  - Updated `retrieveActivePass()` in `router_setup_screen.dart` and `assets/portal_templates/template_1_onyx.html` to query Supabase REST directly first.
+- [x] **Persistent Cloud Notifications (`notification_service.dart`)**:
+  - Implemented `_persistToCloud()` in `AppNotifier`: All in-app notifications (sales, voucher in-use, approvals, expiration warnings) now write directly to Supabase's `Notification` table (`type: PAYMENT | VOUCHER | SYSTEM`) with `venueId` and `reference`.
+  - Configured PostgreSQL `Notification` table replica identity (`ALTER TABLE "Notification" REPLICA IDENTITY FULL;`) ensuring Supabase Realtime change filtering works reliably across all columns.
+  - Subscribed to `PostgresChangeEvent.all` on `Notification` table in `_subscribeRealtime()` to capture inserts and cross-device `read: true` updates.
+  - Connected `sell_pass_screen.dart` (`_handleGenerate`) to dispatch persisted sales notifications via `AppNotifier.instance.notify`.
+  - Updated all 5 notification dispatchers in `voucher_history_service.dart` to provide `venueId` and `reference` so hardware voucher activity persists to Supabase.
+- [x] **Resilient Transfer Approvals**:
+  - In `approveTransfer()`, if `WavePassApi.approveAccess()` fails or times out, the app automatically falls back to local router provisioning via `RouterDiscoveryService.provisionVoucherDualRoute` and inserts the active voucher directly into Supabase's `Voucher` table with `status = 'ACTIVE'` and `redeemedMac = mac`.
+  - Unified notification action handler `_handleNotificationAction` to delegate directly to `approveTransfer()`.
+- [x] **Version Bump & App Release**:
+  - Bumped version to `1.0.4+8` in `pubspec.yaml` and `lib/core/services/app_update_service.dart`.
+  - Added unit tests for Issue #193 in `test/plan_retention_and_portal_autoconnect_test.dart`.
+- [x] **Verification & Release**:
+  - `flutter analyze`: 0 errors, 0 warnings.
+  - `flutter test`: All 125 tests passed.
+  - PR [#194](https://github.com/Icedmist/WavePass-Android/pull/194) squashed and merged to `main` (commit `5b7fc5b`).
+  - Triggered GitHub Actions release workflow `release.yml` (run `41351317686`) for version `v1.0.4+8`.
+

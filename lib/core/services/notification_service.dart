@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import 'wavepass_api.dart';
 import 'supabase_service.dart';
+import 'venue_state_service.dart';
+import 'router_discovery_service.dart';
 
 enum NotifyType { success, error, warning, info }
 
@@ -102,8 +104,10 @@ class AppNotifier {
     String? planId,
     String? venueId,
     bool isApproval = false,
+    bool persistToCloud = false,
   }) {
-    _add(AppNotification(
+    final effectiveVenueId = venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
+    final n = AppNotification(
       type: type,
       title: title,
       message: message,
@@ -113,9 +117,21 @@ class AppNotifier {
       orderId: orderId,
       mac: mac,
       planId: planId,
-      venueId: venueId,
+      venueId: effectiveVenueId,
       isApproval: isApproval,
-    ));
+    );
+    _add(n);
+    if (persistToCloud && effectiveVenueId != null) {
+      _persistToCloud(
+        id: n.id,
+        venueId: effectiveVenueId,
+        type: type,
+        title: title,
+        message: message,
+        reference: reference,
+        createdAt: n.at,
+      );
+    }
     if (showDeviceBar) {
       _showBar(
         title: title,
@@ -124,6 +140,37 @@ class AppNotifier {
         payload: reference,
         isApproval: isApproval,
       );
+    }
+  }
+
+  Future<void> _persistToCloud({
+    required String id,
+    required String venueId,
+    required NotifyType type,
+    required String title,
+    required String message,
+    String? reference,
+    int? amountMinor,
+    DateTime? createdAt,
+  }) async {
+    if (!SupabaseService.isInitialized) return;
+    try {
+      final dbType = (type == NotifyType.info)
+          ? 'VOUCHER'
+          : (type == NotifyType.warning ? 'SYSTEM' : 'PAYMENT');
+      await SupabaseService.instance.client.from('Notification').upsert({
+        'id': id,
+        'venueId': venueId,
+        'type': dbType,
+        'title': title,
+        'body': message,
+        'reference': reference,
+        'amountMinor': amountMinor,
+        'read': false,
+        'createdAt': (createdAt ?? DateTime.now()).toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('[AppNotifier] Supabase notification persist error: $e');
     }
   }
 
@@ -191,9 +238,24 @@ class AppNotifier {
       required String message,
       String? actionLabel,
       VoidCallback? onAction,
-      bool showDeviceBar = true}) {
-    final n = AppNotification(type: type, title: title, message: message);
+      bool showDeviceBar = true,
+      String? venueId,
+      String? reference,
+      bool persistToCloud = false}) {
+    final effectiveVenueId = venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
+    final n = AppNotification(type: type, title: title, message: message, reference: reference, venueId: effectiveVenueId);
     _add(n);
+    if (persistToCloud && effectiveVenueId != null) {
+      _persistToCloud(
+        id: n.id,
+        venueId: effectiveVenueId,
+        type: type,
+        title: title,
+        message: message,
+        reference: reference,
+        createdAt: n.at,
+      );
+    }
     try {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,7 +270,7 @@ class AppNotifier {
       } catch (_) {}
     }
     if (showDeviceBar) {
-      _showBar(title: title, message: message, type: type);
+      _showBar(title: title, message: message, type: type, payload: reference);
     }
   }
 
@@ -220,9 +282,24 @@ class AppNotifier {
     required String title,
     required String message,
     bool showDeviceBar = true,
+    String? venueId,
+    String? reference,
+    bool persistToCloud = false,
   }) {
-    final n = AppNotification(type: type, title: title, message: message);
+    final effectiveVenueId = venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
+    final n = AppNotification(type: type, title: title, message: message, reference: reference, venueId: effectiveVenueId);
     _add(n);
+    if (persistToCloud && effectiveVenueId != null) {
+      _persistToCloud(
+        id: n.id,
+        venueId: effectiveVenueId,
+        type: type,
+        title: title,
+        message: message,
+        reference: reference,
+        createdAt: n.at,
+      );
+    }
     try {
       _messengerKey?.currentState?.hideCurrentSnackBar();
       _messengerKey?.currentState?.showSnackBar(
@@ -230,7 +307,7 @@ class AppNotifier {
       );
     } catch (_) {}
     if (showDeviceBar) {
-      _showBar(title: title, message: message, type: type);
+      _showBar(title: title, message: message, type: type, payload: reference);
     }
   }
 
@@ -245,43 +322,66 @@ class AppNotifier {
     String? actionLabel,
     VoidCallback? onAction,
     bool showDeviceBar = true,
+    String? venueId,
+    String? reference,
+    bool persistToCloud = true,
   }) {
-    if (context != null && context.mounted) {
-      try {
-        show(
-          context,
-          type: type,
-          title: title,
-          message: message,
-          actionLabel: actionLabel,
-          onAction: onAction,
-          showDeviceBar: showDeviceBar,
-        );
-      } catch (_) {
-        showViaKey(
-          type: type,
-          title: title,
-          message: message,
-          showDeviceBar: showDeviceBar,
-        );
-      }
-    } else {
-      showViaKey(
+    final effectiveVenueId = venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
+    final n = AppNotification(
+      type: type,
+      title: title,
+      message: message,
+      reference: reference,
+      venueId: effectiveVenueId,
+    );
+    _add(n);
+    if (persistToCloud && effectiveVenueId != null) {
+      _persistToCloud(
+        id: n.id,
+        venueId: effectiveVenueId,
         type: type,
         title: title,
         message: message,
-        showDeviceBar: showDeviceBar,
+        reference: reference,
+        createdAt: n.at,
       );
     }
+
+    if (context != null && context.mounted) {
+      try {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
+        );
+      } catch (_) {
+        try {
+          _messengerKey?.currentState?.hideCurrentSnackBar();
+          _messengerKey?.currentState?.showSnackBar(
+            _buildModal(type: type, title: title, message: message, actionLabel: actionLabel, onAction: onAction),
+          );
+        } catch (_) {}
+      }
+    } else {
+      try {
+        _messengerKey?.currentState?.hideCurrentSnackBar();
+        _messengerKey?.currentState?.showSnackBar(
+          _buildModal(type: type, title: title, message: message),
+        );
+      } catch (_) {}
+    }
+
+    if (showDeviceBar) {
+      _showBar(title: title, message: message, type: type, payload: reference);
+    }
   }
-  void success(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction, bool showDeviceBar = true}) =>
-      show(c, type: NotifyType.success, title: title, message: msg, actionLabel: action, onAction: onAction, showDeviceBar: showDeviceBar);
-  void error(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction, bool showDeviceBar = true}) =>
-      show(c, type: NotifyType.error, title: title, message: msg, actionLabel: action, onAction: onAction, showDeviceBar: showDeviceBar);
-  void warning(BuildContext c, String title, String msg, {bool showDeviceBar = true}) =>
-      show(c, type: NotifyType.warning, title: title, message: msg, showDeviceBar: showDeviceBar);
-  void info(BuildContext c, String title, String msg, {bool showDeviceBar = true}) =>
-      show(c, type: NotifyType.info, title: title, message: msg, showDeviceBar: showDeviceBar);
+  void success(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction, bool showDeviceBar = true, String? venueId, bool persistToCloud = false}) =>
+      show(c, type: NotifyType.success, title: title, message: msg, actionLabel: action, onAction: onAction, showDeviceBar: showDeviceBar, venueId: venueId, persistToCloud: persistToCloud);
+  void error(BuildContext c, String title, String msg, {String? action, VoidCallback? onAction, bool showDeviceBar = true, String? venueId, bool persistToCloud = false}) =>
+      show(c, type: NotifyType.error, title: title, message: msg, actionLabel: action, onAction: onAction, showDeviceBar: showDeviceBar, venueId: venueId, persistToCloud: persistToCloud);
+  void warning(BuildContext c, String title, String msg, {bool showDeviceBar = true, String? venueId, bool persistToCloud = false}) =>
+      show(c, type: NotifyType.warning, title: title, message: msg, showDeviceBar: showDeviceBar, venueId: venueId, persistToCloud: persistToCloud);
+  void info(BuildContext c, String title, String msg, {bool showDeviceBar = true, String? venueId, bool persistToCloud = false}) =>
+      show(c, type: NotifyType.info, title: title, message: msg, showDeviceBar: showDeviceBar, venueId: venueId, persistToCloud: persistToCloud);
 
   // ── Device notification bar (venue-owner payment alerts & system bar) ───
   Future<bool> requestPermission() async {
@@ -345,56 +445,32 @@ class AppNotifier {
         final orderId = parts[1];
         final mac = parts[2];
         final planId = parts[3];
-        final venueId = parts.length >= 5 ? parts[4] : (_pollVenueId ?? '');
+        final venueId = parts.length >= 5 ? parts[4] : (_pollVenueId ?? VenueStateService.instance.currentVenueId ?? '');
+
+        final existing = feed.value.where((item) => item.reference == payload).firstOrNull;
+        final n = existing ?? AppNotification(
+          type: NotifyType.warning,
+          title: 'Transfer Approval',
+          message: 'Approval request for $mac',
+          reference: payload,
+          orderId: orderId,
+          mac: mac,
+          planId: planId,
+          venueId: venueId.isNotEmpty ? venueId : null,
+          isApproval: true,
+        );
 
         try {
-          final res = await WavePassApi.instance.approveAccess(
-            venueId: venueId,
-            orderId: orderId.isNotEmpty ? orderId : null,
-            mac: mac,
-            planId: planId.isNotEmpty ? planId : null,
-            reference: payload,
-          );
-
-          final vCode = res['voucherCode']?.toString() ?? 'ACTIVE';
-
-          await _showBar(
-            title: '✅ Wi-Fi Access Approved',
-            message: 'Access granted for $mac. Voucher $vCode is active.',
-            type: NotifyType.success,
-          );
-
-          for (final n in feed.value) {
-            if (n.reference == payload || (orderId.isNotEmpty && n.id.contains(orderId))) {
-              n.read = true;
-            }
-          }
-          feed.value = List.from(feed.value);
-
-          if (SupabaseService.isInitialized) {
-            try {
-              SupabaseService.instance.client
-                  .from('Notification')
-                  .update({'read': true})
-                  .eq('reference', payload);
-            } catch (_) {}
-          }
-
-          showViaKey(
-            type: NotifyType.success,
-            title: '✅ Access Granted',
-            message: 'Wi-Fi access approved for $mac (Pass: $vCode).',
-            showDeviceBar: false,
-          );
+          await approveTransfer(n);
         } catch (e) {
-          debugPrint('Error approving access from notification panel: $e');
+          debugPrint('Error approving access from notification action: $e');
         }
       }
     }
   }
 
   Future<bool> approveTransfer(AppNotification n) async {
-    final venueId = n.venueId ?? _pollVenueId;
+    final venueId = n.venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
     final mac = n.mac;
     if (venueId == null || mac == null) {
       throw Exception('Approval is missing venue or device details — reopen the notification and retry.');
@@ -407,7 +483,7 @@ class AppNotifier {
         mac: mac,
         planId: n.planId,
         reference: n.reference,
-      );
+      ).timeout(const Duration(seconds: 5));
       if (res['ok'] == false) {
         throw Exception(
           res['error']?.toString() ?? res['message']?.toString() ?? 'Approval failed on server.',
@@ -421,7 +497,7 @@ class AppNotifier {
 
       if (SupabaseService.isInitialized && n.id.isNotEmpty) {
         try {
-          SupabaseService.instance.client
+          await SupabaseService.instance.client
               .from('Notification')
               .update({'read': true})
               .eq('id', n.id);
@@ -442,9 +518,66 @@ class AppNotifier {
       );
       return true;
     } catch (e) {
-      debugPrint('Error approving transfer: $e');
-      // Surface the real reason so owners never see a dead button again.
-      rethrow;
+      debugPrint('Cloud approveAccess failed ($e), executing local router fallback...');
+      try {
+        final vCode = 'WP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+        const durationSec = 3600;
+        final directRes = await RouterDiscoveryService.provisionVoucherDualRoute(
+          code: vCode,
+          pass: vCode,
+          profile: RouterDiscoveryService.profileForDuration(durationSec),
+          sessionTimeoutSeconds: durationSec,
+        );
+
+        if (SupabaseService.isInitialized) {
+          try {
+            await SupabaseService.instance.client.from('Voucher').insert({
+              'id': 'vch_${DateTime.now().millisecondsSinceEpoch}',
+              'venueId': venueId,
+              'planId': n.planId ?? 'plan_transfer_approved',
+              'codeHash': vCode,
+              'displayCodeEnc': vCode,
+              'status': 'ACTIVE',
+              'redeemedMac': mac,
+              'issuedAt': DateTime.now().toIso8601String(),
+              'redeemedAt': DateTime.now().toIso8601String(),
+              'sold': true,
+              'directMode': directRes['mode']?.toString() ?? 'local',
+            });
+          } catch (sbVchErr) {
+            debugPrint('[approveTransfer] Supabase voucher insert fallback note: $sbVchErr');
+          }
+        }
+
+        n.read = true;
+        feed.value = List.from(feed.value);
+
+        if (SupabaseService.isInitialized && n.id.isNotEmpty) {
+          try {
+            await SupabaseService.instance.client
+                .from('Notification')
+                .update({'read': true})
+                .eq('id', n.id);
+          } catch (_) {}
+        }
+
+        await _showBar(
+          title: '✅ Wi-Fi Access Approved (Direct)',
+          message: 'Access granted on router for $mac (Pass: $vCode).',
+          type: NotifyType.success,
+        );
+
+        showViaKey(
+          type: NotifyType.success,
+          title: '✅ Access Granted',
+          message: 'Wi-Fi access approved on router for $mac (Pass: $vCode).',
+          showDeviceBar: false,
+        );
+        return true;
+      } catch (fallbackErr) {
+        debugPrint('Direct router approval fallback failed: $fallbackErr');
+        throw Exception('Approval failed: $e (Router fallback: $fallbackErr)');
+      }
     }
   }
 
@@ -504,7 +637,7 @@ class AppNotifier {
       _realtimeChannel = SupabaseService.instance.client
           .channel('public:Notification:$venueId')
           .onPostgresChanges(
-            event: PostgresChangeEvent.insert,
+            event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'Notification',
             filter: PostgresChangeFilter(
@@ -515,7 +648,18 @@ class AppNotifier {
             callback: (payload) {
               final newRecord = payload.newRecord;
               if (newRecord.isNotEmpty) {
-                _processNotificationRecord(newRecord, venueId, showBar: true, showModal: true);
+                if (payload.eventType == PostgresChangeEvent.update) {
+                  final id = newRecord['id']?.toString();
+                  final isRead = newRecord['read'] == true;
+                  if (id != null && isRead) {
+                    for (final n in feed.value) {
+                      if (n.id == id) n.read = true;
+                    }
+                    feed.value = List.from(feed.value);
+                  }
+                } else {
+                  _processNotificationRecord(newRecord, venueId, showBar: true, showModal: true);
+                }
               }
             },
           )

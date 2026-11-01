@@ -410,50 +410,86 @@
       const statusBox = document.getElementById('retrieveStatusBox');
       if (statusBox) statusBox.style.display = 'none';
 
-      let url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venue=' + encodeURIComponent(window.venueSlug || 'apex-lounge');
-      if (mac) url += '&mac=' + encodeURIComponent(mac);
-      if (qInp) {
-        url += '&q=' + encodeURIComponent(qInp) + '&query=' + encodeURIComponent(qInp);
-        if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
-        if (qInp.startsWith('TRF-') || qInp.startsWith('BT-')) url += '&reference=' + encodeURIComponent(qInp);
+      function handleVoucherFound(data) {
+        try {
+          localStorage.setItem('wp-active-voucher', data.voucherCode);
+          sessionStorage.setItem('wp-active-voucher', data.voucherCode);
+        } catch(e){}
+        if (statusBox) {
+          statusBox.innerHTML = '<div style="font-weight:800; color:#10B981; font-size:13px;">✅ Active Pass Found!</div>' +
+            '<div style="margin:6px 0; font-family:monospace; font-size:18px; font-weight:900; letter-spacing:2px; color:#FFFFFF;">' + data.voucherCode + '</div>' +
+            '<div style="font-size:11px; color:#94A3B8; margin-bottom:8px;">' + (data.planName || 'Wi-Fi') + '</div>' +
+            '<button type="button" class="btn-submit" style="margin-top:0; padding:8px 12px; font-size:12px; background:#10B981; color:#000000;" onclick="submitVoucherCode(\'' + data.voucherCode + '\')">⚡ Connect Now &rarr;</button>';
+          statusBox.style.display = 'block';
+        }
       }
 
-      fetch(url)
-        .then(r => r.json())
-        .then(data => {
-          if (btn) { btn.innerText = originalText; btn.disabled = false; }
-          if (data && data.found && data.voucherCode) {
-            try {
-              localStorage.setItem('wp-active-voucher', data.voucherCode);
-              sessionStorage.setItem('wp-active-voucher', data.voucherCode);
-            } catch(e){}
+      function fetchBackendFallback() {
+        let url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venue=' + encodeURIComponent(window.venueSlug || 'apex-lounge');
+        if (mac) url += '&mac=' + encodeURIComponent(mac);
+        if (qInp) {
+          url += '&q=' + encodeURIComponent(qInp) + '&query=' + encodeURIComponent(qInp);
+          if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
+          if (qInp.startsWith('TRF-') || qInp.startsWith('BT-')) url += '&reference=' + encodeURIComponent(qInp);
+        }
+
+        fetch(url)
+          .then(r => r.json())
+          .then(data => {
+            if (btn) { btn.innerText = originalText; btn.disabled = false; }
+            if (data && data.found && data.voucherCode) {
+              handleVoucherFound(data);
+            } else if (data && data.pendingApproval) {
+              if (statusBox) {
+                statusBox.innerHTML = '<div style="font-weight:800; color:#F59E0B;">⏳ Awaiting Approval</div>' +
+                  '<div style="font-size:11px; color:#94A3B8; margin-top:4px;">' + (data.message || 'Transfer pending venue owner approval.') + '</div>';
+                statusBox.style.display = 'block';
+              }
+            } else {
+              if (statusBox) {
+                statusBox.innerHTML = '<div style="color:#EF4444; font-weight:700;">⚠️ ' + (data.message || 'No active pass found.') + '</div>';
+                statusBox.style.display = 'block';
+              }
+            }
+          })
+          .catch(() => {
+            if (btn) { btn.innerText = originalText; btn.disabled = false; }
             if (statusBox) {
-              statusBox.innerHTML = '<div style="font-weight:800; color:#10B981; font-size:13px;">✅ Active Pass Found!</div>' +
-                '<div style="margin:6px 0; font-family:monospace; font-size:18px; font-weight:900; letter-spacing:2px; color:#FFFFFF;">' + data.voucherCode + '</div>' +
-                '<div style="font-size:11px; color:#94A3B8; margin-bottom:8px;">' + (data.planName || 'Wi-Fi') + '</div>' +
-                '<button type="button" class="btn-submit" style="margin-top:0; padding:8px 12px; font-size:12px; background:#10B981; color:#000000;" onclick="submitVoucherCode(\'' + data.voucherCode + '\')">⚡ Connect Now &rarr;</button>';
+              statusBox.innerHTML = '<div style="color:#EF4444; font-weight:700;">⚠️ Server unreachable. Verify connection.</div>';
               statusBox.style.display = 'block';
             }
-          } else if (data && data.pendingApproval) {
-            if (statusBox) {
-              statusBox.innerHTML = '<div style="font-weight:800; color:#F59E0B;">⏳ Awaiting Approval</div>' +
-                '<div style="font-size:11px; color:#94A3B8; margin-top:4px;">' + (data.message || 'Transfer pending venue owner approval.') + '</div>';
-              statusBox.style.display = 'block';
-            }
-          } else {
-            if (statusBox) {
-              statusBox.innerHTML = '<div style="color:#EF4444; font-weight:700;">⚠️ ' + (data.message || 'No active pass found.') + '</div>';
-              statusBox.style.display = 'block';
-            }
+          });
+      }
+
+      // Try Supabase direct query first via walled garden
+      if (mac || qInp) {
+        let filter = mac ? ('redeemedMac=ilike.' + encodeURIComponent(mac)) : ('displayCodeEnc=ilike.' + encodeURIComponent(qInp));
+        let sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?' + filter +
+          '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+
+        fetch(sbUrl, {
+          headers: {
+            'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+            'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR'
           }
         })
-        .catch(() => {
-          if (btn) { btn.innerText = originalText; btn.disabled = false; }
-          if (statusBox) {
-            statusBox.innerHTML = '<div style="color:#EF4444; font-weight:700;">⚠️ Server unreachable. Verify connection.</div>';
-            statusBox.style.display = 'block';
+        .then(r => r.json())
+        .then(rows => {
+          if (Array.isArray(rows) && rows.length > 0 && rows[0].displayCodeEnc) {
+            if (btn) { btn.innerText = originalText; btn.disabled = false; }
+            handleVoucherFound({
+              found: true,
+              voucherCode: rows[0].displayCodeEnc,
+              planName: 'Wi-Fi Pass'
+            });
+          } else {
+            fetchBackendFallback();
           }
-        });
+        })
+        .catch(() => fetchBackendFallback());
+      } else {
+        fetchBackendFallback();
+      }
     }
 
     function submitVoucherCode(code) {

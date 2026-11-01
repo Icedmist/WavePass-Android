@@ -1699,13 +1699,6 @@ $_rfc1321Md5Js
       if (statusBox) statusBox.style.display = 'none';
 
       var effectiveVenueId = '$effectiveVenueTarget';
-      var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher' + (effectiveVenueId ? '?venueId=' + encodeURIComponent(effectiveVenueId) : '');
-      if (mac) url += (url.indexOf('?') === -1 ? '?' : '&') + 'mac=' + encodeURIComponent(mac);
-      if (qInp) {
-        url += (url.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(qInp);
-        if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
-        if (qInp.indexOf('REF-') === 0 || qInp.indexOf('PAY-') === 0 || qInp.indexOf('WP-') === 0) url += '&reference=' + encodeURIComponent(qInp);
-      }
 
       function handleVoucherFound(vData) {
         try {
@@ -1726,33 +1719,80 @@ $_rfc1321Md5Js
         }, 1200);
       }
 
-      fetch(url)
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          if (btn) {
-            btn.innerText = originalText;
-            btn.disabled = false;
-          }
+      function fetchBackendFallback() {
+        var url = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher' + (effectiveVenueId ? '?venueId=' + encodeURIComponent(effectiveVenueId) : '');
+        if (mac) url += (url.indexOf('?') === -1 ? '?' : '&') + 'mac=' + encodeURIComponent(mac);
+        if (qInp) {
+          url += (url.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(qInp);
+          if (/^[0-9+]{6,15}/.test(qInp)) url += '&phone=' + encodeURIComponent(qInp);
+          if (qInp.indexOf('REF-') === 0 || qInp.indexOf('PAY-') === 0 || qInp.indexOf('WP-') === 0) url += '&reference=' + encodeURIComponent(qInp);
+        }
 
-          if (data && data.found && data.voucherCode) {
-            handleVoucherFound(data);
-          } else {
+        fetch(url)
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (btn) {
+              btn.innerText = originalText;
+              btn.disabled = false;
+            }
+
+            if (data && data.found && data.voucherCode) {
+              handleVoucherFound(data);
+            } else {
+              if (statusBox) {
+                statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code.') + '</div>';
+                statusBox.style.display = 'block';
+              }
+            }
+          })
+          .catch(function(err) {
+            if (btn) {
+              btn.innerText = originalText;
+              btn.disabled = false;
+            }
             if (statusBox) {
-              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ ' + (data.message || 'No active pass found. Please buy a pass or enter a valid voucher code.') + '</div>';
+              statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ Could not connect to server. Please verify internet access.</div>';
               statusBox.style.display = 'block';
             }
+          });
+      }
+
+      // Try direct Supabase REST query first via MikroTik walled garden
+      if (effectiveVenueId && (mac || qInp)) {
+        var filter = 'venueId=eq.' + encodeURIComponent(effectiveVenueId);
+        if (mac) {
+          filter += '&redeemedMac=ilike.' + encodeURIComponent(mac);
+        } else if (qInp) {
+          filter += '&displayCodeEnc=ilike.' + encodeURIComponent(qInp);
+        }
+        var sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?' + filter +
+          '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+
+        fetch(sbUrl, {
+          headers: {
+            'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+            'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR'
           }
         })
-        .catch(function(err) {
-          if (btn) {
-            btn.innerText = originalText;
-            btn.disabled = false;
+        .then(function(r) { return r.json(); })
+        .then(function(rows) {
+          if (Array.isArray(rows) && rows.length > 0 && rows[0].displayCodeEnc) {
+            if (btn) { btn.innerText = originalText; btn.disabled = false; }
+            handleVoucherFound({
+              found: true,
+              voucherCode: rows[0].displayCodeEnc,
+              planName: 'Wi-Fi Pass'
+            });
+          } else {
+            fetchBackendFallback();
           }
-          if (statusBox) {
-            statusBox.innerHTML = '<div style="color:#FFFFFF; font-weight:700;">⚠️ Could not connect to server. Please verify internet access.</div>';
-            statusBox.style.display = 'block';
-          }
+        })
+        .catch(function(e) {
+          fetchBackendFallback();
         });
+      } else {
+        fetchBackendFallback();
+      }
     }
 
     function payWithPaystack(planId, price) {
@@ -2108,7 +2148,15 @@ $_rfc1321Md5Js
             try {
               sessionStorage.removeItem('wp-auto-attempt');
             } catch(e){}
-            if (savedV) {
+            var errTxt = (errEl.innerText || '').toLowerCase();
+            if (errTxt.indexOf('uptime') !== -1 || errTxt.indexOf('limit') !== -1 || errTxt.indexOf('expire') !== -1 || errTxt.indexOf('not found') !== -1 || errTxt.indexOf('invalid') !== -1) {
+              try {
+                localStorage.removeItem('wp-active-voucher');
+                sessionStorage.removeItem('wp-active-voucher');
+              } catch(e){}
+              var sBox = document.getElementById('savedVoucherBox');
+              if (sBox) sBox.style.display = 'none';
+            } else if (savedV) {
               var sBox = document.getElementById('savedVoucherBox');
               if (sBox) sBox.style.display = 'block';
               var sCode = document.getElementById('savedVoucherCode');
@@ -2129,73 +2177,108 @@ $_rfc1321Md5Js
           var attempted = lastAttempt > 0 && (now - lastAttempt < 20000);
           if (!attempted && (devMac || savedV || (savedU && savedP))) {
             try { sessionStorage.setItem('wp-auto-attempt', now.toString()); } catch(e){}
+
+            // 1. Instant local auto-rejoin: if this device already holds a saved voucher or credentials,
+            // authenticate immediately without hanging on external cloud network latency!
+            if (savedV) {
+              executeLogin(savedV, savedV);
+              return;
+            } else if (savedU && savedP) {
+              executeLogin(savedU, savedP);
+              return;
+            }
+
+            // 2. Ephemeral or wiped storage with known MAC: query direct Supabase REST first via walled garden!
             var autoVenueId = '$effectiveVenueTarget';
-            // Sanity-check the provisioned venue target before the cloud
-            // lookup: an empty/'null'/'undefined' value would leave the call
-            // venue-unscoped and could return another venue's voucher.
             var autoVenueValid = autoVenueId && autoVenueId !== 'null' && autoVenueId !== 'undefined';
             if (autoVenueValid) {
-              var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
-              if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
-              if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
+              function fetchBackendFallback() {
+                var autoUrl = 'https://api.nexawavepass.com/api/v1/portal/retrieve-voucher?venueId=' + encodeURIComponent(autoVenueId);
+                if (devMac) autoUrl += '&mac=' + encodeURIComponent(devMac);
+                if (savedV) autoUrl += '&q=' + encodeURIComponent(savedV);
 
-              var executed = false;
-              function doFetch(attempt) {
-              var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-              var timer = controller ? setTimeout(function() { controller.abort(); }, 4500) : null;
-              var fetchOpts = controller ? { signal: controller.signal } : {};
+                var executed = false;
+                function doFetch(attempt) {
+                  var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                  var timer = controller ? setTimeout(function() { controller.abort(); }, 4500) : null;
+                  var fetchOpts = controller ? { signal: controller.signal } : {};
 
-              fetch(autoUrl, fetchOpts)
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                  if (timer) clearTimeout(timer);
-                  if (data && data.found && data.voucherCode) {
-                    executed = true;
-                    try {
-                      localStorage.setItem('wp-active-voucher', data.voucherCode);
-                      sessionStorage.setItem('wp-active-voucher', data.voucherCode);
-                    } catch(e){}
-                    executeLogin(data.voucherCode, data.voucherCode);
-                  } else if (data && !data.found) {
-                    // Cloud retrieve-voucher query did not find by MAC:
-                    // Do NOT immediately wipe localStorage('wp-active-voucher')!
-                    // Fall back to saved local voucher or credentials so randomized MACs can still auto-connect
-                    if (!executed) {
-                      if (savedV) {
+                  fetch(autoUrl, fetchOpts)
+                    .then(function(res) { return res.json(); })
+                    .then(function(data) {
+                      if (timer) clearTimeout(timer);
+                      if (data && data.found && data.voucherCode) {
                         executed = true;
-                        executeLogin(savedV, savedV);
-                      } else if (savedU && savedP) {
-                        executed = true;
-                        executeLogin(savedU, savedP);
+                        try {
+                          localStorage.setItem('wp-active-voucher', data.voucherCode);
+                          sessionStorage.setItem('wp-active-voucher', data.voucherCode);
+                        } catch(e){}
+                        executeLogin(data.voucherCode, data.voucherCode);
+                      } else if (data && !data.found) {
+                        if (!executed) {
+                          if (savedV) {
+                            executed = true;
+                            executeLogin(savedV, savedV);
+                          } else if (savedU && savedP) {
+                            executed = true;
+                            executeLogin(savedU, savedP);
+                          }
+                        }
                       }
-                    }
+                    })
+                    .catch(function(err) {
+                      if (timer) clearTimeout(timer);
+                      if (attempt < 2) {
+                        setTimeout(function() { doFetch(attempt + 1); }, 600);
+                        return;
+                      }
+                      if (!executed) {
+                        if (savedV) {
+                          executed = true;
+                          executeLogin(savedV, savedV);
+                        } else if (savedU && savedP) {
+                          executed = true;
+                          executeLogin(savedU, savedP);
+                        } else {
+                          var sBox = document.getElementById('savedVoucherBox');
+                          if (sBox && savedV) sBox.style.display = 'block';
+                        }
+                      }
+                    });
+                }
+                doFetch(1);
+              }
+
+              if (devMac) {
+                var sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?venueId=eq.' + encodeURIComponent(autoVenueId) +
+                  '&redeemedMac=ilike.' + encodeURIComponent(devMac) +
+                  '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+
+                fetch(sbUrl, {
+                  headers: {
+                    'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+                    'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR'
                   }
                 })
-                .catch(function(err) {
-                  if (timer) clearTimeout(timer);
-                  if (attempt < 2) {
-                    setTimeout(function() { doFetch(attempt + 1); }, 600);
-                    return;
+                .then(function(r) { return r.json(); })
+                .then(function(rows) {
+                  if (Array.isArray(rows) && rows.length > 0 && rows[0].displayCodeEnc) {
+                    var vCode = rows[0].displayCodeEnc;
+                    try {
+                      localStorage.setItem('wp-active-voucher', vCode);
+                      sessionStorage.setItem('wp-active-voucher', vCode);
+                    } catch(e){}
+                    executeLogin(vCode, vCode);
+                  } else {
+                    fetchBackendFallback();
                   }
-                  // Network error, timeout, or captive portal DNS block before authentication.
-                  // Fall back immediately to authenticating with locally saved voucher or credentials
-                  if (!executed) {
-                    if (savedV) {
-                      executed = true;
-                      executeLogin(savedV, savedV);
-                    } else if (savedU && savedP) {
-                      executed = true;
-                      executeLogin(savedU, savedP);
-                    } else {
-                      // MAC-only device with empty localStorage or link timeout:
-                      // Ensure 1-tap reconnect button is visible if any saved voucher is found
-                      var sBox = document.getElementById('savedVoucherBox');
-                      if (sBox && savedV) sBox.style.display = 'block';
-                    }
-                  }
+                })
+                .catch(function(e) {
+                  fetchBackendFallback();
                 });
-            }
-            doFetch(1);
+              } else {
+                fetchBackendFallback();
+              }
             } else {
               // No trustworthy venue target — fall back to the locally saved
               // voucher/credentials instead of a venue-unscoped cloud lookup.

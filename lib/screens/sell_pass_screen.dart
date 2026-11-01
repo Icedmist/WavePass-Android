@@ -13,6 +13,7 @@ import '../core/theme/app_theme.dart';
 import '../core/widgets/plan_configurator.dart';
 import '../core/widgets/qr_code_widget.dart';
 import '../core/services/voucher_history_service.dart';
+import '../core/services/notification_service.dart';
 import 'voucher_history_sheet.dart';
 
 class SellPassScreen extends StatefulWidget {
@@ -254,6 +255,17 @@ class _SellPassScreenState extends State<SellPassScreen> {
         source: 'pos',
         provisioned: provisioned,
       );
+
+      if (provisioned) {
+        AppNotifier.instance.notify(
+          context: mounted ? context : null,
+          type: NotifyType.success,
+          title: 'Pass Sold: $code',
+          message: '${selectedPlan['title']} sold for ${selectedPlan['price']}.',
+          venueId: _venueId,
+          reference: 'POS_SALE:$code:${_venueId ?? ""}',
+        );
+      }
 
       setState(() {
         _generatedCode = code;

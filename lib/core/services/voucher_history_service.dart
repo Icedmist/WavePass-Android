@@ -747,6 +747,7 @@ class VoucherHistoryService {
       if (history.isEmpty) return;
 
       final currentVenue = VenueStateService.instance.currentVenue;
+      final effectiveVenueId = currentVenue?['id']?.toString() ?? VenueStateService.instance.currentVenueId;
       if (currentVenue == null) {
         final prefs = await SharedPreferences.getInstance();
         final currentEmail = (SupabaseService.instance.currentUser?.email ?? prefs.getString('sb-user-email') ?? '').toLowerCase().trim();
@@ -814,6 +815,8 @@ class VoucherHistoryService {
                   type: NotifyType.success,
                   title: 'Voucher In Use',
                   message: 'Pass ${record.code} (${record.planTitle}) is now active on $mac ($ip).',
+                  venueId: effectiveVenueId,
+                  reference: 'VOUCHER_IN_USE:${record.code}',
                 );
               } else if (record.status == 'in_use') {
                 if (mac != '—' && (record.mac == null || record.mac!.isEmpty || record.mac == '—')) {
@@ -865,6 +868,8 @@ class VoucherHistoryService {
                 type: NotifyType.info,
                 title: 'Voucher In Use (cloud)',
                 message: 'Pass ${record.code} (${record.planTitle}) is active per cloud records.',
+                venueId: effectiveVenueId,
+                reference: 'VOUCHER_IN_USE:${record.code}',
               );
             }
           }
@@ -917,6 +922,8 @@ class VoucherHistoryService {
               type: NotifyType.warning,
               title: 'Voucher Expired',
               message: 'Pass ${record.code} (${record.planTitle}) has expired and was removed.',
+              venueId: effectiveVenueId,
+              reference: 'VOUCHER_EXPIRED:${record.code}',
             );
 
             // Remove expired user from router hardware
@@ -963,6 +970,8 @@ class VoucherHistoryService {
                     type: NotifyType.warning,
                     title: 'Voucher Expired',
                     message: 'Pass ${record.code} (${record.planTitle}) reached uptime limit and expired.',
+                    venueId: effectiveVenueId,
+                    reference: 'VOUCHER_EXPIRED:${record.code}',
                   );
                   if (record.mac != null && record.mac!.isNotEmpty && record.mac != '—') {
                     try {
@@ -983,6 +992,8 @@ class VoucherHistoryService {
                     type: NotifyType.success,
                     title: 'Voucher In Use',
                     message: 'Pass ${record.code} (${record.planTitle}) is active on router (consumed ${record.uptimeFormatted}).',
+                    venueId: effectiveVenueId,
+                    reference: 'VOUCHER_IN_USE:${record.code}',
                   );
                 }
               }

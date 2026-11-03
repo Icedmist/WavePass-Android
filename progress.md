@@ -1207,3 +1207,28 @@
   - PR [#194](https://github.com/Icedmist/WavePass-Android/pull/194) squashed and merged to `main` (commit `5b7fc5b`).
   - Triggered GitHub Actions release workflow `release.yml` (run `41351317686`) for version `v1.0.4+8`.
 
+### 77. Bind Voucher redeemedMac on Captive Portal, Live Supabase Notification Sync, and Release v1.0.4+9 (Issue #196, PR #197)
+- [x] **Root Cause Diagnosis**:
+  - Rechecked production flow: Ephemeral mobile captive portal webviews (`com.android.captiveportallogin`) do not persist `localStorage`. Auto-rejoin relies on querying Supabase for `redeemedMac=ilike.<mac>`.
+  - Found that vouchers previously redeemed on `login.html` and `status.html` were never bound to the device MAC in Supabase (all rows in Supabase had `redeemedMac = null` and `status = 'GENERATED'`), resulting in empty query results and broken auto-rejoin.
+  - Found that `_generateStatusHtml` lacked the venue UUID required by the PostgreSQL foreign key constraint `Notification_venueId_fkey`, preventing notifications from persisting to Supabase's `Notification` table.
+- [x] **Captive Portal MAC Binding & Notification Dispatch (`router_setup_screen.dart`)**:
+  - In `submitVoucher()`: Dispatches background REST `PATCH` to `/rest/v1/Voucher?displayCodeEnc=eq.<v>` updating `redeemedMac: devMac`, `redeemedIp: devIp`, `status: 'ACTIVE'`, and `redeemedAt: nowIso`.
+  - In `submitVoucher()`: Immediately posts live `Notification` to Supabase's `Notification` table with `type: 'VOUCHER'`, `title: 'Pass Active: ' + v`, and `venueId`.
+  - In `_generateStatusHtml`: Added optional `venueId` parameter (passed cleanly from `_ensurePortalSuite()`). Once client lands on `status.html` (with full Internet access), extracts `$(username)`, `$(mac)`, and `$(ip)` and guarantees Supabase `Voucher` is bound with `redeemedMac`, `redeemedIp`, and `status = 'ACTIVE'`.
+  - In `_generateStatusHtml`: Dispatches live `Notification` to Supabase's `Notification` table once per session.
+  - In `login.html`: Broadened auto-rejoin and `retrieveVoucher` queries to include `&status=in.(ACTIVE,REDEEMED,GENERATED)`.
+  - In `login.html`: On terminal errors (`uptime`, `limit`, `expire`), dispatches background `PATCH` to Supabase marking voucher `status: 'EXPIRED'` to prevent infinite retry loops.
+- [x] **Notification Polling & Cloud Validation (`notification_service.dart`)**:
+  - Tightened polling interval from 30s to 15s in `startPaymentPolling()` for faster fallback when Realtime connections reconnect.
+  - Added strict UUID validation in `_persistToCloud()` to guarantee no invalid slugs trigger foreign key violations.
+  - Updated `sell_pass_screen.dart` to resolve `effectiveVid` from `VenueStateService.instance.currentVenueId` for sales notifications.
+- [x] **Unit Testing & Verification**:
+  - Added unit test suite in `test/plan_retention_and_portal_autoconnect_test.dart` verifying `submitVoucher` Supabase PATCH & notification, `status.html` safe venue UUID integration, and auto-rejoin query filters.
+  - `flutter analyze`: 0 errors, 0 warnings.
+  - `flutter test`: All 127 tests passed.
+- [x] **Release v1.0.4+9**:
+  - Bumped version to `1.0.4+9` in `pubspec.yaml` and `lib/core/services/app_update_service.dart`.
+  - PR [#197](https://github.com/Icedmist/WavePass-Android/pull/197) squashed and merged to `main` (commit `d296f06`).
+  - Triggered GitHub Actions release workflow `release.yml` (run `41691856552`) for version `v1.0.4+9`.
+

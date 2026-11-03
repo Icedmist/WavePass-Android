@@ -154,13 +154,17 @@ class AppNotifier {
     DateTime? createdAt,
   }) async {
     if (!SupabaseService.isInitialized) return;
+    final cleanVenueId = venueId.trim();
+    if (cleanVenueId.isEmpty || cleanVenueId == 'null' || !cleanVenueId.contains('-') || cleanVenueId.length < 20) {
+      return;
+    }
     try {
       final dbType = (type == NotifyType.info)
           ? 'VOUCHER'
           : (type == NotifyType.warning ? 'SYSTEM' : 'PAYMENT');
       await SupabaseService.instance.client.from('Notification').upsert({
         'id': id,
-        'venueId': venueId,
+        'venueId': cleanVenueId,
         'type': dbType,
         'title': title,
         'body': message,
@@ -672,7 +676,7 @@ class AppNotifier {
   /// Polls GET /notifications for the active venue. New alerts land in the
   /// in-app feed (Notifications tab) and — except on the silent first fill —
   /// render the identical in-app modal plus the Android notification bar.
-  void startPaymentPolling(String venueId, {Duration interval = const Duration(seconds: 30)}) {
+  void startPaymentPolling(String venueId, {Duration interval = const Duration(seconds: 15)}) {
     if (_pollVenueId == venueId && _pollTimer?.isActive == true) return;
     stopPaymentPolling();
     _pollVenueId = venueId;

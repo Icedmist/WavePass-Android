@@ -465,7 +465,7 @@
       if (mac || qInp) {
         let filter = mac ? ('redeemedMac=ilike.' + encodeURIComponent(mac)) : ('displayCodeEnc=ilike.' + encodeURIComponent(qInp));
         let sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?' + filter +
-          '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+          '&status=in.(ACTIVE,REDEEMED,GENERATED)&order=redeemedAt.desc.nullslast&limit=1';
 
         fetch(sbUrl, {
           headers: {

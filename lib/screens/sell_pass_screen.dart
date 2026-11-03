@@ -257,13 +257,14 @@ class _SellPassScreenState extends State<SellPassScreen> {
       );
 
       if (provisioned) {
+        final effectiveVid = _venueId ?? VenueStateService.instance.currentVenueId;
         AppNotifier.instance.notify(
           context: mounted ? context : null,
           type: NotifyType.success,
           title: 'Pass Sold: $code',
           message: '${selectedPlan['title']} sold for ${selectedPlan['price']}.',
-          venueId: _venueId,
-          reference: 'POS_SALE:$code:${_venueId ?? ""}',
+          venueId: effectiveVid,
+          reference: 'POS_SALE:$code:${effectiveVid ?? ""}',
         );
       }
 

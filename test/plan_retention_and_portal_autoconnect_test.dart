@@ -303,4 +303,57 @@ void main() {
       expect(html.contains("sessionStorage.removeItem('wp-active-voucher');"), isTrue);
     });
   });
+
+  group('Issue #196: Captive Portal MAC Binding & Live Supabase Notification Sync Tests', () {
+    test('generateLoginHtml binds redeemedMac and posts notification on submitVoucher', () {
+      final html = RouterSetupScreen.generateLoginHtml(
+        'Flagship Lounge',
+        'flagship',
+        [],
+        true,
+        false,
+        null,
+        'onyx',
+        null,
+        null,
+        '9a8fa6f7-4e94-4579-84ad-cb76312af80b',
+      );
+
+      // Verify submitVoucher binds device MAC to Supabase
+      expect(html.contains("fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?displayCodeEnc=eq.' + encodeURIComponent(v)"), isTrue);
+      expect(html.contains("patchBody.redeemedMac = devMac;"), isTrue);
+      expect(html.contains("status: 'ACTIVE'"), isTrue);
+
+      // Verify submitVoucher pushes live notification to Supabase Notification table
+      expect(html.contains("fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Notification'"), isTrue);
+      expect(html.contains("type: 'VOUCHER'"), isTrue);
+      expect(html.contains("reference: 'VOUCHER_IN_USE:'"), isTrue);
+
+      // Verify auto-rejoin query includes GENERATED, ACTIVE, and REDEEMED statuses
+      expect(html.contains("&status=in.(ACTIVE,REDEEMED,GENERATED)"), isTrue);
+
+      // Verify expired error marks voucher EXPIRED in Supabase
+      expect(html.contains("body: JSON.stringify({ status: 'EXPIRED'"), isTrue);
+    });
+
+    test('generateStatusHtml binds MAC and dispatches Supabase notification with venue UUID', () {
+      final statusHtml = RouterSetupScreen.generateStatusHtml(
+        'Flagship Lounge',
+        'flagship',
+        '9a8fa6f7-4e94-4579-84ad-cb76312af80b',
+      );
+
+      // Verify status.html binds voucher and device MAC
+      expect(statusHtml.contains("fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?displayCodeEnc=eq.' + encodeURIComponent(u)"), isTrue);
+      expect(statusHtml.contains("patchBody.redeemedMac = cleanMac;"), isTrue);
+      expect(statusHtml.contains("patchBody.redeemedIp = cleanIp;"), isTrue);
+
+      // Verify status.html pushes notification to Supabase Notification table with safe venue UUID
+      expect(statusHtml.contains("fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Notification'"), isTrue);
+      expect(statusHtml.contains('var venueId = "9a8fa6f7-4e94-4579-84ad-cb76312af80b";'), isTrue);
+      expect(statusHtml.contains("venueId: venueId,"), isTrue);
+      expect(statusHtml.contains("type: 'VOUCHER'"), isTrue);
+      expect(statusHtml.contains("title: 'Pass Active: ' + u"), isTrue);
+    });
+  });
 }

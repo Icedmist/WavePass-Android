@@ -46,8 +46,8 @@ class RouterSetupScreen extends StatefulWidget {
         venueId,
       );
 
-  static String generateStatusHtml(String venueName, String slug) =>
-      _RouterSetupScreenState._generateStatusHtml(venueName, slug);
+  static String generateStatusHtml(String venueName, String slug, [String? venueId]) =>
+      _RouterSetupScreenState._generateStatusHtml(venueName, slug, venueId);
 
   static String generateLogoutHtml(String venueName, String slug) =>
       _RouterSetupScreenState._generateLogoutHtml(venueName, slug);
@@ -1766,7 +1766,7 @@ $_rfc1321Md5Js
           filter += '&displayCodeEnc=ilike.' + encodeURIComponent(qInp);
         }
         var sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?' + filter +
-          '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+          '&status=in.(ACTIVE,REDEEMED,GENERATED)&order=redeemedAt.desc.nullslast&limit=1';
 
         fetch(sbUrl, {
           headers: {
@@ -2026,10 +2026,62 @@ $_rfc1321Md5Js
 
     function submitVoucher() {
       var v = document.getElementById('voucher_input').value.trim().toUpperCase();
+      if (!v) return;
       try {
         localStorage.setItem('wp-active-voucher', v);
         sessionStorage.setItem('wp-active-voucher', v);
       } catch(e){}
+
+      var rawMac = "\$(mac)";
+      var devMac = (rawMac && rawMac.indexOf("\$(") === -1 && rawMac.length >= 11) ? rawMac.trim().toUpperCase() : null;
+      var rawIp = "\$(ip)";
+      var devIp = (rawIp && rawIp.indexOf("\$(") === -1) ? rawIp.trim() : null;
+      var targetVenue = '$safeVenueId';
+
+      if (v) {
+        try {
+          var nowIso = new Date().toISOString();
+          var patchBody = {
+            status: 'ACTIVE',
+            redeemedAt: nowIso
+          };
+          if (devMac) patchBody.redeemedMac = devMac;
+          if (devIp) patchBody.redeemedIp = devIp;
+
+          fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?displayCodeEnc=eq.' + encodeURIComponent(v), {
+            method: 'PATCH',
+            headers: {
+              'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+              'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(patchBody)
+          }).catch(function(){});
+
+          if (targetVenue && targetVenue.indexOf('-') !== -1 && targetVenue.length > 20) {
+            var notifId = 'vch_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Notification', {
+              method: 'POST',
+              headers: {
+                'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+                'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                id: notifId,
+                venueId: targetVenue,
+                type: 'VOUCHER',
+                title: 'Pass Active: ' + v,
+                body: 'Voucher ' + v + ' is in use on ' + (devMac || 'device') + (devIp ? ' (' + devIp + ')' : '') + '.',
+                reference: 'VOUCHER_IN_USE:' + v + ':' + (devMac || 'unknown'),
+                read: false,
+                createdAt: nowIso
+              })
+            }).catch(function(){});
+          }
+        } catch(e){}
+      }
+
       executeLogin(v, v);
     }
 
@@ -2150,6 +2202,17 @@ $_rfc1321Md5Js
             } catch(e){}
             var errTxt = (errEl.innerText || '').toLowerCase();
             if (errTxt.indexOf('uptime') !== -1 || errTxt.indexOf('limit') !== -1 || errTxt.indexOf('expire') !== -1 || errTxt.indexOf('not found') !== -1 || errTxt.indexOf('invalid') !== -1) {
+              if (savedV) {
+                fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?displayCodeEnc=eq.' + encodeURIComponent(savedV), {
+                  method: 'PATCH',
+                  headers: {
+                    'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+                    'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ status: 'EXPIRED', consumedAt: new Date().toISOString() })
+                }).catch(function(){});
+              }
               try {
                 localStorage.removeItem('wp-active-voucher');
                 sessionStorage.removeItem('wp-active-voucher');
@@ -2252,7 +2315,7 @@ $_rfc1321Md5Js
               if (devMac) {
                 var sbUrl = 'https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?venueId=eq.' + encodeURIComponent(autoVenueId) +
                   '&redeemedMac=ilike.' + encodeURIComponent(devMac) +
-                  '&status=in.(ACTIVE,REDEEMED)&order=redeemedAt.desc.nullslast&limit=1';
+                  '&status=in.(ACTIVE,REDEEMED,GENERATED)&order=redeemedAt.desc.nullslast&limit=1';
 
                 fetch(sbUrl, {
                   headers: {
@@ -2297,7 +2360,10 @@ $_rfc1321Md5Js
 </html>""";
   }
 
-  static String _generateStatusHtml(String venueName, String slug) {
+  static String _generateStatusHtml(String venueName, String slug, [String? venueId]) {
+    final safeVenueId = (venueId != null && venueId.trim().isNotEmpty && venueId.trim() != 'null' && venueId.trim() != 'undefined')
+        ? venueId.trim()
+        : '';
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2484,10 +2550,70 @@ $_rfc1321Md5Js
   <script>
     try {
       var u = "\$(username)";
+      var m = "\$(mac)";
+      var ip = "\$(ip)";
+      var venueId = "$safeVenueId";
+
       if (u && u !== "" && u.indexOf("\$(") === -1 && u.indexOf("T-") !== 0) {
         localStorage.setItem('wp-active-voucher', u);
         localStorage.setItem('wp-active-user', u);
+        if (m && m.indexOf("\$(") === -1 && m.length >= 11) {
+          localStorage.setItem('wp-device-mac', m);
+        }
+
+        var cleanMac = (m && m.indexOf("\$(") === -1 && m.length >= 11) ? m.trim().toUpperCase() : null;
+        var cleanIp = (ip && ip.indexOf("\$(") === -1) ? ip.trim() : null;
+        var nowIso = new Date().toISOString();
+
+        var patchBody = {
+          status: 'ACTIVE',
+          redeemedAt: nowIso
+        };
+        if (cleanMac) patchBody.redeemedMac = cleanMac;
+        if (cleanIp) patchBody.redeemedIp = cleanIp;
+
+        // 1. Always bind redeemedMac in Supabase so auto-rejoin succeeds when reconnecting
+        fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Voucher?displayCodeEnc=eq.' + encodeURIComponent(u), {
+          method: 'PATCH',
+          headers: {
+            'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+            'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(patchBody)
+        }).catch(function(){});
+
+        // 2. Post notification to Supabase once per session
+        var sentKey = 'wp-notif-sent-' + u;
+        var alreadySent = false;
+        try {
+          alreadySent = sessionStorage.getItem(sentKey) === 'true';
+        } catch(e){}
+
+        if (!alreadySent && venueId && venueId.indexOf('-') !== -1 && venueId.length > 20) {
+          try { sessionStorage.setItem(sentKey, 'true'); } catch(e){}
+          var notifId = 'vch_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+          fetch('https://vvoenmdzavyzlisykhks.supabase.co/rest/v1/Notification', {
+            method: 'POST',
+            headers: {
+              'apikey': 'sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+              'Authorization': 'Bearer sb_publishable_Lyp5cAFr5o0gSSvKEtp3QQ_4p0nPEKR',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              id: notifId,
+              venueId: venueId,
+              type: 'VOUCHER',
+              title: 'Pass Active: ' + u,
+              body: 'Voucher ' + u + ' is connected on device ' + (cleanMac || 'client') + (cleanIp ? ' (' + cleanIp + ')' : '') + '.',
+              reference: 'VOUCHER_IN_USE:' + u + ':' + (cleanMac || 'unknown'),
+              read: false,
+              createdAt: nowIso
+            })
+          }).catch(function(){});
+        }
       }
+
       // Login succeeded: allow a fresh auto-rejoin attempt on the next disconnect.
       sessionStorage.removeItem('wp-auto-attempt');
     } catch (e) {}
@@ -2710,7 +2836,7 @@ $_rfc1321Md5Js
         effectiveLogo,
         venueId,
       ),
-      'status.html': _generateStatusHtml(venueName, slug),
+      'status.html': _generateStatusHtml(venueName, slug, venueId),
       'logout.html': _generateLogoutHtml(venueName, slug),
     };
     if (mounted && plans.isNotEmpty) {

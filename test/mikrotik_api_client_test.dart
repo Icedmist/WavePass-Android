@@ -264,12 +264,14 @@ void main() {
       await client.close();
 
       expect(res['profile'], isTrue);
+      expect(res['cloudSyncScheduler'], isTrue);
       final profileSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/profile/add'));
-      expect(profileSentence, contains('login-by=http-pap,http-chap,mac-cookie,trial'));
+      expect(profileSentence, contains('login-by=mac,mac-cookie,http-chap,http-pap,trial'));
       expect(profileSentence, contains('trial-user-profile=wp-payment-trial'));
       expect(profileSentence, contains('trial-uptime=2m/24h'));
       expect(profileSentence, isNot(contains('addresses-per-mac=1')));
       expect(profileSentence, isNot(contains('mac-cookie-timeout=3d')));
+      expect(executedWords.any((w) => w.contains('=name=wavepass-cloud-sync')), isTrue);
 
       final hotspotSentence = executedWords.firstWhere((w) => w.contains('/ip/hotspot/add'));
       expect(hotspotSentence, contains('addresses-per-mac=1'));

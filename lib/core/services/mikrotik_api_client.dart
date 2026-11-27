@@ -446,6 +446,7 @@ class MikrotikApiClient {
     required String slug,
     required String venueName,
     String? localIp,
+    String? venueId,
   }) async {
     final results = <String, dynamic>{
       'identity': false,
@@ -454,6 +455,7 @@ class MikrotikApiClient {
       'hotspot': false,
       'userProfiles': false,
       'cleanupScheduler': false,
+      'cloudSyncScheduler': false,
       'antiTethering': false,
       'errors': <String>[],
     };
@@ -501,7 +503,7 @@ class MikrotikApiClient {
         '=name=wavepass-profile',
         '=dns-name=wavepass.local',
         '=html-directory=hotspot',
-        '=login-by=http-pap,http-chap,mac-cookie,trial',
+        '=login-by=mac,mac-cookie,http-chap,http-pap,trial',
         '=trial-user-profile=wp-payment-trial',
         '=trial-uptime=2m/24h',
         if (localIp != null && localIp.isNotEmpty)
@@ -746,6 +748,67 @@ class MikrotikApiClient {
               '=.id=$scId',
               '=interval=1m',
               '=on-event=wavepass-cleanup',
+            ]);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 6b. Cloud voucher auto-sync script & scheduler (1m interval for off-network remote vouchers)
+    final cloudSyncSource = RouterDiscoveryService.buildCloudSyncScript(
+      venueSlug: slug,
+      venueId: venueId,
+    );
+    try {
+      await executeSentence([
+        '/system/script/add',
+        '=name=wavepass-cloud-sync',
+        '=source=$cloudSyncSource',
+        '=comment=WavePass remote cloud voucher sync',
+      ]);
+      results['cloudSyncScheduler'] = true;
+    } catch (_) {
+      try {
+        final existingSyncScript = await executeSentence([
+          '/system/script/print',
+          '?name=wavepass-cloud-sync',
+        ]);
+        if (existingSyncScript.isNotEmpty) {
+          final sId = existingSyncScript.first['.id'];
+          if (sId != null) {
+            await executeSentence([
+              '/system/script/set',
+              '=.id=$sId',
+              '=source=$cloudSyncSource',
+            ]);
+          }
+        }
+      } catch (_) {}
+      results['cloudSyncScheduler'] = true;
+    }
+
+    try {
+      await executeSentence([
+        '/system/scheduler/add',
+        '=name=wavepass-cloud-sync',
+        '=interval=1m',
+        '=on-event=wavepass-cloud-sync',
+        '=comment=WavePass 1-minute cloud voucher pull',
+      ]);
+    } catch (_) {
+      try {
+        final existingSyncSched = await executeSentence([
+          '/system/scheduler/print',
+          '?name=wavepass-cloud-sync',
+        ]);
+        if (existingSyncSched.isNotEmpty) {
+          final scId = existingSyncSched.first['.id'];
+          if (scId != null) {
+            await executeSentence([
+              '/system/scheduler/set',
+              '=.id=$scId',
+              '=interval=1m',
+              '=on-event=wavepass-cloud-sync',
             ]);
           }
         }

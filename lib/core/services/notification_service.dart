@@ -38,9 +38,9 @@ class AppNotification {
     this.planId,
     this.venueId,
     this.isApproval = false,
+    this.read = false,
   })  : id = remoteId ?? DateTime.now().microsecondsSinceEpoch.toString(),
-        at = at ?? DateTime.now(),
-        read = false;
+        at = at ?? DateTime.now();
 
   final String id;
   final NotifyType type;
@@ -62,6 +62,7 @@ class AppNotifier {
   final ValueNotifier<List<AppNotification>> feed = ValueNotifier([]);
   final FlutterLocalNotificationsPlugin _bar = FlutterLocalNotificationsPlugin();
   bool _barReady = false;
+  int _nextNotifId = 1000;
   Timer? _pollTimer;
   String? _pollVenueId;
   bool _isRefreshingPayments = false;
@@ -104,6 +105,7 @@ class AppNotifier {
     String? planId,
     String? venueId,
     bool isApproval = false,
+    bool read = false,
     bool persistToCloud = false,
   }) {
     final effectiveVenueId = venueId ?? _pollVenueId ?? VenueStateService.instance.currentVenueId;
@@ -119,6 +121,7 @@ class AppNotifier {
       planId: planId,
       venueId: effectiveVenueId,
       isApproval: isApproval,
+      read: read,
     );
     _add(n);
     if (persistToCloud && effectiveVenueId != null) {
@@ -609,7 +612,7 @@ class AppNotifier {
         ));
       }
 
-      final notifId = (DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF);
+      final notifId = _nextNotifId++;
       await _bar.show(
         notifId,
         title,
@@ -696,11 +699,31 @@ class AppNotifier {
     _isRefreshingPayments = false;
   }
 
+  /// Processes a raw notification row from Supabase Realtime or the backend API.
+  /// Exposed as [processRemoteNotification] for deterministic unit testing.
+  void processRemoteNotification(
+    Map<String, dynamic> r,
+    String venueId, {
+    required bool showBar,
+    required bool showModal,
+  }) =>
+      _processNotificationRecord(r, venueId, showBar: showBar, showModal: showModal);
+
   void _processNotificationRecord(Map<String, dynamic> r, String venueId, {required bool showBar, required bool showModal}) {
     final id = r['id']?.toString();
     if (id == null || _seenRemoteIds.contains(id)) return;
+    final isRead = r['read'] == true;
     final typeRaw = (r['type']?.toString() ?? 'PAYMENT').toUpperCase();
-    final type = typeRaw == 'VOUCHER' ? NotifyType.info : NotifyType.success;
+    final NotifyType type;
+    if (typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
+      type = NotifyType.info;
+    } else if (typeRaw == 'ERROR' || typeRaw.contains('FAIL')) {
+      type = NotifyType.error;
+    } else if (typeRaw == 'SYSTEM' || typeRaw == 'WARNING' || typeRaw == 'ALERT' || typeRaw.contains('PROVISION')) {
+      type = NotifyType.warning;
+    } else {
+      type = NotifyType.success;
+    }
     final title = r['title']?.toString() ?? 'Payment received';
     final message = r['body']?.toString() ?? '';
     final ref = r['reference']?.toString();
@@ -722,8 +745,9 @@ class AppNotifier {
       if (r['createdAt'] != null) at = DateTime.parse(r['createdAt'].toString());
     } catch (_) {}
 
+    final effectiveType = isApproval ? NotifyType.warning : type;
     push(
-      type: isApproval ? NotifyType.warning : type,
+      type: effectiveType,
       title: title,
       message: message,
       remoteId: id,
@@ -734,15 +758,18 @@ class AppNotifier {
       planId: planId,
       venueId: venueId,
       isApproval: isApproval,
+      read: isRead,
     );
 
-    if (typeRaw == 'PAYMENT' || isApproval || typeRaw == 'VOUCHER' || typeRaw.contains('VOUCHER')) {
+    // Fire modal and Android status bar alerts for all unread incoming events
+    // (PAYMENT, VOUCHER, SYSTEM, WARNING, ERROR, and TRANSFER_APPROVAL).
+    if (!isRead) {
       if (showModal) {
         try {
           _messengerKey?.currentState?.hideCurrentSnackBar();
           _messengerKey?.currentState?.showSnackBar(
             _buildModal(
-              type: isApproval ? NotifyType.warning : type,
+              type: effectiveType,
               title: title,
               message: message,
             ),
@@ -753,7 +780,7 @@ class AppNotifier {
         _showBar(
           title: title,
           message: message,
-          type: isApproval ? NotifyType.warning : type,
+          type: effectiveType,
           payload: isApproval ? ref : null,
           isApproval: isApproval,
         );

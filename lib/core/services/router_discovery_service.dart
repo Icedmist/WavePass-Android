@@ -969,8 +969,24 @@ class RouterDiscoveryService {
       ':foreach a in=[/ip hotspot active find] do={ :local stl [/ip hotspot active get \$a session-time-left]; :if ([:len \$stl] > 0 && \$stl = 0s) do={ /ip hotspot active remove \$a; } }; '
       ':foreach u in=[/ip hotspot user find] do={ :local lup [/ip hotspot user get \$u limit-uptime]; :local upt [/ip hotspot user get \$u uptime]; :if ([:len \$lup] > 0 && \$lup != 0s && \$upt >= \$lup) do={ :local un [/ip hotspot user get \$u name]; /ip hotspot active remove [find user=\$un]; /ip hotspot user remove \$u; /ip hotspot cookie remove [find user=\$un]; /ip hotspot ip-binding remove [find comment~("WP:" . \$un)]; /system scheduler remove [find name=("exp_" . \$un)]; } }; '
       ':foreach c in=[/ip hotspot cookie find] do={ :local cu [/ip hotspot cookie get \$c user]; :if ([:len [/ip hotspot user find name=\$cu]] = 0) do={ /ip hotspot cookie remove \$c; } }; '
-      ':foreach b in=[/ip hotspot ip-binding find type=bypassed] do={ :local bc [/ip hotspot ip-binding get \$b comment]; :if ([:len \$bc] > 3) do={ :local bu [:pick \$bc 3 [:len \$bc]]; :if ([:len [/ip hotspot user find name=\$bu]] = 0) do={ /ip hotspot ip-binding remove \$b; } } }; '
+      ':foreach b in=[/ip hotspot ip-binding find type=bypassed] do={ :local bc [/ip hotspot ip-binding get \$b comment]; :if ([:len \$bc] > 3 && [:pick \$bc 0 3] = "WP:") do={ :local bu [:pick \$bc 3 [:len \$bc]]; :if ([:len [/ip hotspot user find name=\$bu]] = 0) do={ /ip hotspot ip-binding remove \$b; } } }; '
       '/ip hotspot user remove [find comment~"expired"]';
+
+  /// Builds the 1-minute cloud voucher pull script so vouchers created or bought
+  /// remotely from anywhere work automatically on LAN-only MikroTik routers.
+  static String buildCloudSyncScript({
+    required String venueSlug,
+    String? venueId,
+    String apiBaseUrl = 'https://api.nexawavepass.com',
+  }) {
+    final cleanBase = apiBaseUrl.endsWith('/') ? apiBaseUrl.substring(0, apiBaseUrl.length - 1) : apiBaseUrl;
+    final cleanSlug = venueSlug.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+    final cleanVenueId = (venueId ?? '').replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+    final query = cleanVenueId.isNotEmpty
+        ? 'venueId=$cleanVenueId&venueSlug=${cleanSlug.isEmpty ? 'flagship' : cleanSlug}'
+        : 'venueSlug=${cleanSlug.isEmpty ? 'flagship' : cleanSlug}';
+    return ':do { /tool fetch url="$cleanBase/api/v1/portal/router-sync?$query" mode=https dst-path=wp_sync.rsc check-certificate=no; :delay 1s; /import file-name=wp_sync.rsc; /file remove wp_sync.rsc; } on-error={ :log warning "WavePass cloud sync failed" }';
+  }
 
   /// Standard duration-based rate-limit profiles configured on RouterOS with hard timeouts and session auto-kick.
   static List<Map<String, String>> get standardDurationProfiles => [
@@ -1762,6 +1778,54 @@ class RouterDiscoveryService {
         results['cleanupScheduler'] = schedRes.statusCode >= 200 && schedRes.statusCode < 300;
       } catch (e) {
         (results['errors'] as List<String>).add('CleanupScheduler: $e');
+      }
+
+      // 6b. Inject 1-Minute Cloud Voucher Auto-Sync Script & Scheduler (Remote Off-Network Vouchers)
+      try {
+        final cloudSyncSource = buildCloudSyncScript(venueSlug: slug);
+        final scriptUri = Uri.parse("http://$hostOnly:$port/rest/system/script");
+        final syncScriptRes = await client.put(
+          scriptUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-cloud-sync',
+            'source': cloudSyncSource,
+            'comment': 'WavePass remote cloud voucher sync',
+          }),
+        ).timeout(const Duration(seconds: 3));
+        if (syncScriptRes.statusCode >= 400) {
+          try {
+            final listRes = await client.get(
+              Uri.parse("http://$hostOnly:$port/rest/system/script?name=wavepass-cloud-sync"),
+              headers: headers,
+            ).timeout(const Duration(seconds: 3));
+            if (listRes.statusCode >= 200 && listRes.statusCode < 300) {
+              final dynamic list = jsonDecode(listRes.body);
+              if (list is List && list.isNotEmpty && list.first['.id'] != null) {
+                await client.patch(
+                  Uri.parse("http://$hostOnly:$port/rest/system/script/${list.first['.id']}"),
+                  headers: headers,
+                  body: jsonEncode({'source': cloudSyncSource}),
+                ).timeout(const Duration(seconds: 3));
+              }
+            }
+          } catch (_) {}
+        }
+
+        final schedUri = Uri.parse("http://$hostOnly:$port/rest/system/scheduler");
+        final syncSchedRes = await client.put(
+          schedUri,
+          headers: headers,
+          body: jsonEncode({
+            'name': 'wavepass-cloud-sync',
+            'interval': '1m',
+            'on-event': 'wavepass-cloud-sync',
+            'comment': 'WavePass 1-minute cloud voucher pull',
+          }),
+        ).timeout(const Duration(seconds: 3));
+        results['cloudSyncScheduler'] = syncSchedRes.statusCode >= 200 && syncSchedRes.statusCode < 300;
+      } catch (e) {
+        (results['errors'] as List<String>).add('CloudSyncScheduler: $e');
       }
 
       final anySuccess = results['identity'] == true ||
